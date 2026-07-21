@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: sigar-command-center
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_FILE
+        value: /data/data.json
+      - key: JWT_SECRET
+        generateValue: true
+    disk:
+      name: sigar-data
+      mountPath: /data
+      sizeGB: 1

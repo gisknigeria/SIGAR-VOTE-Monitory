@@ -1,0 +1,34 @@
+.map-tools{z-index:1000!important;pointer-events:auto}
+.map-tools button{pointer-events:auto;position:relative}
+.map-tools button.active{border-color:#facc15!important;background:#3b2f0d!important;color:#fff3b0!important;box-shadow:0 0 0 1px #facc1540,0 8px 24px #0006}
+.map-satellite .leaflet-tile-pane,.map-hybrid .leaflet-tile-pane{filter:saturate(1.28) contrast(1.08) brightness(1.03)}
+.share-map-tool{border-color:#286899!important;background:#113657!important;color:#8ed1ff!important}
+.danger-tool{border-color:#713842!important;background:#2c171d!important;color:#ff929f!important}
+.gps-share{border:1px solid #285078;background:#10263e;color:#8dbce8;border-radius:6px;padding:8px 10px;font-size:9px;white-space:nowrap}
+.gps-share.sharing{border-color:#248b62;background:#103c2c;color:#6ce2a9;box-shadow:0 0 14px #22c55e33}
+.delete-incident{border:1px solid #713842;background:#2c171d;color:#ff929f;border-radius:7px;padding:11px;margin-top:9px;font-weight:600}
+.map-view-panel{position:absolute;z-index:1000;top:61px;left:18px;display:flex;align-items:center;gap:4px;padding:5px;background:#091522e8;border:1px solid #28405a;border-radius:6px;box-shadow:0 5px 20px #0006}.map-view-panel span{font:500 8px 'JetBrains Mono';color:#63809e;padding:0 5px}.map-view-panel button{border:1px solid transparent;background:transparent;color:#8298ae;border-radius:4px;padding:6px 8px;font-size:9px}.map-view-panel button.active{border-color:#2864a1;background:#143354;color:#8cc3ff}@media(max-width:650px){.map-view-panel{top:56px;left:10px}.map-view-panel span{display:none}.map-view-panel button{padding:5px}}
+
+@media(max-width:760px){
+  .map-view-panel{
+    top:58px;
+    left:10px;
+    right:10px;
+    max-width:calc(100vw - 20px);
+    overflow-x:auto;
+    scrollbar-width:none;
+  }
+.map-view-panel::-webkit-scrollbar{display:none}
+  .map-view-panel button{flex:0 0 auto}
+}
+
+.map-view-panel select{border:0;background:#10243a;color:#f4f8ff;border-radius:4px;padding:7px 28px 7px 10px;font-size:10px;font-weight:700;outline:0}
+.map-view-panel select option{background:#0b1826;color:#f4f8ff}
+.tool-distance-label,.tool-route-label{background:#081321e8;border:1px solid #facc15;color:#fff7c2;border-radius:6px;padding:6px 9px;font:800 11px Inter;white-space:nowrap;box-shadow:0 8px 24px #0008}
+.tool-route-label{border-color:#22c55e;color:#d9ffe8}
+.marker-popup{min-width:170px;color:#112033}
+.marker-actions{display:flex;gap:6px;margin-top:9px}
+.marker-actions button{border:1px solid #2b6da8;background:#12395c;color:#e8f5ff;border-radius:5px;padding:6px 7px;font-size:11px}
+.detail-tool-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.detail-tool-row button{border:1px solid #2b557e;background:#132d4b;color:#cbe4ff;border-radius:7px;padding:11px 8px;font-weight:700;font-size:11px}
+@media(max-width:760px){.detail-tool-row{grid-template-columns:1fr}}

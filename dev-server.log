@@ -1,0 +1,458 @@
+
+> sigar-command-center@0.1.0 dev
+> concurrently "npm:dev:server" "npm:dev:client"
+
+[dev:client] 
+[dev:client] > sigar-command-center@0.1.0 dev:client
+[dev:client] > vite
+[dev:client] 
+[dev:server] 
+[dev:server] > sigar-command-center@0.1.0 dev:server
+[dev:server] > node --watch server/index.js
+[dev:server] 
+[dev:client] [2m9:38:11 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m Re-optimizing dependencies because vite config has changed
+[dev:client] 
+[dev:client]   [32m[1mVITE[22m v8.0.16[39m  [2mready in [0m[1m3836[22m[2m[0m ms[22m
+[dev:client] 
+[dev:client]   [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+[dev:client] [2m9:38:13 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] bundling dependencies...
+[dev:server] SIGAR Command API listening on port 5000
+[dev:server] Restarting 'server/index.js'
+[dev:server] SIGAR Command API listening on port 5000
+[dev:client] [2m9:48:07 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:48:08 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:48:29 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:49:18 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:49:45 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m9:50:20 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:client] [2m9:50:28 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=u55kwr7x[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] SIGAR Command API listening on port 5000
+[dev:client] [2m9:50:32 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:51:09 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] bundling dependencies...
+[dev:client] [2m9:51:10 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32m✨ new dependencies optimized: [33mreact-dom/server[32m[39m
+[dev:client] [2m9:52:22 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:55:45 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:56:36 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:57:09 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:58:00 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:58:27 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:03:34 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:04:10 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:04:43 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:04:54 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m10:05:37 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:10:34 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m10:11:36 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] SIGAR Command API listening on port 5000
+[dev:client] [2m10:12:01 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:15:09 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:18:10 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mIn HTML, <svg> cannot be a child of <option>.
+[dev:client] This will cause a hydration error.
+[dev:client] 
+[dev:client]   <App>
+[dev:client]     <Dashboard session={{token:"eyJ...", ...}} onLogout={function logout}>
+[dev:client]       <main className="app-shell">
+[dev:client]         <aside>
+[dev:client]         <section>
+[dev:client]         <IncidentForm point={{lat:7.3775, ...}} users={[...]} onClose={function onClose} onSave={function save}>
+[dev:client]           <div className="modal-back...">
+[dev:client]             <form className="modal repo..." onSubmit={function onSubmit}>
+[dev:client]               <div>
+[dev:client]               <div>
+[dev:client]               <label>
+[dev:client]               <label>
+[dev:client]               <div className="report-sty...">
+[dev:client]                 <div>
+[dev:client]                 <label>
+[dev:client]                   <select value="BS" onChange={function onChange}>
+[dev:client] >                   <option value="BS" title="BS">
+[dev:client]                       <ReportIcon iconKey="BS" size={14} color="#dc2626">
+[dev:client]                         <FaBullseye size={14} color="#dc2626" aria-hidden="true" focusable="false">
+[dev:client]                           <IconBase attr={{viewBox:"0..."}} size={14} color="#dc2626" aria-hidden="true" ...>
+[dev:client] >                           <svg
+[dev:client] >                             stroke="currentColor"
+[dev:client] >                             fill="currentColor"
+[dev:client] >                             strokeWidth="0"
+[dev:client] >                             viewBox="0 0 496 512"
+[dev:client] >                             color="#dc2626"
+[dev:client] >                             aria-hidden="true"
+[dev:client] >                             focusable="false"
+[dev:client] >                             className={undefined}
+[dev:client] >                             style={{color:"#dc2626"}}
+[dev:client] >                             height={14}
+[dev:client] >                             width={14}
+[dev:client] >                             xmlns="http://www.w3.org/2000/svg"
+[dev:client] >                           >
+[dev:client]                     ...
+[dev:client]                 ...
+[dev:client]               ...
+[dev:client]         ...
+[dev:client] 
+[dev:client] [2m10:18:10 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m<option> cannot contain a nested <svg>.
+[dev:client] See this log for the ancestor stack trace.
+[dev:client] [2m10:19:44 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:22:31 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m10:22:40 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:33:56 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:42:45 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:47:20 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:47:20 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m10:49:53 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m10:52:14 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m10:54:02 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m10:55:11 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/incidents[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:client] [2m10:55:11 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/users[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m10:55:11 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/report-viewers[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m10:55:11 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/cameras[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m10:55:11 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/map-layers[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m10:55:11 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/chat/rooms[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m10:55:12 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=wge3kzqq[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m10:55:12 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=wgepntur[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m10:55:13 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=wgfl6fh2[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m10:55:18 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=wgjagj4s[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] node:events:486
+[dev:server]       throw er; // Unhandled 'error' event
+[dev:server]       ^
+[dev:server] 
+[dev:server] Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+[dev:server]     at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+[dev:server]     at listenInCluster (node:net:2005:12)
+[dev:server]     at node:net:2214:7
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[dev:server] Emitted 'error' event on Server instance at:
+[dev:server]     at emitErrorNT (node:net:1984:8)
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+[dev:server]   code: 'EADDRINUSE',
+[dev:server]   errno: -4091,
+[dev:server]   syscall: 'listen',
+[dev:server]   address: '0.0.0.0',
+[dev:server]   port: 5000
+[dev:server] }
+[dev:server] 
+[dev:server] Node.js v24.14.0
+[dev:server] Failed running 'server/index.js'. Waiting for file changes before restarting...
+[dev:client] [2m10:57:48 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m11:03:34 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:04:22 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:05:55 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m8:51:16 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m8:51:18 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m8:51:39 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m8:53:44 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m8:53:44 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m8:54:55 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m8:54:55 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m8:56:11 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m8:56:11 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] SIGAR Command API listening on port 5000
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m9:00:36 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:server] SIGAR Command API listening on port 5000
+[dev:client] [2m9:03:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:03:53 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:14:31 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:22:55 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:23:26 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:23:27 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:26:51 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:26:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:29:33 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m9:30:01 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:30:01 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:33:15 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:33:15 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:33:15 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m9:39:32 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m9:39:46 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:server] Waiting for graceful termination...
+[dev:server] Gracefully restarted 'server/index.js'
+[dev:client] [2m9:39:52 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=97d2bfve[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m9:39:55 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=97fmf9c2[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m9:40:02 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=97lb061n[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] node:events:486
+[dev:server]       throw er; // Unhandled 'error' event
+[dev:server]       ^
+[dev:server] 
+[dev:server] Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+[dev:server]     at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+[dev:server]     at listenInCluster (node:net:2005:12)
+[dev:server]     at node:net:2214:7
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[dev:server] Emitted 'error' event on Server instance at:
+[dev:server]     at emitErrorNT (node:net:1984:8)
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+[dev:server]   code: 'EADDRINUSE',
+[dev:server]   errno: -4091,
+[dev:server]   syscall: 'listen',
+[dev:server]   address: '0.0.0.0',
+[dev:server]   port: 5000
+[dev:server] }
+[dev:server] 
+[dev:server] Node.js v24.14.0
+[dev:server] Failed running 'server/index.js'. Waiting for file changes before restarting...
+[dev:client] [2m9:40:16 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:40:25 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m9:41:26 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m9:41:36 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:server] node:events:486
+[dev:server]       throw er; // Unhandled 'error' event
+[dev:server]       ^
+[dev:server] 
+[dev:server] Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+[dev:server]     at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+[dev:server]     at listenInCluster (node:net:2005:12)
+[dev:server]     at node:net:2214:7
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[dev:server] Emitted 'error' event on Server instance at:
+[dev:server]     at emitErrorNT (node:net:1984:8)
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+[dev:server]   code: 'EADDRINUSE',
+[dev:server]   errno: -4091,
+[dev:server]   syscall: 'listen',
+[dev:server]   address: '0.0.0.0',
+[dev:server]   port: 5000
+[dev:server] }
+[dev:server] 
+[dev:server] Node.js v24.14.0
+[dev:server] Failed running 'server/index.js'. Waiting for file changes before restarting...
+[dev:client] [2m9:41:53 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m9:41:53 AM[22m [31m[1m[vite][22m[39m [31mInternal server error: EBUSY: resource busy or locked, open 'C:\Users\User\Documents\Police surv\src\styles.css'[39m
+[dev:client]       at async open (node:internal/fs/promises:637:25)
+[dev:client]       at async Object.readFile (node:internal/fs/promises:1269:14)
+[dev:client]       at async loadAndTransform (file:///C:/Users/User/Documents/Police%20surv/node_modules/vite/dist/node/chunks/node.js:24604:12)
+[dev:client]       at async viteTransformMiddleware (file:///C:/Users/User/Documents/Police%20surv/node_modules/vite/dist/node/chunks/node.js:24440:20)
+[dev:client] [2m9:41:53 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m9:41:53 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/styles.css. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[dev:client] [2m9:55:21 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:55:53 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:56:06 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:56:32 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:56:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:57:03 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:57:41 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:58:00 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:58:18 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:58:40 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m9:59:01 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m9:59:14 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m10:00:04 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:00:35 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m10:01:04 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] SIGAR Command API listening on port 5000
+[dev:client] [2m10:33:59 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:34:13 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:34:24 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:34:35 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:34:42 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:34:57 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:client] [2m10:39:27 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:39:56 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m10:40:17 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m11:38:10 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:client] [2m11:38:11 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dfjbk0h1[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m11:38:13 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dfkpyr7t[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m11:38:17 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dfo177n2[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m11:38:22 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dfrwryi6[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m11:38:27 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dfvs9446[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] node:events:486
+[dev:server]       throw er; // Unhandled 'error' event
+[dev:server]       ^
+[dev:server] 
+[dev:server] Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+[dev:server]     at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+[dev:server]     at listenInCluster (node:net:2005:12)
+[dev:server]     at node:net:2214:7
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[dev:server] Emitted 'error' event on Server instance at:
+[dev:server]     at emitErrorNT (node:net:1984:8)
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+[dev:server]   code: 'EADDRINUSE',
+[dev:server]   errno: -4091,
+[dev:server]   syscall: 'listen',
+[dev:server]   address: '0.0.0.0',
+[dev:server]   port: 5000
+[dev:server] }
+[dev:server] 
+[dev:server] Node.js v24.14.0
+[dev:server] Failed running 'server/index.js'. Waiting for file changes before restarting...
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m11:44:49 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:client] [2m11:44:51 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=do3m48iu[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m11:44:52 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=do4tau8f[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m11:44:55 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=do6vndxs[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] node:events:486
+[dev:server]       throw er; // Unhandled 'error' event
+[dev:server]       ^
+[dev:server] 
+[dev:server] Error: listen EADDRINUSE: address already in use 0.0.0.0:5000
+[dev:server]     at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+[dev:server]     at listenInCluster (node:net:2005:12)
+[dev:server]     at node:net:2214:7
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[dev:server] Emitted 'error' event on Server instance at:
+[dev:server]     at emitErrorNT (node:net:1984:8)
+[dev:server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+[dev:server]   code: 'EADDRINUSE',
+[dev:server]   errno: -4091,
+[dev:server]   syscall: 'listen',
+[dev:server]   address: '0.0.0.0',
+[dev:server]   port: 5000
+[dev:server] }
+[dev:server] 
+[dev:server] Node.js v24.14.0
+[dev:server] Failed running 'server/index.js'. Waiting for file changes before restarting...
+[dev:client] [2m11:45:05 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:45:18 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:45:56 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:46:13 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:46:26 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:46:39 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:46:53 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:47:06 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:47:37 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:48:43 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:49:05 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[dev:client] [2m11:49:23 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m4:00:43 PM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+[dev:client] Error: read ECONNRESET
+[dev:client]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[dev:client] [2m4:00:47 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=mt7kzr71[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:client] [2m4:00:51 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=mtbr0km9[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m4:00:58 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=mtew64iy[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m4:01:03 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=mtl6l8hl[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m4:01:09 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=mtpn56ys[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:client] [2m4:01:15 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=mtu9ln20[39m
+[dev:client] Error: connect ECONNREFUSED 127.0.0.1:5000
+[dev:client]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1645:16)
+[dev:server] Restarting 'server/index.js'
+[dev:server] SIGAR Command API listening on port 5000
