@@ -13,6 +13,16 @@ services:
         value: /data/data.json
       - key: JWT_SECRET
         generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_EMAIL
+        value: admin@command.local
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SUPER_ADMIN_EMAIL
+        value: superadmin@command.local
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
     disk:
       name: election-monitor-data
       mountPath: /data

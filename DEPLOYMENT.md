@@ -4,9 +4,17 @@
 
 1. Commit and push the included `render.yaml` and `Dockerfile` to the repository.
 2. In Render, select **New > Blueprint** and connect the repository.
-3. Render reads `render.yaml`, creates a Starter Docker web service, generates `JWT_SECRET`, and mounts a 1 GB disk at `/data`.
-4. Apply the Blueprint and wait for the health check to pass.
-5. Open the generated `onrender.com` URL and confirm `/api/health` returns an OK response.
+3. Render reads `render.yaml`, creates a Starter Docker web service, generates `JWT_SECRET`, and asks for the private values marked `sync: false`.
+4. Enter the following private values when Render prompts you:
+
+   - `DATABASE_URL`: your Neon pooled PostgreSQL connection string, including `sslmode=require`.
+   - `ADMIN_PASSWORD`: the password for `admin@command.local`.
+   - `SUPER_ADMIN_PASSWORD`: the password for `superadmin@command.local`.
+
+   Do not put these values directly into `render.yaml` or commit them to Git.
+
+5. Apply the Blueprint and wait for the health check to pass.
+6. Open the generated `onrender.com` URL and confirm `/api/health` returns an OK response. Its `database` field should say `neon-postgres`.
 
 The Starter plan is intentional: Render's free web service cannot attach a persistent disk. Without a disk, officer accounts and incidents stored in the current JSON file can be lost on restarts and deploys.
 
@@ -14,7 +22,7 @@ The single service supports WebSockets, so live incident and GPS updates use the
 
 ## Neon database
 
-If `DATABASE_URL` is set, the server stores users, incidents and camera streams in Neon/PostgreSQL instead of the local JSON file. Add this in Render under **Environment**:
+If `DATABASE_URL` is set, the server stores users, incidents and camera streams in Neon/PostgreSQL instead of the local JSON file. The Blueprint now requests this as a private value. You can also add it directly in Render under **Environment**:
 
 ```env
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/neondb?sslmode=require
