@@ -1,13 +1,10 @@
 export const POLICE_RANK_GROUPS = [
-  { name: 'Senior Command Structure', ranks: ['Inspector-General of Police (IGP)', 'Deputy Inspector-General of Police (DIG)', 'Assistant Inspector-General of Police (AIG)', 'Commissioner of Police (CP)', 'Deputy Commissioner of Police (DCP)', 'Assistant Commissioner of Police (ACP)'] },
-  { name: 'Superintendent Cadre', ranks: ['Chief Superintendent of Police (CSP)', 'Superintendent of Police (SP)', 'Deputy Superintendent of Police (DSP)', 'Assistant Superintendent of Police (ASP)'] },
-  { name: 'Inspectorate Cadre', ranks: ['Inspector of Police'] },
-  { name: 'Rank and File (Non-Commissioned Officers)', ranks: ['Sergeant Major', 'Sergeant', 'Corporal', 'Police Constable'] }
+  { name: 'Election Operations', ranks: ['Admin', 'Response Team', 'Agent'] }
 ];
 
 export const POLICE_RANKS = POLICE_RANK_GROUPS.flatMap(group => group.ranks);
 export const rankLevel = rank => {
-  if (rank === 'Super Admin' || rank === 'Admin' || rank === 'Control Room Admin') return -1;
+  if (rank === 'Super Admin') return -1;
   const index = POLICE_RANKS.indexOf(rank);
   return index < 0 ? POLICE_RANKS.length : index;
 };

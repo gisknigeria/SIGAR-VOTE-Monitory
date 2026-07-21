@@ -15,10 +15,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataFile = process.env.DATA_FILE || join(__dirname, 'data.json');
 const secret = process.env.JWT_SECRET || 'demo-only-change-me';
 const databaseUrl = process.env.DATABASE_URL;
+const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@command.local';
+const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Password1234';
+const adminEmail = process.env.ADMIN_EMAIL || 'admin@command.local';
+const adminPassword = process.env.ADMIN_PASSWORD || 'Password1234';
 const seed = {
   users: [
-    { id: 'u0', name: 'System Super Admin', email: 'superadmin@command.local', password: bcrypt.hashSync('superadmin123', 10), role: 'Super Admin', rank: 'Super Admin', active: true, unit: 'System Control', command: 'Oyo State Command', division: '', lga: '', lat: 7.3775, lng: 3.9470 },
-    { id: 'u1', name: 'Control Room Admin', email: 'admin@command.local', password: bcrypt.hashSync('admin123', 10), role: 'Admin', rank: 'Admin', active: true, unit: 'Control Room', command: 'Oyo State Command', division: '', lga: '', lat: 7.3775, lng: 3.9470 }
+    { id: 'u0', name: 'System Administrator', email: superAdminEmail, password: bcrypt.hashSync(superAdminPassword, 10), role: 'Super Admin', rank: 'Super Admin', active: true, unit: 'System Control', command: 'Oyo State Command', division: '', lga: '', lat: 7.3775, lng: 3.9470 },
+    { id: 'u1', name: 'Election Operations Admin', email: adminEmail, password: bcrypt.hashSync(adminPassword, 10), role: 'Admin', rank: 'Admin', active: true, unit: 'Command Center', command: 'Oyo State Command', division: '', lga: '', lat: 7.3775, lng: 3.9470 }
   ],
   incidents: [],
   cameras: [],
@@ -34,9 +38,13 @@ jsonDb.mapLayers ||= [];
 jsonDb.chatRooms ||= [];
 jsonDb.chatMembers ||= [];
 jsonDb.chatMessages ||= [];
-jsonDb.users = jsonDb.users.filter(user => !['u2', 'u3'].includes(user.id));
-if (!jsonDb.users.some(user => user.role === 'Super Admin')) jsonDb.users.unshift(seed.users[0]);
-jsonDb.users = jsonDb.users.map(user => user.role === 'Admin' ? { ...user, rank: 'Admin', name: user.name === 'Command Admin' ? 'Control Room Admin' : user.name, unit: user.unit === 'Command' ? 'Control Room' : user.unit, command: user.command || 'Oyo State Command' } : user);
+jsonDb.users = jsonDb.users.filter(user => !['u0', 'u1', 'u2', 'u3'].includes(user.id));
+jsonDb.users.unshift(...seed.users);
+jsonDb.users = jsonDb.users.map(user => {
+  if (user.role === 'Officer') return { ...user, role: 'Agent', rank: 'Agent' };
+  if (user.role === 'Admin') return { ...user, rank: 'Admin', command: user.command || 'Oyo State Command' };
+  return user;
+});
 jsonDb.incidents = jsonDb.incidents.filter(incident => !['i1', 'i2', 'i3'].includes(incident.id) && incident.createdBy !== 'seed');
 const saveJson = () => writeFileSync(dataFile, JSON.stringify(jsonDb, null, 2));
 if (!databaseUrl) saveJson();
@@ -59,7 +67,7 @@ async function initPostgres() {
       name text not null,
       email text not null unique,
       password text not null,
-      role text not null default 'Officer',
+      role text not null default 'Agent',
       rank text default '',
       active boolean not null default true,
       unit text default 'Field Unit',
@@ -173,14 +181,12 @@ async function initPostgres() {
   await pool.query("alter table map_layers add column if not exists visible boolean default true");
   await pool.query("alter table map_layers add column if not exists z_index integer default 0");
   await pool.query("alter table map_layers add column if not exists updated_at timestamptz");
+  await pool.query("update users set role='Agent', rank='Agent' where role='Officer'");
   const { rows } = await pool.query('select count(*)::int as count from users');
   await pool.query("delete from incidents where id in ('i1','i2','i3') or created_by='seed'");
   await pool.query("delete from users where id in ('u2','u3')");
-  const superAdmin = seed.users[0];
-  await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) on conflict (email) do nothing', [superAdmin.id, superAdmin.name, superAdmin.email, superAdmin.password, superAdmin.role, superAdmin.rank, superAdmin.active, superAdmin.unit, superAdmin.unitType || 'HQTS', superAdmin.command, superAdmin.division, superAdmin.station || '', superAdmin.lga, superAdmin.lat, superAdmin.lng]);
-  if (rows[0].count > 0) return;
-  for (const user of seed.users.slice(1)) {
-    await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.lga, user.lat, user.lng]);
+  for (const user of seed.users) {
+    await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) on conflict (id) do update set name=excluded.name,email=excluded.email,password=excluded.password,role=excluded.role,rank=excluded.rank,active=excluded.active,unit=excluded.unit,command=excluded.command', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.lga, user.lat, user.lng]);
   }
 }
 
@@ -379,19 +385,19 @@ const activeCameraShares = new Map();
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 const auth = (req, res, next) => { try { req.user = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), secret); next(); } catch { res.status(401).json({ message: 'Session expired. Please sign in again.' }); } };
-const isAdminRole = user => ['Admin', 'Super Admin'].includes(user?.role) || user?.rank === 'Commissioner of Police (CP)';
+const isAdminRole = user => ['Admin', 'Super Admin'].includes(user?.role);
 const adminOnly = (req, res, next) => isAdminRole(req.user) ? next() : res.status(403).json({ message: 'Admin access required' });
 const superAdminOnly = (req, res, next) => req.user.role === 'Super Admin' ? next() : res.status(403).json({ message: 'System administrator access required' });
-const canManageUsers = user => user?.role === 'Super Admin' || user?.role === 'Admin' || ranksBelow(user?.rank).length > 0;
+const canManageUsers = user => user?.role === 'Super Admin' || user?.role === 'Admin';
 const visibleUsersFor = (viewer, users) => {
-  const visibleUsers = users.filter(user => user.id !== viewer.id && (viewer.role === 'Super Admin' || user.role !== 'Super Admin'));
+  const visibleUsers = users.filter(user => user.id !== viewer.id && user.role !== 'Super Admin');
   if (isAdminRole(viewer)) return visibleUsers;
   return visibleUsers.filter(user => canManageRank(viewer.rank, user.rank));
 };
 const canCreateUser = (viewer, rank, role) => {
-  if (viewer.role === 'Super Admin') return ['Officer', 'Admin', 'Super Admin'].includes(role);
-  if (viewer.role === 'Admin') return role === 'Officer';
-  return role === 'Officer' && canManageRank(viewer.rank, rank);
+  if (viewer.role === 'Super Admin') return ['Agent', 'Response Team', 'Admin'].includes(role);
+  if (viewer.role === 'Admin') return ['Agent', 'Response Team'].includes(role);
+  return false;
 };
 const canDeleteUser = (viewer, target) => {
   if (!target || target.id === viewer.id) return false;
@@ -468,7 +474,7 @@ app.get('/api/report-viewers', auth, asyncRoute(async (req, res) => res.json(vis
 app.post('/api/users', auth, asyncRoute(async (req, res) => {
   if (!canManageUsers(req.user)) return res.status(403).json({ message: 'You do not have lower ranks to manage' });
   const email = String(req.body.email || '').trim().toLowerCase();
-  const role = req.body.role || 'Officer';
+  const role = req.body.role || 'Agent';
   const rank = String(req.body.rank || '').trim();
   if (!req.body.name || !email || !req.body.password) return res.status(400).json({ message: 'Name, email and password are required' });
   if (!rank) return res.status(400).json({ message: 'Rank is required' });
@@ -478,7 +484,7 @@ app.post('/api/users', auth, asyncRoute(async (req, res) => {
     id: `u${Date.now()}`,
     name: String(req.body.name).trim(), email,
     password: await bcrypt.hash(req.body.password, 10),
-    role, rank,
+    role, rank: role,
     active: true,
     unit: req.body.unit || 'Field Unit',
     unitType: String(req.body.unitType || 'Division').trim(),
@@ -498,7 +504,7 @@ app.delete('/api/users/:id', auth, asyncRoute(async (req, res) => {
   const target = (await store.users()).find(user => user.id === req.params.id);
   if (!canDeleteUser(req.user, target)) return res.status(403).json({ message: 'You are not allowed to delete this account' });
   const deleted = await store.deleteUser(req.params.id);
-  if (!deleted) return res.status(404).json({ message: 'Officer not found' });
+  if (!deleted) return res.status(404).json({ message: 'Personnel account not found' });
   io.emit('user:deleted', req.params.id);
   res.status(204).end();
 }));
@@ -629,7 +635,7 @@ io.on('connection', socket => {
   socket.on('camera:share:stop', payload => { activeCameraShares.delete(payload.userId); socket.broadcast.emit('camera:share:stop', payload); });
   socket.on('camera:view:request', ({ officerId }) => io.to(`camera:user:${officerId}`).emit('camera:viewer:request', { viewerSocketId: socket.id }));
   socket.on('camera:signal', ({ target, data }) => io.to(target).emit('camera:signal', { from: socket.id, fromUserId: socket.data.cameraUser?.userId, fromName: socket.data.cameraUser?.name, data }));
-  socket.on('disconnect', () => { const user = socket.data.cameraUser; if (user?.role === 'Officer' && activeCameraShares.has(user.userId)) { activeCameraShares.delete(user.userId); socket.broadcast.emit('camera:share:stop', { userId: user.userId }); } });
+  socket.on('disconnect', () => { const user = socket.data.cameraUser; if (['Agent', 'Response Team'].includes(user?.role) && activeCameraShares.has(user.userId)) { activeCameraShares.delete(user.userId); socket.broadcast.emit('camera:share:stop', { userId: user.userId }); } });
 });
 
 app.use((err, _, res, __) => {

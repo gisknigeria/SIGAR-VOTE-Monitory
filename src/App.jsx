@@ -76,11 +76,9 @@ import {
 import { GiPoliceBadge } from "react-icons/gi";
 import {
   OYO_COMMANDS,
-  POLICE_RANK_GROUPS,
   UNIT_TYPES,
   divisionsForCommand,
   normalizeCommand,
-  ranksBelow,
 } from "../shared/policeData.js";
 
 const API = "/api";
@@ -239,16 +237,22 @@ const OPERATIONAL_USES = [
   "Emergency Service",
   "Community Place",
 ];
-const REPORT_TYPES = [
-  "BS-Black Spot",
-  "KP-Key Point",
-  "VP-Vulnerable Point",
-  "POI-Point of Interest",
-  "STN-Station",
-  "IP-Incident Point",
-  "SOS-Emergency",
-  "Custom",
+const INCIDENT_TYPES = [
+  "Vote Buying",
+  "Thuggery and Violence",
+  "Voter Intimidation",
+  "Collusion",
+  "Compromised Privacy",
+  "Over-voting",
+  "Late Opening",
+  "Material Shortages",
+  "Missing Registers",
+  "Lack of Crowd Control",
+  "BVAS Failure",
+  "Network Connectivity",
+  "Battery Depletion",
 ];
+const REPORT_TYPES = INCIDENT_TYPES;
 const REPORT_TYPE_STYLES = {
   "BS-Black Spot": {
     icon: "BS",
@@ -341,21 +345,7 @@ const ReportIcon = ({ iconKey, size = 14, color = "currentColor" }) => {
 const ReportTypeIcon = ({ type, size = 14, color = "currentColor" }) => {
   return <ReportIcon iconKey={type} size={size} color={color} />;
 };
-const EMERGENCY_TYPES = [
-  "Late Opening",
-  "Material Shortages",
-  "Missing Registers",
-  "BVAS Failure",
-  "Network Connectivity",
-  "Battery Depletion",
-  "Vote Buying",
-  "Thuggery and Violence",
-  "Voter Intimidation",
-  "Collusion",
-  "Compromised Privacy",
-  "Lack of Crowd Control",
-  "Over-voting"
-];
+const EMERGENCY_TYPES = INCIDENT_TYPES;
 const ANALYTIC_TOOLS = [
   "Measure Distance",
   "Aggregate Points",
@@ -1332,9 +1322,7 @@ function MapView({
 }
 
 function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
-  const initialType = point.geometry?.type
-    ? "BS-Black Spot"
-    : "IP-Incident Point";
+  const initialType = INCIDENT_TYPES[0];
   const initialStyle = {
     ...REPORT_TYPE_STYLES[initialType],
     ...(point.style || {}),
@@ -1363,12 +1351,11 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
     lng: center.lng,
   });
   const [mediaError, setMediaError] = useState("");
-  const officerOptions = users.filter((user) => user.role === "Officer");
+  const officerOptions = users.filter((user) =>
+    ["Response Team", "Agent"].includes(user.role),
+  );
   const reportTypeOptions = useMemo(() => {
-    const baseTypes = REPORT_TYPES.filter((type) => type !== "Custom");
-    return isAdmin
-      ? [...baseTypes, "Custom", ...customTypes]
-      : baseTypes;
+    return REPORT_TYPES;
   }, [customTypes, isAdmin]);
   const named = (user) => (user.rank ? `${user.rank} ${user.name}` : user.name);
   const addMedia = (files) => {
@@ -1583,7 +1570,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
         </div>
         <div className="two-col">
           <label>
-            Assign officer
+            Assign responder
             <select
               value={form.assignedTo}
               onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
@@ -1688,17 +1675,17 @@ function OfficerManager({
   onDelete,
   onPassword,
 }) {
-  const manageableRanks = ["Super Admin", "Admin"].includes(currentUser.role)
-    ? POLICE_RANK_GROUPS.flatMap((group) => group.ranks)
-    : ranksBelow(currentUser.rank);
-  const defaultRank = manageableRanks[0] || "";
+  const manageableRoles = currentUser.role === "Super Admin"
+    ? ["Admin", "Response Team", "Agent"]
+    : ["Response Team", "Agent"];
+  const defaultRole = manageableRoles[manageableRoles.length - 1];
   const defaultCommand = OYO_COMMANDS[0] || "";
   const defaultDivision = divisionsForCommand(defaultCommand)[0];
   const emptyForm = {
     name: "",
     email: "",
     password: "",
-    rank: defaultRank,
+    rank: defaultRole,
     unit: defaultDivision?.name || "",
     unitType: "Division",
     command: defaultCommand,
@@ -1707,7 +1694,7 @@ function OfficerManager({
     lga: defaultDivision?.lga || "",
     lat: "7.3775",
     lng: "3.9470",
-    role: "Officer",
+    role: defaultRole,
   };
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
@@ -1745,7 +1732,7 @@ function OfficerManager({
       setError(err.message);
     }
   };
-  const canManageRoles = currentUser.role === "Super Admin";
+  const canManageRoles = ["Super Admin", "Admin"].includes(currentUser.role);
   return (
     <div className="modal-backdrop">
       <section className="modal officer-modal">
@@ -1760,7 +1747,7 @@ function OfficerManager({
         </div>
         <div className="manager-grid">
           <div className="manage-list">
-            <h3>Visible lower ranks</h3>
+            <h3>Visible personnel</h3>
             {users
               .filter((o) => o.role !== "Super Admin")
               .map((o) => (
@@ -1776,7 +1763,7 @@ function OfficerManager({
                   <b>{o.rank ? `${o.rank} ${o.name}` : o.name}</b>
                   <small>
                     {o.role === "Admin"
-                      ? "Control Room Admin"
+                      ? "Admin"
                       : o.role === "Super Admin"
                         ? "System Administrator"
                         : o.role} -{" "}
@@ -1798,33 +1785,15 @@ function OfficerManager({
             ))}
           </div>
           <form onSubmit={submit}>
-            <h3>Create lower-rank account</h3>
+            <h3>Create personnel account</h3>
             <label>
               Full name
               <input
                 required
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Officer name"
+                placeholder="Full name"
               />
-            </label>
-            <label>
-              Rank
-              <select
-                required
-                value={form.rank}
-                onChange={(e) => setForm({ ...form, rank: e.target.value })}
-              >
-                {POLICE_RANK_GROUPS.map((group) => (
-                  <optgroup key={group.name} label={group.name}>
-                    {group.ranks
-                      .filter((rank) => manageableRanks.includes(rank))
-                      .map((rank) => (
-                        <option key={rank}>{rank}</option>
-                      ))}
-                  </optgroup>
-                ))}
-              </select>
             </label>
             <label>
               Email
@@ -1841,10 +1810,13 @@ function OfficerManager({
                 System role
                 <select
                   value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, role: e.target.value, rank: e.target.value })
+                  }
                 >
-                  <option>Officer</option>
-                  <option value="Admin">Control Room Admin</option>
+                  {manageableRoles.map((role) => (
+                    <option key={role}>{role}</option>
+                  ))}
                 </select>
               </label>
             )}
@@ -3084,7 +3056,9 @@ function ChatPanel({
       ),
     [users],
   );
-  const officers = users.filter((user) => user.role === "Officer");
+  const officers = users.filter((user) =>
+    ["Response Team", "Agent"].includes(user.role),
+  );
   const submitRoom = async (e) => {
     e.preventDefault();
     if (!newRoom.name.trim()) return;
@@ -3476,12 +3450,12 @@ function ToolsPanel({
 }
 
 function EmergencyPanel({ onClose, onSend }) {
-  const [type, setType] = useState("");
+  const [type, setType] = useState(EMERGENCY_TYPES[0]);
   const [custom, setCustom] = useState("");
   const submit = (e) => {
     e.preventDefault();
     onSend({
-      type: type === "Custom" ? custom || "Custom emergency" : type,
+      type,
       text: custom,
     });
   };
@@ -3499,8 +3473,7 @@ function EmergencyPanel({ onClose, onSend }) {
         </div>
         <label>
           Emergency type
-          <select value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="">No type selected</option>
+          <select required value={type} onChange={(e) => setType(e.target.value)}>
             {EMERGENCY_TYPES.map((item) => (
               <option key={item}>{item}</option>
             ))}
@@ -3700,7 +3673,7 @@ function AnalyticsPanel({
       </div>
       <div className="analytics-summary">
         <span>Incidents: {incidents.length}</span>
-        <span>Officers: {officers.length}</span>
+        <span>Field personnel: {officers.length}</span>
         <span>Point layers: {pointLayers.length}</span>
         <span>Selected: {selected?.title || "None"}</span>
       </div>
@@ -3779,7 +3752,7 @@ function Dashboard({ session, onLogout }) {
   const officers = useMemo(
     () =>
       users
-        .filter((u) => u.role === "Officer")
+        .filter((u) => ["Response Team", "Agent"].includes(u.role))
         .map((u, index) => {
           const live = gpsPositions[u.id];
           return {
@@ -3807,15 +3780,12 @@ function Dashboard({ session, onLogout }) {
         }),
     [users, gpsPositions],
   );
-  const canAdmin =
-    ["Admin", "Super Admin"].includes(session.user.role) ||
-    session.user.rank === "Commissioner of Police (CP)";
+  const canAdmin = ["Admin", "Super Admin"].includes(session.user.role);
   const canCreateCustomReportType = ["Admin", "Super Admin"].includes(
     session.user.role,
   );
   const canManagePersonnel =
-    ["Super Admin", "Admin"].includes(session.user.role) ||
-    ranksBelow(session.user.rank).length > 0;
+    ["Super Admin", "Admin"].includes(session.user.role);
   const canSeeReport = (item) =>
     canAdmin ||
     item.createdBy === session.user.id ||
@@ -4546,7 +4516,7 @@ function Dashboard({ session, onLogout }) {
     );
     setChatRooms((old) => old.map((x) => (x.id === updated.id ? updated : x)));
     setActiveRoom(updated);
-    setNotice("Officer added to chat");
+    setNotice("Personnel added to chat");
     setTimeout(() => setNotice(""), 2500);
   };
   const deleteChatRoom = async (room) => {
@@ -4876,7 +4846,7 @@ function Dashboard({ session, onLogout }) {
       link.download = `election-monitor-incident-export-${Date.now()}.csv`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      return `Downloaded CSV with ${points.length} incidents. Officers: ${officers.length}. GIS layers: ${mapLayers.length}.`;
+      return `Downloaded CSV with ${points.length} incidents. Field personnel: ${officers.length}. Map layers: ${mapLayers.length}.`;
     }
     if (tool === "Find Hot Spots") {
       clearAnalysis();
@@ -5311,7 +5281,7 @@ function Dashboard({ session, onLogout }) {
             <b>{session.user.name}</b>
             <small>
               {session.user.role === "Admin"
-                ? "Control Room Admin"
+                ? "Admin"
                 : session.user.role === "Super Admin"
                   ? "System Administrator"
                   : session.user.role}
