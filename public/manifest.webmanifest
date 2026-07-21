@@ -1,14 +1,14 @@
 {
-  "name": "SIGAR",
-  "short_name": "SIGAR",
-  "description": "Security Intelligence, Geo-Analytics & Rapid Response Command Center.",
+  "name": "Election Monitoring Command Center",
+  "short_name": "Election Monitor",
+  "description": "Real-time monitoring, coordinated field operations and location-based election intelligence.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#07111f",
-  "theme_color": "#07111f",
+  "background_color": "#240710",
+  "theme_color": "#6d1735",
   "categories": ["government", "productivity", "utilities"],
   "icons": [
     {
@@ -28,7 +28,7 @@
     {
       "name": "Open command map",
       "short_name": "Map",
-      "description": "Open the live SIGAR command map.",
+      "description": "Open the live election monitoring map.",
       "url": "/",
       "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
     }

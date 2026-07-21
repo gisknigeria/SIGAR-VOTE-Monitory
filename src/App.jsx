@@ -342,14 +342,6 @@ const ReportTypeIcon = ({ type, size = 14, color = "currentColor" }) => {
   return <ReportIcon iconKey={type} size={size} color={color} />;
 };
 const EMERGENCY_TYPES = [
-  // "Officer needs help",
-  // "Shots fired",
-  // "Under attack",
-  // "Medical emergency",
-  // "Traffic crash",
-  // "Crowd trouble",
-  // "Pursuit",
-  // "Custom",
   "Late Opening",
   "Material Shortages",
   "Missing Registers",
@@ -474,7 +466,7 @@ const playEmergencyRing = (alert = {}) => {
       .then((reg) =>
         reg.showNotification(title, {
           body,
-          tag: alert.id || "sigar-emergency",
+          tag: alert.id || "election-monitor-emergency",
           renotify: true,
           requireInteraction: true,
           icon: "/icons/icon.svg",
@@ -693,25 +685,22 @@ function Login({ onLogin }) {
   return (
     <main className="login-shell">
       <section className="login-brand">
-        <div className="crest eye-logo">S</div>
-        <p className="sigar-word">SIGAR</p>
-        <h1 className="sigar-title">
-          <span>
-            Security Intelligence,
-            <br /> Geo-Analytics &
-          </span>
-          <span>Rapid Response</span>
-          <strong>Command Center</strong>
-        </h1>
+        <img className="campaign-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead" />
+        <p className="command-kicker">Election intelligence platform</p>
+        <h1 className="command-title">Election Monitoring Command Center</h1>
+        <p className="command-copy">
+          Real-time monitoring, coordinated field operations and location-based election intelligence.
+        </p>
         <div className="security-line">
-          <MdLocationPin style={{ verticalAlign: "-2px", color: "#28c888" }} />{" "}
-          Real-time response, coordinated field operations and location-based intelligence.
+          <MdLocationPin style={{ verticalAlign: "-2px" }} />{" "}
+          Live field network • Oyo State
         </div>
       </section>
       <form className="login-card" onSubmit={submit}>
-        <div className="eyebrow">AUTHORIZED ACCESS ONLY</div>
-        <h2>SIGAR sign in</h2>
-        <p className="muted">Use your issued command credentials.</p>
+        <img className="login-card-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead" />
+        <div className="eyebrow">SECURE COMMAND ACCESS</div>
+        <h2>Welcome back</h2>
+        <p className="muted">Sign in with your authorized election operations credentials.</p>
         <label>
           Email address
           <input
@@ -750,12 +739,12 @@ function Login({ onLogin }) {
         </div>
         {error && <div className="error">{error}</div>}
         <button className="primary" disabled={loading}>
-          {loading ? "Authenticating..." : "Enter command center ->"}
+          {loading ? "Authenticating..." : "Enter command center →"}
         </button>
         <button type="button" className="install-login" onClick={installApp}>
-          Install SIGAR app
+          Install command center app
         </button>
-        <p className="powered-by">Powered by GIS Kosult</p>
+        <p className="powered-by">Election Monitoring Command Center</p>
       </form>
     </main>
   );
@@ -2028,7 +2017,7 @@ function StreamVideo({ src, stream, muted = false }) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `SIGAR-recording-${Date.now()}.webm`;
+        link.download = `election-monitor-recording-${Date.now()}.webm`;
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       };
@@ -4884,7 +4873,7 @@ function Dashboard({ session, onLogout }) {
       const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `SIGAR-incident-export-${Date.now()}.csv`;
+      link.download = `election-monitor-incident-export-${Date.now()}.csv`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       return `Downloaded CSV with ${points.length} incidents. Officers: ${officers.length}. GIS layers: ${mapLayers.length}.`;
@@ -5083,18 +5072,18 @@ function Dashboard({ session, onLogout }) {
       if (!blob) throw new Error("Screenshot could not be created");
       const file = new File(
         [blob],
-        `${custom.filePrefix || "SIGAR"}-${selected?.id || Date.now()}.png`,
+        `${custom.filePrefix || "Election-Monitor"}-${selected?.id || Date.now()}.png`,
         { type: "image/png" },
       );
       const shareData = {
         title:
           custom.title ||
-          (selected ? `Incident: ${selected.title}` : "SIGAR map"),
+          (selected ? `Incident: ${selected.title}` : "Election monitoring map"),
         text:
           custom.text ||
           (selected
             ? `${selected.title} - ${selected.severity} - ${selected.status}`
-            : "SIGAR command map"),
+            : "Election monitoring command map"),
         files: [file],
       };
       if (
@@ -5124,9 +5113,9 @@ function Dashboard({ session, onLogout }) {
     const area = areas[areas.length - 1];
     if (!area) return setNotice("Draw an area first");
     shareMap({
-      filePrefix: "SIGAR-area",
-      title: area.title || "SIGAR operational area",
-      text: `${area.title || "SIGAR operational area"}${area.note ? ` - ${area.note}` : ""}`,
+      filePrefix: "election-monitor-area",
+      title: area.title || "Election monitoring operational area",
+      text: `${area.title || "Election monitoring operational area"}${area.note ? ` - ${area.note}` : ""}`,
     });
   };
   const toggleCamera = async () => {
@@ -5298,10 +5287,10 @@ function Dashboard({ session, onLogout }) {
       >
         <div className="sidebar-brand">
           <div className="brand-small">
-            <div className="crest mini eye-logo">S</div>
+            <img className="sidebar-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead" />
             <div>
-              <b>SIGAR</b>
-              <span>Command Center</span>
+              <b>Election Monitor</b>
+              <span>Command Center • Oyo</span>
             </div>
           </div>
           <button
@@ -6048,7 +6037,7 @@ function Dashboard({ session, onLogout }) {
             className="share-map-tool wide"
             onClick={() =>
               shareMap({
-                filePrefix: "SIGAR-incident",
+                filePrefix: "election-monitor-incident",
                 title: `Incident: ${selected.title}`,
                 text: `${selected.title} - ${selected.reportType || "Incident"} - ${selected.severity} - ${selected.status}\nLocation: ${selected.lat.toFixed(5)}, ${selected.lng.toFixed(5)}\n${selected.description || ""}`,
               })

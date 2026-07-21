@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sigar-command-center
+    name: election-monitor-command-center
     runtime: docker
     plan: starter
     region: frankfurt
@@ -14,6 +14,6 @@ services:
       - key: JWT_SECRET
         generateValue: true
     disk:
-      name: sigar-data
+      name: election-monitor-data
       mountPath: /data
       sizeGB: 1

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sigar-command-v2';
+const CACHE_NAME = 'election-monitor-command-v3';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/icon.svg', '/icons/maskable-icon.svg'];
 
 self.addEventListener('install', event => {
@@ -18,7 +18,7 @@ self.addEventListener('message', event => {
     const alert = event.data.alert || {};
     event.waitUntil(self.registration.showNotification(`Emergency from ${alert.name || 'officer'}`, {
       body: `${alert.type || 'Emergency'}${alert.text ? ` - ${alert.text}` : ''}`,
-      tag: alert.id || 'sigar-emergency',
+      tag: alert.id || 'election-monitor-emergency',
       renotify: true,
       requireInteraction: true,
       icon: '/icons/icon.svg',

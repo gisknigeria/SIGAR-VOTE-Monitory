@@ -456,7 +456,7 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
   }
 };
 
-app.get('/api/health', (_, res) => res.json({ ok: true, service: 'SIGAR Command API', database: pool ? 'neon-postgres' : 'json-file' }));
+app.get('/api/health', (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API', database: pool ? 'neon-postgres' : 'json-file' }));
 app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const user = await store.userByEmail(String(req.body.email || ''));
   if (!user || !(await bcrypt.compare(req.body.password || '', user.password))) return res.status(401).json({ message: 'Invalid email or password' });
@@ -638,4 +638,4 @@ app.use((err, _, res, __) => {
 });
 
 if (process.env.NODE_ENV === 'production') { app.use(express.static(join(__dirname, '..', 'dist'))); app.get(/.*/, (_, res) => res.sendFile(join(__dirname, '..', 'dist', 'index.html'))); }
-server.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log(`SIGAR Command API listening on port ${process.env.PORT || 5000}`));
+server.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log(`Election Monitoring Command API listening on port ${process.env.PORT || 5000}`));

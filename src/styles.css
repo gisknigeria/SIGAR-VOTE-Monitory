@@ -39,6 +39,120 @@
   aside{max-height:60dvh}
 }
 
+/* Election Monitoring Command Center — wine and gold campaign theme */
+:root{
+  --wine-950:#1b050d;
+  --wine-900:#260711;
+  --wine-850:#310a18;
+  --wine-800:#3c0c1e;
+  --wine-700:#59152d;
+  --wine-600:#741f3d;
+  --wine-500:#922b4d;
+  --gold-500:#d9aa4b;
+  --gold-400:#ecc86f;
+  --gold-300:#f5dc9a;
+  --cream:#fff8e8;
+  --muted-wine:#d5b8c2;
+  --wine-border:#6f2940;
+  background:var(--wine-950);
+  color:var(--cream)
+}
+body{background:var(--wine-950)}
+
+/* Login */
+.login-shell{
+  position:relative;
+  isolation:isolate;
+  grid-template-columns:minmax(0,1.18fr) minmax(360px,.72fr);
+  gap:clamp(48px,8vw,130px);
+  padding:clamp(32px,7vw,110px);
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 12% 18%,#9c315560 0,transparent 32%),
+    radial-gradient(circle at 92% 82%,#d9aa4b1f 0,transparent 27%),
+    linear-gradient(135deg,#220610 0%,#400d20 52%,#1b050d 100%)!important
+}
+.login-shell:before{
+  content:"";position:absolute;inset:0;z-index:-1;opacity:.16;pointer-events:none;
+  background-image:linear-gradient(#f5dc9a18 1px,transparent 1px),linear-gradient(90deg,#f5dc9a18 1px,transparent 1px);
+  background-size:42px 42px;
+  mask-image:linear-gradient(90deg,#000,transparent 72%)
+}
+.login-shell:after{
+  content:"";position:absolute;width:420px;height:420px;border:1px solid #ecc86f2e;border-radius:50%;left:-150px;bottom:-220px;box-shadow:0 0 0 56px #ecc86f0b,0 0 0 112px #ecc86f08;z-index:-1
+}
+.login-brand{max-width:720px}
+.campaign-logo{display:block;width:min(430px,78%);max-height:210px;object-fit:contain;object-position:left center;margin:0 0 42px;filter:drop-shadow(0 15px 28px #12020780)}
+.command-kicker{margin:0 0 15px!important;color:var(--gold-400)!important;font-size:11px!important;letter-spacing:.22em;text-transform:uppercase}
+.command-title{max-width:720px;margin:0!important;color:var(--cream)!important;font-size:clamp(40px,5vw,76px)!important;line-height:.98!important;letter-spacing:-.045em!important;font-weight:800!important;text-wrap:balance}
+.command-copy{max-width:620px;margin:28px 0 0;color:#eadde1!important;font-size:clamp(16px,1.35vw,20px)!important;line-height:1.65!important;font-weight:450!important}
+.security-line{display:flex;align-items:center;gap:8px;margin-top:38px!important;color:var(--gold-300)!important;font-size:10px!important;letter-spacing:.16em!important;text-transform:uppercase}
+.security-line svg{color:var(--gold-500)!important}
+.login-card{
+  position:relative;overflow:hidden;max-width:460px;padding:42px!important;
+  background:linear-gradient(160deg,#52142bea,#2a0915f5)!important;
+  border:1px solid #be6b8570!important;border-radius:24px!important;
+  box-shadow:0 32px 80px #100208b3,inset 0 1px #fff2!important;
+  backdrop-filter:blur(18px)
+}
+.login-card:before{content:"";position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,var(--gold-500),var(--gold-300),var(--gold-500))}
+.login-card-logo{display:none;width:170px;max-height:90px;object-fit:contain;margin:0 auto 24px}
+.login-card .eyebrow{color:var(--gold-400)!important;font-size:10px!important;letter-spacing:.2em}
+.login-card h2{font-size:30px!important;letter-spacing:-.025em;margin:14px 0 8px!important;color:var(--cream)!important}
+.login-card .muted{margin:0;color:#d8bec7!important;font-weight:450!important;line-height:1.55}
+.login-card label{color:#f1dfe5!important;font-size:12px!important;letter-spacing:.02em}
+.login-card input{background:#1f0710cc!important;border:1px solid #7e3850!important;border-radius:11px!important;padding:14px 15px!important;color:var(--cream)!important;box-shadow:inset 0 1px 6px #12020880}
+.login-card input:focus{border-color:var(--gold-400)!important;box-shadow:0 0 0 3px #d9aa4b1f!important}
+.login-card .remember-label input{accent-color:var(--gold-500);padding:0!important}
+.login-card .remember-label span{color:#d8bec7!important}
+.login-card .password-toggle{color:var(--gold-300)!important}
+.login-card .primary{min-height:50px;background:linear-gradient(135deg,#c79435,#f0cf7c)!important;color:#2b0914!important;border-radius:11px!important;box-shadow:0 12px 30px #12020780;font-weight:800!important;transition:transform .18s ease,box-shadow .18s ease}
+.login-card .primary:hover{transform:translateY(-2px);box-shadow:0 16px 34px #120207aa}
+.install-login{border-color:#9a536a!important;background:#3a0d1e!important;color:var(--gold-300)!important;border-radius:11px!important}
+.powered-by{color:#b98f9d!important;text-transform:uppercase;letter-spacing:.13em;font-size:9px!important;margin:22px 0 0;text-align:center}
+.error{color:#ffd1d8!important}
+
+/* Application shell */
+.app-shell,.map-wrap,.map{background:var(--wine-950)!important}
+header,.app-topbar,.sidebar-brand{background:#270812f2!important;border-color:var(--wine-border)!important}
+aside,.command-sidebar{background:linear-gradient(180deg,#310a18,#21060f)!important;border-color:var(--wine-border)!important}
+.sidebar-brand{border-bottom:1px solid var(--wine-border)!important}
+.brand-small{gap:11px!important}
+.sidebar-logo{width:56px;height:38px;object-fit:contain;filter:drop-shadow(0 4px 8px #0008)}
+.brand-small b{color:var(--cream)!important;letter-spacing:.03em!important}
+.brand-small span{color:var(--gold-400)!important}
+.sidebar-user>span,.user>span,.manage-row .avatar{background:#711c39!important;color:var(--gold-300)!important;border:1px solid #a84a68!important}
+.sidebar-section,.sidebar-user,.officer-summary,.filters{border-color:#572036!important}
+.side-heading h2,.sidebar-section h3{color:var(--cream)!important}
+.muted,.incident-card p,.officer-row small,.manage-row small,.user small{color:#c49eab!important}
+.incident-card:hover,.incident-card.selected,.sidebar-action:hover{background:#541329!important;border-color:#8f3c58!important}
+.incident-card.selected{box-shadow:inset 3px 0 var(--gold-500)}
+.chips span,.status-chip{background:#52152a!important;color:#f0cbd7!important;border-color:#7e304b!important}
+.primary,.add,.coord-jump button{background:linear-gradient(135deg,#b67d27,#e3bc62)!important;color:#260812!important;border-color:#e3bc62!important}
+.ghost,.map-tools button,.coord-jump,.topbar-icon-btn,.sidebar-action,.filters button{background:#310b1acc!important;border-color:#743049!important;color:#eedce2!important}
+.map-tools button:hover,.topbar-icon-btn:hover,.filters button.active,.server-switch button.active{background:#651833!important;border-color:#b85a78!important;color:var(--gold-300)!important}
+.eyebrow{color:var(--gold-400)!important}
+.search,.sidebar-search,.coord-jump input{background:#230710!important;border-color:#6e2b42!important}
+.search input,.sidebar-search input{color:var(--cream)!important}
+.modal,.detail,.chat-panel,.camera-panel,.analytics-panel,.map-home-dropdown{background:#2a0915f5!important;border-color:#793149!important;box-shadow:0 28px 70px #120207b8!important}
+.modal-backdrop,.operations-backdrop{background:#14030aa8!important}
+.modal input,.modal textarea,.modal select,.detail select{background:#1c060e!important;border-color:#6f2940!important}
+.toast{background:#4c1327!important;border-color:#c18a3c!important;color:var(--gold-300)!important}
+.leaflet-tile-pane{filter:saturate(.68) sepia(.12) hue-rotate(295deg) brightness(.76)!important}
+.leaflet-control-zoom a,.leaflet-control-layers{background:#320b1a!important;border-color:#773149!important;color:var(--gold-300)!important}
+
+@media(max-width:900px){
+  .login-shell{grid-template-columns:1fr;padding:24px;background:linear-gradient(145deg,#260711,#4a1025 58%,#1b050d)!important}
+  .login-brand{display:none}
+  .login-card{justify-self:center;max-width:470px;padding:34px 28px!important}
+  .login-card-logo{display:block}
+}
+@media(max-width:480px){
+  .login-shell{padding:14px}
+  .login-card{padding:30px 20px!important;border-radius:20px!important}
+  .login-card h2{font-size:26px!important}
+}
+
 .camera-marker{width:30px;height:30px;display:grid;place-items:center;border:2px solid #38bdf8;border-radius:9px;background:#07111fe8;color:#9edcff;box-shadow:0 0 0 4px #0005,0 0 20px #38bdf866;font-size:14px}
 .camera-marker.drone{border-color:#ff7c8a;color:#ffb0ba;box-shadow:0 0 0 4px #0005,0 0 20px #ef444466}
 .eye-logo{position:relative;overflow:hidden;background:radial-gradient(circle at 50% 45%,#38bdf8 0 10%,#0b1724 11% 24%,#facc15 25% 32%,#0f766e 33% 100%);color:#f8fafc;text-shadow:0 2px 8px #000;font-weight:900}
@@ -58,11 +172,6 @@ body{font-size:14px}
 .officer-row b,.officer-row small,.officer-row>span{font-size:11px}
 .detail>p,.detail dd{font-size:14px}
 .modal label,.login-card label,.detail label{font-size:14px}
-.login-brand .sigar-word{font-size:42px!important;line-height:.95!important;font-weight:900!important;letter-spacing:.08em!important;color:#ffffff!important;margin:24px 0 10px!important}
-.sigar-title{font-size:24px!important;line-height:1.28!important;letter-spacing:.02em;margin:18px 0!important;max-width:620px}
-.sigar-title span,.sigar-title strong{display:block}
-.sigar-title span{font-size:24px!important;line-height:1.28!important}
-.sigar-title strong{font-size:30px!important;line-height:1.08;margin-top:8px;color:#ffffff;letter-spacing:.01em}
 .security-line{white-space:nowrap;font-size:12px!important;letter-spacing:.08em!important}
 .unit-action-btn{border:1px solid #28578b;background:#102b49;color:#83baff;border-radius:4px;padding:5px 7px;font-size:9px}
 .muted{color:#b8c9dc}
@@ -104,7 +213,7 @@ body{font-size:14px}
 .chat-message p{margin:6px 0;font-size:13px;line-height:1.55}
 .chat-send{display:flex;gap:8px;border-top:1px solid #22364d;padding-top:10px}
 .chat-send input{flex:1}
-@media(max-width:700px){.chat-panel{top:60px;padding:10px}.chat-layout{grid-template-columns:1fr}.chat-rooms{max-height:220px}.chat-message{max-width:92%}.sigar-title,.sigar-title span{font-size:22px!important}.sigar-title strong{font-size:27px!important}.login-brand .sigar-word{font-size:36px!important}.security-line{white-space:normal}}
+@media(max-width:700px){.chat-panel{top:60px;padding:10px}.chat-layout{grid-template-columns:1fr}.chat-rooms{max-height:220px}.chat-message{max-width:92%}.security-line{white-space:normal}}
 .card-top b,.officer-row b,.manage-row b,.camera-meta b{color:#f4f8ff}
 .chips span{color:#d7e6f5;background:#1d3348}
 .search input,.coord-jump input,.login-card input,.modal input,.modal textarea,.modal select,.detail select{color:#f7fbff}
