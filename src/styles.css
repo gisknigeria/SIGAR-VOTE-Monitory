@@ -819,6 +819,7 @@ body{font-size:14px}
 .sidebar-user button{border:0;background:transparent;color:#7fa9d4;font-size:11px}
 .map-top-controls{position:absolute;z-index:760;top:14px;left:18px;right:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;pointer-events:none}
 .map-top-left{display:flex;align-items:center;gap:6px;pointer-events:auto}
+.map-top-left .home-menu{order:1}.map-top-left .map-layer-menu{order:2}.map-top-left .street-view-tool{order:3}.map-top-left .share-location-action{order:4}.map-top-left .camera-share-action{order:5}.map-top-left .result-center-open{order:6}.map-top-left .report-action{order:7}.map-top-left .incident-menu{order:8}.map-top-left .emergency-open{order:9}.map-top-left .camera-count{display:none}.map-top-left>.share-map-action{display:none}
 .map-top-right{display:flex;align-items:center;gap:7px;pointer-events:auto}
 .desktop-map-search{position:static;transform:none;width:100%;height:38px;margin:0;background:#0b1826ef;border-color:#2b4a68;box-shadow:0 8px 24px #0007;backdrop-filter:blur(8px)}
 .desktop-map-search span{font:700 9px 'JetBrains Mono';letter-spacing:.14em;color:#6aaeff;text-transform:uppercase}
@@ -834,6 +835,8 @@ body{font-size:14px}
 .sidebar-actions.compact button{display:flex;align-items:center;gap:8px}
 .sidebar-actions.compact button.active{border-color:#38bdf8;background:#123152;color:#d9f2ff}
 .sidebar-actions button.sharing{border-color:#a53c4b;background:#401923;color:#ff9aaa}
+.sidebar-section-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border:0;border-top:1px solid #542034;border-bottom:1px solid #542034;background:#240711;text-align:left}.sidebar-section-toggle h2,.sidebar-section-toggle h3{margin:3px 0;font-size:13px!important}.sidebar-section-toggle>span{color:#f5dc9a!important;font-size:18px!important}
+.profile-menu{position:relative}.profile-dropdown{position:absolute;right:0;top:calc(100% + 7px);width:190px;display:none;padding:9px;border:1px solid #793149;border-radius:10px;background:#260711f5;box-shadow:0 16px 38px #0009}.profile-menu.open .profile-dropdown{display:grid}.profile-dropdown>div{display:grid;gap:3px;padding:7px 8px 10px;border-bottom:1px solid #542034}.profile-dropdown small{color:#cba9b6!important}.profile-dropdown button{display:flex;align-items:center;gap:8px;border:0;background:transparent;padding:9px;text-align:left}.profile-menu>.logout-btn span{color:#f5dc9a!important;font-weight:900!important}
 .command-sidebar .incident-list{min-height:220px;overflow:visible;flex:0 0 auto}
 .command-sidebar .officer-summary{max-height:none;overflow:visible;flex:0 0 auto}
 .sidebar-resizer{position:absolute;z-index:5;top:0;right:0;width:18px;height:100%;border:0;background:transparent;cursor:col-resize}

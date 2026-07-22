@@ -1290,7 +1290,7 @@ function MapView({
       if (drawMode === "measure" || drawMode === "route")
         return onToolPoint(drawMode, e.latlng);
       if (drawMode === "freehand") return;
-      if (drawMode !== "circle") return onMapClick(e.latlng);
+      if (drawMode !== "circle") return;
       if (!center) {
         center = e.latlng;
         preview = L.circle(center, {
@@ -1338,7 +1338,12 @@ function MapView({
         onAreaCreated({ id: `area-${Date.now()}`, type: "freehand", points });
       points = [];
     };
+    const doubleClick = (e) => {
+      if (!drawMode) onMapClick(e.latlng);
+    };
+    map.doubleClickZoom.disable();
     map.on("click", click);
+    map.on("dblclick", doubleClick);
     map.on("contextmenu", context);
     map.on("mousedown", down);
     map.on("mousemove", move);
@@ -1346,6 +1351,7 @@ function MapView({
     map.getContainer().style.cursor = drawMode ? "crosshair" : "";
     return () => {
       map.off("click", click);
+      map.off("dblclick", doubleClick);
       map.off("contextmenu", context);
       map.off("mousedown", down);
       map.off("mousemove", move);
@@ -4001,6 +4007,9 @@ function Dashboard({ session, onLogout }) {
   const [cameraFacingMode, setCameraFacingMode] = useState("environment");
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [situationalOpen, setSituationalOpen] = useState(false);
+  const [liveIncidentsOpen, setLiveIncidentsOpen] = useState(true);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [chatPanel, setChatPanel] = useState(false);
   const [chatRooms, setChatRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
@@ -4971,6 +4980,23 @@ function Dashboard({ session, onLogout }) {
   };
   const addArea = (area) => {
     const center = reportCenter(area);
+    if (canAdmin) {
+      const searchArea = window.confirm("Choose area action:\n\nOK = Search and aggregate this area\nCancel = Create an incident report");
+      if (searchArea) {
+        const inside = (point) => {
+          if (area.type === "circle") return L.latLng(area.center).distanceTo(L.latLng(point.lat, point.lng)) <= area.radius;
+          const polygon = L.polygon(area.points); return polygon.getBounds().contains([point.lat, point.lng]);
+        };
+        const agentsInside = officers.filter(inside);
+        const incidentsInside = incidents.filter(inside);
+        const pollingUnits = new Set(agentsInside.map(agent => agent.pollingUnit).filter(Boolean));
+        const diameter = area.type === "circle" ? area.radius * 2 : 0;
+        setAreas(old => [...old, { ...area, title: "Area search" }]);
+        setDrawMode("");
+        setNotice(`Area search: ${agentsInside.length} agents, ${pollingUnits.size} polling units, ${incidentsInside.length} incidents, ${mapLayers.length} uploaded map layers${diameter ? `, ${formatDistance(area.radius)} radius, ${formatDistance(diameter)} diameter` : ""}.`);
+        return;
+      }
+    }
     setNewPoint({
       ...(center || { lat: OYO_CENTER[0], lng: OYO_CENTER[1] }),
       geometry: area,
@@ -5859,7 +5885,7 @@ function Dashboard({ session, onLogout }) {
                     </b>
                     <span>Start and destination</span>
                   </button>
-                  <form className="route-input-tool" onSubmit={routeFromInputs}>
+                  {drawMode === "route" && <form className="route-input-tool" onSubmit={routeFromInputs}>
                     <input
                       value={routeStartInput}
                       onChange={(e) => setRouteStartInput(e.target.value)}
@@ -5879,14 +5905,14 @@ function Dashboard({ session, onLogout }) {
                         Reroute
                       </button>
                     </div>
-                  </form>
+                  </form>}
                   {canCreateCustomReportType && (
                     <button
                       className={drawMode === "circle" ? "active" : ""}
                       onClick={() => setMapDrawTool("circle")}
                     >
                       <b>
-                        <FaCircle /> Circle Incident
+                        <FaCircle /> Buffer
                       </b>
                       <span>Radius incident</span>
                     </button>
@@ -5980,14 +6006,6 @@ function Dashboard({ session, onLogout }) {
                   </button>
                 </div>
               )}
-              <button onClick={() => setChatPanel(true)}>
-                <FaComments /> Chat <i>{chatRooms.length}</i>
-              </button>
-              {canManagePersonnel && (
-                <button onClick={() => setManageOfficers(true)}>
-                  <FaUserCog /> Users
-                </button>
-              )}
               {canAdmin && (
                 <button onClick={() => setResultsOpen(true)}>
                   <FaChartBar /> Results
@@ -5998,26 +6016,17 @@ function Dashboard({ session, onLogout }) {
                   <FaUserCog /> Political Parties
                 </button>
               )}
-              {canAdmin && (
-                <button onClick={() => setMapDataPanel(true)}>
-                  <FaMapMarkedAlt /> Map Data
-                </button>
-              )}
-              <button onClick={refreshApp}>
-                <FaSyncAlt /> {updateReady ? "Install update" : "Refresh"}
-              </button>
-              <button onClick={onLogout}>
-                <FaSignOutAlt /> Logout
-              </button>
             </div>}
-            <div className="side-heading">
+            <button className="sidebar-section-toggle" onClick={() => setLiveIncidentsOpen(value => !value)}>
               <div>
                 <span className="eyebrow">LIVE INCIDENTS</span>
                 <h2>
                   Incidents <em>{incidents.length}</em>
                 </h2>
               </div>
-            </div>
+              <span>{liveIncidentsOpen ? "−" : "+"}</span>
+            </button>
+            {liveIncidentsOpen && <>
             <div className="filters">
               {["All", "Critical", "High", "Open"].map((x) => (
                 <button
@@ -6077,9 +6086,10 @@ function Dashboard({ session, onLogout }) {
                 </button>
               ))}
             </div>
+            </>}
             <div className="officer-summary">
-              <div className="side-heading">
-                <h3>Field Ops</h3>
+              <button className="sidebar-section-toggle" onClick={() => setSituationalOpen(value => !value)}>
+                <h3>Situational Rep</h3>
                 <div className="unit-actions">
                   <span>
                     {officers.filter((x) => x.status === "Active").length}{" "}
@@ -6091,8 +6101,8 @@ function Dashboard({ session, onLogout }) {
                     </button>
                   )}
                 </div>
-              </div>
-              {officers.map((o) => (
+              </button>
+              {situationalOpen && officers.map((o) => (
                 <div className="officer-row" key={o.id}>
                   <i className={o.status.toLowerCase()}></i>
                   <div>
@@ -6127,7 +6137,7 @@ function Dashboard({ session, onLogout }) {
         </button>
         <div className="map-top-controls" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
           <div className="map-top-left">
-            {!isFieldRole && <div className={`map-home-menu ${mapMenu === "home" ? "open" : ""}`}>
+            {!isFieldRole && <div className={`map-home-menu home-menu ${mapMenu === "home" ? "open" : ""}`}>
               <button
                 className="map-menu-trigger"
                 type="button"
@@ -6204,7 +6214,7 @@ function Dashboard({ session, onLogout }) {
                       setMapMenu("");
                     }}
                   >
-                    <FaCircle /> Circle
+                    <FaCircle /> Buffer
                   </button>
                   <button
                     onClick={() => {
@@ -6264,14 +6274,14 @@ function Dashboard({ session, onLogout }) {
               </button>
             )}
             <button
-              className={`map-action ${sharingGps ? "active" : ""}`}
+              className={`map-action share-location-action ${sharingGps ? "active" : ""}`}
               onClick={toggleGps}
               title={sharingGps ? "Stop location sharing" : "Share location"}
             >
               <LuLocateFixed />
             </button>
             <button
-              className={`map-action ${sharingCamera ? "active" : ""}`}
+              className={`map-action camera-share-action ${sharingCamera ? "active" : ""}`}
               onClick={toggleCamera}
               title={sharingCamera ? "Stop camera sharing" : "Share camera"}
             >
@@ -6288,12 +6298,12 @@ function Dashboard({ session, onLogout }) {
             )}
             {canAdmin && (
               <button
-                className="map-action"
+                className="map-action report-action"
                 onClick={() => {
                   setAnalyticsOpen(true);
                   setOperationsOpen(true);
                 }}
-                title="Analytics"
+                title="Report"
               >
                 <FaChartBar />
               </button>
@@ -6309,7 +6319,7 @@ function Dashboard({ session, onLogout }) {
               </button>
             )}
             {!isAgent && <button
-              className="map-action"
+              className="map-action share-map-action"
               onClick={() => shareMap()}
               title="Share map"
             >
@@ -6340,13 +6350,10 @@ function Dashboard({ session, onLogout }) {
               />
               <button>GO</button>
             </form>}
-            <button
-              className="map-action logout-btn"
-              onClick={onLogout}
-              title="Logout"
-            >
-              <FaSignOutAlt />
-            </button>
+            <div className={`profile-menu ${profileMenuOpen ? "open" : ""}`}>
+              <button className="map-action logout-btn" onClick={() => setProfileMenuOpen(value => !value)} title="Profile menu"><span>{session.user.name?.[0] || "U"}</span></button>
+              <div className="profile-dropdown"><div><b>{session.user.name}</b><small>{session.user.role}</small></div><button onClick={changeOwnPassword}><FaKey /> Profile</button><button onClick={onLogout}><FaSignOutAlt /> Logout</button></div>
+            </div>
           </div>
         </div>
         {isAgent && <div className="agent-field-screen">
