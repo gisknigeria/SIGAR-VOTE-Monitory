@@ -771,6 +771,9 @@ body{font-size:14px}
 .polling-unit-item strong{display:block;color:#f1f7ff;font-size:11px}
 .polling-unit-item small{display:block;color:#7ea1bc;font-size:10px;margin-top:2px}
 .polling-unit-item b{color:#facc15;font-size:11px}
+.polling-unit-breakdown{display:grid;gap:4px;margin-top:7px;padding-top:6px;border-top:1px solid #21435a}
+.polling-unit-breakdown-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10px;color:#b8cfe5}
+.polling-unit-breakdown-row b{color:#f4d06a!important;font-size:10px}
 .analytics-clear{justify-self:start;border:1px solid #36536f;background:#14283d;color:#e6f2ff;border-radius:6px;padding:8px 10px;font-size:10px;font-weight:800}
 .analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.analytics-grid button{display:grid;gap:5px;border:1px solid #28405a;background:linear-gradient(135deg,#102235,#0b1723);color:#cfe2f4;border-radius:8px;padding:10px;text-align:left;font-size:11px;min-height:82px;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.analytics-grid button:hover{transform:translateY(-1px);border-color:#3184e6;box-shadow:0 8px 20px #0f1722}.analytics-grid button b{color:#e6f2ff;font-size:11px}.analytics-grid button small{color:#86a3bd;font-size:10px;line-height:1.35}
 .analytics-summary{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:14px 0}.analytics-summary span{background:#09131f;border:1px solid #20344a;border-radius:6px;padding:8px;color:#8da7c1;font-size:10px}
@@ -911,6 +914,14 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .tools-grid button.active{border-color:#38bdf8;background:#123152;box-shadow:inset 0 0 0 1px #38bdf855}
 .tools-grid button.danger-tool{border-color:#7f1d1d;background:#2a1016;color:#ffd5dc}
 
+.self-camera-preview{position:fixed;right:16px;bottom:16px;z-index:840;width:min(280px,calc(100vw - 32px));display:grid;gap:8px;padding:10px;border:1px solid #6f2940;background:#18070eeb;border-radius:12px;box-shadow:0 18px 40px #0008;backdrop-filter:blur(10px)}
+.self-camera-preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.self-camera-preview-head b{font-size:12px;color:#f8d9a8}
+.self-camera-preview-actions{display:flex;align-items:center;gap:6px}
+.self-camera-preview-actions button{display:grid;place-items:center;width:28px;height:28px;border:1px solid #6f2940;border-radius:999px;background:#261018;color:#f5d0db}
+.self-camera-preview .recordable-video{display:grid;gap:6px}
+.self-camera-preview video{width:100%;max-height:180px;object-fit:cover;border-radius:8px;background:#000}
+
 @media(max-width:760px){
   .app-shell{height:100dvh;grid-template:1fr/1fr}
   .mobile-topbar{display:none}
@@ -933,11 +944,16 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
   .desktop-map-search{display:none}
   .map-top-left .map-view-panel{display:none}
   .sidebar-search{display:flex}
+  .self-camera-preview{right:10px;bottom:12px;width:min(240px,calc(100vw - 20px))}
+  .self-camera-preview video{max-height:140px}
   .topbar-actions{gap:6px;margin-left:auto;flex:0 0 auto}
   .topbar-icon-btn{width:38px;height:38px;border-radius:999px;font-size:13px}
   .topbar-icon-btn.emergency-open{min-width:52px;padding:0 11px;font-size:10px}
-  .command-sidebar{position:fixed;left:10px;right:10px;top:10px;bottom:10px;width:auto;max-width:none;min-width:0;z-index:1200;border:1px solid #243a51;border-radius:16px;overflow-y:auto;overflow-x:hidden;box-shadow:0 16px 44px #0009;transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none;transition:transform .22s ease,opacity .22s ease}
+  .command-sidebar{position:fixed;left:0;right:0;top:0;bottom:0;width:auto;max-width:none;min-width:0;z-index:1200;border:0;border-radius:0;overflow-y:auto;overflow-x:hidden;box-shadow:none;transform:translateX(calc(-100% - 0px));opacity:0;pointer-events:none;transition:transform .22s ease,opacity .22s ease;padding-bottom:max(14px, env(safe-area-inset-bottom))}
   .command-sidebar.open{transform:translateX(0);opacity:1;pointer-events:auto}
+  .sidebar-actions{padding:10px 12px 8px;gap:8px}
+  .sidebar-actions button{min-height:44px;padding:10px 12px}
+  .supervisor-actions{grid-template-columns:1fr 1fr!important}
   .sidebar-resizer{display:none}
   .map-wrap{grid-column:1;grid-row:1}
   .sidebar-brand{padding:12px 14px}

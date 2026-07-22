@@ -250,6 +250,26 @@ const INCIDENT_TYPES = [
 ];
 const POLLING_RESULT_TYPE = "Polling Unit Result";
 const REPORT_TYPES = [...INCIDENT_TYPES, POLLING_RESULT_TYPE];
+
+function parseResultEntries(rawText = "") {
+  return (rawText || "")
+    .split(/\n|,/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => {
+      const match = segment.match(/^([^:=]+)[:=]\s*(\d+(?:\.\d+)?)/);
+      if (match) {
+        return { label: match[1].trim() || "Party", value: Number(match[2]) };
+      }
+      const numericMatch = segment.match(/(\d+(?:\.\d+)?)/);
+      if (!numericMatch) return null;
+      return {
+        label: segment.replace(numericMatch[0], "").trim() || "Count",
+        value: Number(numericMatch[1]),
+      };
+    })
+    .filter(Boolean);
+}
 const REPORT_TYPE_STYLES = {
   "BS-Black Spot": {
     icon: "BS",
@@ -1381,6 +1401,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin, currentUser }) {
   const [customTypeName, setCustomTypeName] = useState("");
   const [pollingUnit, setPollingUnit] = useState(String(point?.pollingUnit || currentUser?.pollingUnit || ""));
   const [resultCount, setResultCount] = useState(String(point?.resultCount || ""));
+  const [partyResult, setPartyResult] = useState(String(point?.partyResult || ""));
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -1482,17 +1503,19 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin, currentUser }) {
           }
           const normalizedPollingUnit = pollingUnit.trim();
           const normalizedResultCount = resultCount.trim();
+          const normalizedPartyResult = partyResult.trim();
           onSave({
             ...form,
             title: isResultReport
               ? `Polling Unit Result - ${normalizedPollingUnit}`
               : form.title,
             description: isResultReport
-              ? `Polling unit: ${normalizedPollingUnit}\n\nDeclared result counts:\n${normalizedResultCount}`
+              ? `Polling unit: ${normalizedPollingUnit}\n\nDeclared result counts:\n${normalizedResultCount}\n\nParty result:\n${normalizedPartyResult || "No party-specific result entered."}`
               : form.description,
             reportType: nextType,
             pollingUnit: normalizedPollingUnit,
             resultCount: normalizedResultCount,
+            partyResult: normalizedPartyResult,
             lga: currentUser?.lga || "",
             ward: currentUser?.ward || "",
           });
@@ -1563,6 +1586,14 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin, currentUser }) {
                 value={resultCount}
                 onChange={(e) => setResultCount(e.target.value)}
                 placeholder={"Enter each party/candidate and vote count, one per line.\nExample:\nParty A: 120\nParty B: 86\nRejected ballots: 4"}
+              />
+            </label>
+            <label>
+              Party result
+              <input
+                value={partyResult}
+                onChange={(e) => setPartyResult(e.target.value)}
+                placeholder="e.g. APC: 120"
               />
             </label>
           </>
@@ -2034,7 +2065,7 @@ function OfficerManager({
   );
 }
 
-function StreamVideo({ src, stream, muted = false }) {
+function StreamVideo({ src, stream, muted = false, showControls = true }) {
   const ref = useRef(null);
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -2101,12 +2132,14 @@ function StreamVideo({ src, stream, muted = false }) {
   return (
     <div className="recordable-video">
       <video ref={ref} controls autoPlay playsInline muted={muted} />
-      <button
-        className={recording ? "record-stop" : ""}
-        onClick={toggleRecording}
-      >
-        {recording ? "Stop & save" : "Record"}
-      </button>
+      {showControls && (
+        <button
+          className={recording ? "record-stop" : ""}
+          onClick={toggleRecording}
+        >
+          {recording ? "Stop & save" : "Record"}
+        </button>
+      )}
     </div>
   );
 }
@@ -3607,23 +3640,29 @@ function AnalyticsPanel({
           count: 0,
           total: 0,
           submissions: [],
+          breakdown: new Map(),
         });
       }
       const entry = grouped.get(unit);
       entry.count += 1;
       entry.submissions.push(item);
-      const numbers = (item.resultCount || "")
-        .split(/\n|,/)
-        .map((segment) => segment.trim())
-        .filter(Boolean)
-        .map((segment) => {
-          const match = segment.match(/(\d+(?:\.\d+)?)/);
-          return match ? Number(match[1]) : null;
-        })
-        .filter((value) => Number.isFinite(value));
-      entry.total += numbers.reduce((sum, value) => sum + value, 0);
+      const numbers = [
+        ...parseResultEntries(item.resultCount),
+        ...(item.partyResult ? parseResultEntries(item.partyResult) : []),
+      ];
+      entry.total += numbers.reduce((sum, value) => sum + value.value, 0);
+      numbers.forEach((detail) => {
+        const existing = entry.breakdown.get(detail.label) || { label: detail.label, total: 0 };
+        existing.total += detail.value;
+        entry.breakdown.set(detail.label, existing);
+      });
     });
-    return Array.from(grouped.values()).sort((a, b) => b.total - a.total);
+    return Array.from(grouped.values())
+      .map((entry) => ({
+        ...entry,
+        breakdown: Array.from(entry.breakdown.values()).sort((a, b) => b.total - a.total),
+      }))
+      .sort((a, b) => b.total - a.total);
   }, [resultReports]);
   const [result, setResult] = useState("Click an analysis tool to execute");
   const pointLayers = mapLayers.filter(
@@ -3798,6 +3837,14 @@ function AnalyticsPanel({
                     <small>{entry.count} submission{entry.count === 1 ? "" : "s"}</small>
                   </div>
                   <b>Total {entry.total}</b>
+                  <div className="polling-unit-breakdown">
+                    {entry.breakdown.map((detail) => (
+                      <div className="polling-unit-breakdown-row" key={detail.label}>
+                        <span>{detail.label}</span>
+                        <b>{detail.total}</b>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -3871,6 +3918,8 @@ function Dashboard({ session, onLogout }) {
   const [phoneShares, setPhoneShares] = useState([]);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [sharingCamera, setSharingCamera] = useState(false);
+  const [selfCameraPreview, setSelfCameraPreview] = useState(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState("environment");
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [chatPanel, setChatPanel] = useState(false);
@@ -5357,6 +5406,18 @@ function Dashboard({ session, onLogout }) {
       text: `${area.title || "Election monitoring operational area"}${area.note ? ` - ${area.note}` : ""}`,
     });
   };
+  const getCameraStream = async (facingMode) => {
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
+      throw new Error("Camera sharing requires HTTPS and a supported browser");
+    return navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode,
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: true,
+    });
+  };
   const toggleCamera = async () => {
     if (sharingCamera) {
       sharingCameraRef.current = false;
@@ -5369,23 +5430,16 @@ function Dashboard({ session, onLogout }) {
       rtcPeersRef.current = {};
       socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
       setSharingCamera(false);
+      setSelfCameraPreview(false);
       setNotice("Camera sharing stopped");
       return;
     }
     try {
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
-        throw new Error("Camera sharing requires HTTPS and a supported browser");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: true,
-      });
+      const stream = await getCameraStream(cameraFacingMode);
       localCameraStreamRef.current = stream;
       sharingCameraRef.current = true;
       setSharingCamera(true);
+      setSelfCameraPreview(true);
       socketRef.current?.emit("camera:share:start", {
         userId: session.user.id,
         name: session.user.name,
@@ -5397,6 +5451,7 @@ function Dashboard({ session, onLogout }) {
         stopOfflineVideoRecording();
         socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
         setSharingCamera(false);
+        setSelfCameraPreview(false);
       });
       if (!socketRef.current?.connected)
         startOfflineVideoRecording("Network connection unavailable");
@@ -5408,6 +5463,39 @@ function Dashboard({ session, onLogout }) {
       );
     }
     setTimeout(() => setNotice(""), 3000);
+  };
+  const switchCamera = async () => {
+    if (!sharingCamera || !localCameraStreamRef.current) return;
+    try {
+      const nextFacingMode = cameraFacingMode === "environment" ? "user" : "environment";
+      const nextStream = await getCameraStream(nextFacingMode);
+      const oldStream = localCameraStreamRef.current;
+      oldStream?.getTracks().forEach((track) => track.stop());
+      localCameraStreamRef.current = nextStream;
+      setCameraFacingMode(nextFacingMode);
+      setSelfCameraPreview(true);
+      Object.values(rtcPeersRef.current).forEach((pc) => {
+        const videoSender = pc.getSenders().find((sender) => sender.track?.kind === "video");
+        const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio");
+        if (videoSender && nextStream.getVideoTracks()[0]) videoSender.replaceTrack(nextStream.getVideoTracks()[0]);
+        if (audioSender && nextStream.getAudioTracks()[0]) audioSender.replaceTrack(nextStream.getAudioTracks()[0]);
+      });
+      setNotice(`${nextFacingMode === "user" ? "Front" : "Back"} camera active`);
+      nextStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        sharingCameraRef.current = false;
+        stopOfflineVideoRecording();
+        socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
+        setSharingCamera(false);
+        setSelfCameraPreview(false);
+      });
+    } catch (error) {
+      setNotice(
+        error.name === "NotAllowedError"
+          ? "Camera permission was denied"
+          : error.message || "Unable to switch camera",
+      );
+    }
+    setTimeout(() => setNotice(""), 2500);
   };
   const createCamera = async (form) => {
     const camera = await request("/cameras", session.token, {
@@ -6176,7 +6264,7 @@ function Dashboard({ session, onLogout }) {
             <button className="agent-action-card sos" onClick={() => setEmergencyOpen(true)}>
               <strong>SOS</strong>
               <b>Send emergency alert</b>
-              <span>Alert command with your current location</span>
+              <span>Alert your command immediately and provide a situation report</span>
             </button>
           </div>
           <button className="agent-logout" onClick={onLogout}><FaSignOutAlt /> Logout</button>
@@ -6220,6 +6308,26 @@ function Dashboard({ session, onLogout }) {
           <LuLocateFixed />
         </button>}
       </section>
+      {selfCameraPreview && localCameraStreamRef.current && (
+        <div className="self-camera-preview">
+          <div className="self-camera-preview-head">
+            <b>Your camera</b>
+            <div className="self-camera-preview-actions">
+              <button type="button" title="Switch camera" onClick={switchCamera}>
+                <FaCamera />
+              </button>
+              <button type="button" onClick={() => setSelfCameraPreview(false)}>
+                <FaTimes />
+              </button>
+            </div>
+          </div>
+          <StreamVideo
+            stream={localCameraStreamRef.current}
+            muted={true}
+            showControls={false}
+          />
+        </div>
+      )}
       {selected && (
         <section className="detail">
           <div className="panel-title">
@@ -6234,9 +6342,11 @@ function Dashboard({ session, onLogout }) {
             </button>
           </div>
           <div className="detail-hero">
-            <span style={{ color: reportStyle(selected).color }}>
-              <FaCircle size={10} /> {selected.severity.toUpperCase()}
-            </span>
+            {selected.reportType !== POLLING_RESULT_TYPE && (
+              <span style={{ color: reportStyle(selected).color }}>
+                <FaCircle size={10} /> {selected.severity.toUpperCase()}
+              </span>
+            )}
             <b>{selected.status}</b>
           </div>
           <div
@@ -6268,6 +6378,12 @@ function Dashboard({ session, onLogout }) {
                     .split("\n\nDeclared result counts:\n")[1] ||
                   "No vote counts were recorded yet."}
               </pre>
+              {selected.partyResult && (
+                <>
+                  <b>Party result</b>
+                  <pre>{selected.partyResult}</pre>
+                </>
+              )}
             </div>
           )}
           {selected.media?.length > 0 && (
