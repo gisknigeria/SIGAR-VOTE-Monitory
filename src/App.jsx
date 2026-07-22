@@ -5540,7 +5540,7 @@ function Dashboard({ session, onLogout }) {
           aria-label="Close sidebar"
         ></button>
       )}
-      {!isFieldRole && <aside
+      {!isAgent && <aside
         className={`command-sidebar ${operationsOpen ? "open" : ""}`}
         style={{ "--sidebar-width": `${sidebarWidth}px` }}
       >
@@ -5634,7 +5634,24 @@ function Dashboard({ session, onLogout }) {
           </div>
         ) : (
           <>
-            <div className="sidebar-actions compact">
+            {isSupervisor && <div className="sidebar-actions supervisor-actions">
+              <button onClick={openPollingUnitResultForm}>
+                <ReportIcon iconKey="POI" size={15} /> Polling Result
+              </button>
+              <button onClick={openIncidentPointForm}>
+                <ReportIcon iconKey="IP" size={15} /> Report Incident
+              </button>
+              <button className={sharingGps ? "sharing" : ""} onClick={toggleGps}>
+                <FaBullseye /> {sharingGps ? "Stop GPS" : "Share GPS"}
+              </button>
+              <button className={sharingCamera ? "sharing" : ""} onClick={toggleCamera}>
+                <FaVideo /> {sharingCamera ? "Stop Camera" : "Share Camera"}
+              </button>
+              <button onClick={shareMap}><FaLocationArrow /> Share Map</button>
+              <button className="emergency-open" onClick={() => setEmergencyOpen(true)}>SOS</button>
+              <button onClick={onLogout}><FaSignOutAlt /> Logout</button>
+            </div>}
+            {!isSupervisor && <div className="sidebar-actions compact">
               <button
                 onClick={() => {
                   setToolsOpen((value) => !value);
@@ -5804,7 +5821,7 @@ function Dashboard({ session, onLogout }) {
               <button onClick={onLogout}>
                 <FaSignOutAlt /> Logout
               </button>
-            </div>
+            </div>}
             <div className="side-heading">
               <div>
                 <span className="eyebrow">LIVE INCIDENTS</span>

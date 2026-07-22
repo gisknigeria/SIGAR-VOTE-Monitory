@@ -42,8 +42,9 @@
 /* Field Agent dashboard must remain visible after the desktop/mobile grid rules. */
 .app-shell.role-agent{display:grid!important;grid-template:1fr/1fr!important}
 .role-agent .map-wrap{grid-column:1!important;grid-row:1!important;width:100%;height:100dvh;min-height:0}
-.app-shell.role-supervisor{display:grid!important;grid-template:1fr/1fr!important}
-.role-supervisor .map-wrap{grid-column:1!important;grid-row:1!important;width:100%;height:100dvh;min-height:0}
+.app-shell.role-supervisor{display:grid!important;grid-template:minmax(0,1fr)/auto minmax(0,1fr)!important}
+.role-supervisor .command-sidebar{grid-column:1!important;grid-row:1!important}
+.role-supervisor .map-wrap{grid-column:2!important;grid-row:1!important;width:100%;height:100dvh;min-height:0}
 .role-supervisor .map-top-controls{left:14px;right:14px}
 .role-agent .map-top-controls{display:none!important}
 .role-agent .agent-field-screen{z-index:900;overflow-y:auto;justify-content:flex-start;padding:34px 20px;min-height:100dvh}
@@ -64,8 +65,15 @@
   .agent-action-card{min-height:122px;padding:13px}
 }
 
-.app-shell.role-agent,.app-shell.role-supervisor{grid-template-columns:1fr}
-.role-agent .mobile-menu-fab,.role-supervisor .mobile-menu-fab{display:none}
+.app-shell.role-agent{grid-template-columns:1fr}
+.role-agent .mobile-menu-fab{display:none}
+.supervisor-actions{grid-template-columns:1fr 1fr!important;padding-top:14px}
+.supervisor-actions button{display:flex!important;align-items:center;justify-content:center;gap:7px;text-align:center!important;min-height:43px}
+@media(max-width:760px){
+  .app-shell.role-supervisor{grid-template:1fr/1fr!important}
+  .role-supervisor .map-wrap{grid-column:1!important;grid-row:1!important}
+  .role-supervisor .mobile-menu-fab{display:flex}
+}
 .agent-field-screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:90px 24px 32px;text-align:center;background:radial-gradient(circle at 50% 30%,#711b3b 0,transparent 32%),linear-gradient(145deg,#160a10,#260b18 58%,#12070c)}
 .agent-field-screen img{width:min(280px,68vw);max-height:160px;object-fit:contain}
 .agent-field-screen h1{margin:0;font-size:clamp(24px,5vw,44px)!important}
