@@ -4159,6 +4159,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [remoteStreams, setRemoteStreams] = useState({});
   const [sharingCamera, setSharingCamera] = useState(false);
   const [selfCameraPreview, setSelfCameraPreview] = useState(false);
+  const [cameraPreviewMode, setCameraPreviewMode] = useState(true); // true = show preview, false = background mode
   const [cameraFacingMode, setCameraFacingMode] = useState("environment");
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -5779,7 +5780,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       localCameraStreamRef.current = stream;
       sharingCameraRef.current = true;
       setSharingCamera(true);
-      setSelfCameraPreview(false);
+      setSelfCameraPreview(cameraPreviewMode);
       socketRef.current?.emit("camera:share:start", {
         userId: session.user.id,
         name: session.user.name,
@@ -6531,7 +6532,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </button>}
             {!isFieldRole && hasMapTools && (
               <button
-                className="map-action clear-tools-btn"
+                className={`map-action clear-tools-btn ${drawMode || measurePoints.length || routePoints.length || analysisLayers.length ? "active" : ""}`}
                 onClick={() => {
                   clearMapTools();
                 }}
@@ -6696,6 +6697,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           <div className="self-camera-preview-head">
             <b><i></i> LIVE</b>
             <div className="self-camera-preview-actions">
+              <button
+                type="button"
+                title="Hide preview (keep sharing)"
+                onClick={() => {
+                  setCameraPreviewMode(false);
+                  setSelfCameraPreview(false);
+                }}
+              >
+                <FaEyeSlash />
+                <span>Hide</span>
+              </button>
               <button type="button" title="Switch camera" onClick={switchCamera}>
                 <FaCamera />
                 <span>Flip</span>
@@ -6715,6 +6727,29 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             <span>{cameraFacingMode === "environment" ? "Back camera" : "Front camera"}</span>
             <button type="button" onClick={toggleCamera}><FaTimes /> End live</button>
           </div>
+        </div>
+      )}
+      {sharingCamera && !selfCameraPreview && localCameraStreamRef.current && (
+        <div className="camera-live-pill">
+          <i></i>
+          <span>LIVE</span>
+          <button
+            type="button"
+            title="Show preview"
+            onClick={() => {
+              setCameraPreviewMode(true);
+              setSelfCameraPreview(true);
+            }}
+          >
+            <FaEye />
+          </button>
+          <button
+            type="button"
+            title="End camera"
+            onClick={toggleCamera}
+          >
+            <FaTimes />
+          </button>
         </div>
       )}
       {selected && (
