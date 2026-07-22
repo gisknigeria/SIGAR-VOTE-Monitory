@@ -245,6 +245,11 @@ const store = {
     const { rows } = await pool.query('update users set password=$2 where id=$1 returning *', [id, password]);
     return toUser(rows[0]);
   },
+  async updateUserProfile(id, changes) {
+    if (!pool) { const user = jsonDb.users.find(item => item.id === id); if (!user) return null; Object.assign(user, changes); saveJson(); return user; }
+    const { rows } = await pool.query('update users set name=$2,email=$3,station=$4,password=coalesce($5,password) where id=$1 returning *', [id, changes.name, changes.email, changes.station, changes.password || null]);
+    return toUser(rows[0]);
+  },
   async deleteUser(id) {
     if (!pool) {
       const before = jsonDb.users.length;
@@ -551,6 +556,18 @@ app.put('/api/users/:id/password', auth, asyncRoute(async (req, res) => {
   if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
   await store.updateUserPassword(req.params.id, await bcrypt.hash(password, 10));
   res.json({ ok: true });
+}));
+app.put('/api/profile', auth, asyncRoute(async (req, res) => {
+  const users = await store.users();
+  const current = users.find(user => user.id === req.user.id);
+  if (!current) return res.status(404).json({ message: 'Account not found' });
+  const email = String(req.body.email || current.email).trim().toLowerCase();
+  if (users.some(user => user.id !== current.id && user.email.toLowerCase() === email)) return res.status(409).json({ message: 'Email is already in use' });
+  const password = String(req.body.password || '');
+  if (password && password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  const updated = await store.updateUserProfile(current.id, { name: String(req.body.name || current.name).trim(), email, station: String(req.body.station || current.station || '').trim(), password: password ? await bcrypt.hash(password, 10) : null });
+  const safe = publicUser(updated); const token = jwt.sign(safe, secret, { expiresIn: '8h' });
+  res.json({ user: safe, token });
 }));
 app.get('/api/parties', auth, asyncRoute(async (_, res) => res.json(await store.parties())));
 app.put('/api/parties', auth, adminOnly, asyncRoute(async (req, res) => {

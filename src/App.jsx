@@ -3959,7 +3959,13 @@ function ResultsCenter({ incidents, onClose }) {
   );
 }
 
-function Dashboard({ session, onLogout }) {
+function ProfileModal({ session, onClose, onSave }) {
+  const [form, setForm] = useState({ name: session.user.name || "", email: session.user.email || "", station: session.user.station || "", password: "" });
+  const [error, setError] = useState("");
+  return <div className="modal-backdrop"><form className="modal profile-modal" onSubmit={async (e) => { e.preventDefault(); setError(""); try { await onSave(form); } catch (err) { setError(err.message); } }}><div className="panel-title"><div><span className="eyebrow">PROFILE</span><h2>Profile</h2></div><button type="button" className="icon-btn" onClick={onClose}><FaTimes /></button></div><label>Name<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}/></label><label>Email<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}/></label><label>Contact / call sign<input value={form.station} onChange={(e) => setForm({ ...form, station: e.target.value })}/></label><label>New password<input type="password" minLength="6" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Leave blank to keep current password"/></label>{error && <div className="error">{error}</div>}<div className="actions"><button type="button" className="ghost" onClick={onClose}>Cancel</button><button className="primary">Save</button></div></form></div>;
+}
+
+function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [incidents, setIncidents] = useState([]);
   const [users, setUsers] = useState([]);
   const [reportUsers, setReportUsers] = useState([]);
@@ -4010,6 +4016,8 @@ function Dashboard({ session, onLogout }) {
   const [situationalOpen, setSituationalOpen] = useState(false);
   const [liveIncidentsOpen, setLiveIncidentsOpen] = useState(true);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [gpsRequiredBlocked, setGpsRequiredBlocked] = useState(session.user.role === "Agent");
   const [chatPanel, setChatPanel] = useState(false);
   const [chatRooms, setChatRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
@@ -4873,6 +4881,13 @@ function Dashboard({ session, onLogout }) {
     if (!password) return;
     await updateUserPassword(session.user, password);
   };
+  const saveProfile = async (form) => {
+    const updated = await request("/profile", session.token, { method: "PUT", body: JSON.stringify(form) });
+    onSessionUpdate(updated);
+    setProfileOpen(false);
+    setProfileMenuOpen(false);
+    setNotice("Profile updated");
+  };
   const installApp = async () => {
     if (!installPrompt) {
       setNotice(
@@ -5013,6 +5028,7 @@ function Dashboard({ session, onLogout }) {
   };
   const toggleGps = () => {
     if (sharingGps) {
+      if (isAgent) { setNotice("Location sharing is required for Agent accounts"); return; }
       if (gpsWatchRef.current != null)
         navigator.geolocation.clearWatch(gpsWatchRef.current);
       gpsWatchRef.current = null;
@@ -5043,6 +5059,7 @@ function Dashboard({ session, onLogout }) {
           ...old,
           [session.user.id]: { ...point, offline: false },
         }));
+        if (isAgent) setGpsRequiredBlocked(false);
         setNotice("Live GPS is being shared");
       },
       (error) => {
@@ -5053,10 +5070,14 @@ function Dashboard({ session, onLogout }) {
             ? "Location permission was denied"
             : "Unable to read this device location",
         );
+        if (isAgent) setGpsRequiredBlocked(true);
       },
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 },
     );
   };
+  useEffect(() => {
+    if (isAgent && !sharingGps) toggleGps();
+  }, []);
   const locateMe = () => {
     const flyToPoint = (point, message = "Centered on your location") => {
       if (!point) return;
@@ -6017,13 +6038,8 @@ function Dashboard({ session, onLogout }) {
                 </button>
               )}
             </div>}
-            <button className="sidebar-section-toggle" onClick={() => setLiveIncidentsOpen(value => !value)}>
-              <div>
-                <span className="eyebrow">LIVE INCIDENTS</span>
-                <h2>
-                  Incidents <em>{incidents.length}</em>
-                </h2>
-              </div>
+            <button className="sidebar-section-toggle live-toggle" onClick={() => setLiveIncidentsOpen(value => !value)}>
+              <h2>Live Incidence <em>{incidents.length}</em></h2>
               <span>{liveIncidentsOpen ? "−" : "+"}</span>
             </button>
             {liveIncidentsOpen && <>
@@ -6090,17 +6106,7 @@ function Dashboard({ session, onLogout }) {
             <div className="officer-summary">
               <button className="sidebar-section-toggle" onClick={() => setSituationalOpen(value => !value)}>
                 <h3>Situational Rep</h3>
-                <div className="unit-actions">
-                  <span>
-                    {officers.filter((x) => x.status === "Active").length}{" "}
-                    active
-                  </span>
-                  {canManagePersonnel && (
-                    <button onClick={() => setManageOfficers(true)}>
-                      Manage
-                    </button>
-                  )}
-                </div>
+                <span>{situationalOpen ? "−" : "+"}</span>
               </button>
               {situationalOpen && officers.map((o) => (
                 <div className="officer-row" key={o.id}>
@@ -6352,7 +6358,7 @@ function Dashboard({ session, onLogout }) {
             </form>}
             <div className={`profile-menu ${profileMenuOpen ? "open" : ""}`}>
               <button className="map-action logout-btn" onClick={() => setProfileMenuOpen(value => !value)} title="Profile menu"><span>{session.user.name?.[0] || "U"}</span></button>
-              <div className="profile-dropdown"><div><b>{session.user.name}</b><small>{session.user.role}</small></div><button onClick={changeOwnPassword}><FaKey /> Profile</button><button onClick={onLogout}><FaSignOutAlt /> Logout</button></div>
+              <div className="profile-dropdown"><div><b>{session.user.name}</b><small>{session.user.role}</small></div><button onClick={() => setProfileOpen(true)}><FaKey /> Profile</button><button onClick={onLogout}><FaSignOutAlt /> Logout</button></div>
             </div>
           </div>
         </div>
@@ -6670,6 +6676,8 @@ function Dashboard({ session, onLogout }) {
         />
       )}
       {newResultPoint && <PollingResultForm user={session.user} point={newResultPoint} parties={parties} onClose={() => setNewResultPoint(null)} onSave={savePollingResult} />}
+      {profileOpen && <ProfileModal session={session} onClose={() => setProfileOpen(false)} onSave={saveProfile} />}
+      {gpsRequiredBlocked && isAgent && <div className="modal-backdrop gps-required-gate"><div className="modal"><span className="eyebrow">LOCATION REQUIRED</span><h2>Allow Location</h2><p>Location must be on before you can use the app.</p><button className="primary wide" onClick={toggleGps}><LuLocateFixed /> Allow Location</button></div></div>}
       {partyManagerOpen && canAdmin && <PartyManager parties={parties} onClose={() => setPartyManagerOpen(false)} onSave={saveParties} />}
       {emergencyOpen && (
         <EmergencyPanel
@@ -6758,8 +6766,14 @@ export default function App() {
     sessionStorage.removeItem("command-session");
     setSession(null);
   };
+  const updateSession = (value) => {
+    const next = { token: value.token, user: value.user };
+    if (localStorage.getItem("command-session")) localStorage.setItem("command-session", JSON.stringify(next));
+    else sessionStorage.setItem("command-session", JSON.stringify(next));
+    setSession(next);
+  };
   return session ? (
-    <Dashboard session={session} onLogout={logout} />
+    <Dashboard session={session} onLogout={logout} onSessionUpdate={updateSession} />
   ) : (
     <Login onLogin={login} />
   );
