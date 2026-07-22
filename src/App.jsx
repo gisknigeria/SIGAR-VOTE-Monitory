@@ -249,6 +249,7 @@ const INCIDENT_TYPES = [
   "Battery Depletion",
 ];
 const POLLING_RESULT_TYPE = "Polling Unit Result";
+const COMMAND_PARTY = "Party";
 const REPORT_TYPES = [...INCIDENT_TYPES, POLLING_RESULT_TYPE];
 
 function parseResultEntries(rawText = "") {
@@ -1384,6 +1385,35 @@ function MapView({
   );
 }
 
+function PollingResultForm({ user, point, parties, onClose, onSave }) {
+  const [rows, setRows] = useState([{ party: parties[0] || "", votes: "" }]);
+  const [photo, setPhoto] = useState(null);
+  const [error, setError] = useState("");
+  const submittedAt = useMemo(() => new Date(), []);
+  const addPhoto = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) return setError("Choose an image not larger than 8MB.");
+    const reader = new FileReader();
+    reader.onload = () => setPhoto({ name: file.name, type: "image", size: file.size, data: reader.result });
+    reader.readAsDataURL(file);
+  };
+  return <div className="modal-backdrop"><form className="modal polling-result-modal" onSubmit={(event) => { event.preventDefault(); const results = rows.filter(row => row.party && row.votes !== "").map(row => ({ party: row.party, votes: Number(row.votes) })); if (!results.length) return setError("Add at least one party and vote number."); if (!photo) return setError("A photograph of the signed result is required."); onSave({ pollingUnit: user.pollingUnit, lga: user.lga, ward: user.ward, lat: point.lat, lng: point.lng, results, media: [photo] }); }}>
+    <div className="panel-title"><div><span className="eyebrow">POLLING UNIT RESULT</span><h2>Submit election result</h2></div><button type="button" className="icon-btn" onClick={onClose}><FaTimes /></button></div>
+    <div className="result-capture-meta"><div><span>Registered polling unit</span><b>{user.pollingUnit || "Not assigned"}</b></div><div><span>Current location</span><b>{Number(point.lat).toFixed(6)}, {Number(point.lng).toFixed(6)}</b></div><div><span>Sending time</span><b>{submittedAt.toLocaleString()}</b></div></div>
+    {!parties.length && <div className="error">Admin must upload the political-party list before results can be submitted.</div>}
+    <div className="party-vote-rows">{rows.map((row, index) => <div className="party-vote-row" key={index}><select required value={row.party} onChange={(e) => setRows(old => old.map((item, i) => i === index ? { ...item, party: e.target.value } : item))}><option value="">Select party</option>{parties.map(party => <option key={party}>{party}</option>)}</select><input required type="number" min="0" step="1" value={row.votes} onChange={(e) => setRows(old => old.map((item, i) => i === index ? { ...item, votes: e.target.value } : item))} placeholder="Votes"/><button type="button" onClick={() => setRows(old => old.filter((_, i) => i !== index))}><FaTimes /></button></div>)}</div>
+    <button type="button" className="ghost add-party-result" disabled={!parties.length} onClick={() => setRows(old => [...old, { party: parties.find(p => !old.some(row => row.party === p)) || "", votes: "" }])}>Add another party</button>
+    <label className="capture-btn result-photo">Photograph signed result<input type="file" accept="image/*" capture="environment" onChange={(e) => addPhoto(e.target.files?.[0])}/></label>{photo && <div className="result-photo-ready">Photo ready: {photo.name}</div>}{error && <div className="error">{error}</div>}
+    <div className="actions"><button type="button" className="ghost" onClick={onClose}>Cancel</button><button className="primary" disabled={!parties.length}>Submit result now</button></div>
+  </form></div>;
+}
+
+function PartyManager({ parties, onClose, onSave }) {
+  const [text, setText] = useState(parties.join("\n"));
+  const loadFile = (file) => { if (!file) return; const reader = new FileReader(); reader.onload = () => setText(String(reader.result || "")); reader.readAsText(file); };
+  return <div className="modal-backdrop"><form className="modal party-manager-modal" onSubmit={(e) => { e.preventDefault(); onSave([...new Set(text.split(/[\n,]+/).map(x => x.trim()).filter(Boolean))]); }}><div className="panel-title"><div><span className="eyebrow">ADMIN SETUP</span><h2>Political parties</h2></div><button type="button" className="icon-btn" onClick={onClose}><FaTimes /></button></div><p className="muted">Enter one party per line, paste a comma-separated list, or upload a CSV/TXT file. Field reporters can only select from this list.</p><label className="capture-btn">Upload party list<input type="file" accept=".csv,.txt,text/csv,text/plain" onChange={(e) => loadFile(e.target.files?.[0])}/></label><label>Party list<textarea required value={text} onChange={(e) => setText(e.target.value)} placeholder={"Party 1\nParty 2\nParty 3"}/></label><div className="actions"><button type="button" className="ghost" onClick={onClose}>Cancel</button><button className="primary">Save party list</button></div></form></div>;
+}
+
 function IncidentForm({ point, users, onClose, onSave, isAdmin, currentUser }) {
   const initialType = point.reportType || INCIDENT_TYPES[0];
   const initialStyle = {
@@ -1401,7 +1431,6 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin, currentUser }) {
   const [customTypeName, setCustomTypeName] = useState("");
   const [pollingUnit, setPollingUnit] = useState(String(point?.pollingUnit || currentUser?.pollingUnit || ""));
   const [resultCount, setResultCount] = useState(String(point?.resultCount || ""));
-  const [partyResult, setPartyResult] = useState(String(point?.partyResult || ""));
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -1503,19 +1532,17 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin, currentUser }) {
           }
           const normalizedPollingUnit = pollingUnit.trim();
           const normalizedResultCount = resultCount.trim();
-          const normalizedPartyResult = partyResult.trim();
           onSave({
             ...form,
             title: isResultReport
               ? `Polling Unit Result - ${normalizedPollingUnit}`
               : form.title,
             description: isResultReport
-              ? `Polling unit: ${normalizedPollingUnit}\n\nDeclared result counts:\n${normalizedResultCount}\n\nParty result:\n${normalizedPartyResult || "No party-specific result entered."}`
+              ? `Polling unit: ${normalizedPollingUnit}\n\n${COMMAND_PARTY} vote count:\n${normalizedResultCount}`
               : form.description,
             reportType: nextType,
             pollingUnit: normalizedPollingUnit,
             resultCount: normalizedResultCount,
-            partyResult: normalizedPartyResult,
             lga: currentUser?.lga || "",
             ward: currentUser?.ward || "",
           });
@@ -1580,20 +1607,15 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin, currentUser }) {
               </select>
             </label>
             <label>
-              Result count
-              <textarea
+              {COMMAND_PARTY} vote count
+              <input
                 required
+                type="number"
+                min="0"
+                step="1"
                 value={resultCount}
                 onChange={(e) => setResultCount(e.target.value)}
-                placeholder={"Enter each party/candidate and vote count, one per line.\nExample:\nParty A: 120\nParty B: 86\nRejected ballots: 4"}
-              />
-            </label>
-            <label>
-              Party result
-              <input
-                value={partyResult}
-                onChange={(e) => setPartyResult(e.target.value)}
-                placeholder="e.g. APC: 120"
+                placeholder={`Enter ${COMMAND_PARTY} votes only, e.g. 120`}
               />
             </label>
           </>
@@ -3646,10 +3668,12 @@ function AnalyticsPanel({
       const entry = grouped.get(unit);
       entry.count += 1;
       entry.submissions.push(item);
-      const numbers = [
+      const directVotes = Number(String(item.resultCount || "").trim());
+      const legacyParty = [
         ...parseResultEntries(item.resultCount),
         ...(item.partyResult ? parseResultEntries(item.partyResult) : []),
-      ];
+      ].find(({ label }) => /^party$/i.test(String(label).trim()))?.value;
+      const numbers = [{ label: COMMAND_PARTY, value: Number.isFinite(directVotes) ? directVotes : Number(legacyParty || 0) }];
       entry.total += numbers.reduce((sum, value) => sum + value.value, 0);
       numbers.forEach((detail) => {
         const existing = entry.breakdown.get(detail.label) || { label: detail.label, total: 0 };
@@ -3878,12 +3902,66 @@ function AnalyticsPanel({
   );
 }
 
+function ResultsCenter({ incidents, onClose }) {
+  const reports = useMemo(
+    () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
+    [incidents],
+  );
+  const summary = useMemo(() => {
+    const rows = reports.map((report) => {
+      let results = [];
+      try { const parsed = JSON.parse(report.resultCount || "[]"); if (Array.isArray(parsed)) results = parsed; } catch { results = parseResultEntries(report.resultCount).map(item => ({ party: item.label, votes: item.value })); }
+      return { ...report, results };
+    });
+    const partyNames = [...new Set(rows.flatMap(row => row.results.map(item => item.party)))];
+    const totals = Object.fromEntries(partyNames.map(party => [party, rows.reduce((sum, row) => sum + Number(row.results.find(item => item.party === party)?.votes || 0), 0)]));
+    return {
+      partyNames, totals,
+      rows: rows.sort((a, b) => `${a.lga}${a.ward}${a.pollingUnit}`.localeCompare(`${b.lga}${b.ward}${b.pollingUnit}`)),
+    };
+  }, [reports]);
+  return (
+    <div className="results-center">
+      <header className="results-center-head">
+        <div>
+          <span className="eyebrow">COMMAND CENTER RESULTS</span>
+          <h1>Election result progress</h1>
+          <p>Live totals for every political party uploaded by Admin.</p>
+        </div>
+        <button className="icon-btn" onClick={onClose} title="Close results"><FaTimes /></button>
+      </header>
+      <main className="results-center-body">
+        <section className="result-total-strip">
+          <article className="result-total-card grand"><span>Polling-unit submissions</span><strong>{reports.length}</strong><small>Multiple updates per unit are allowed</small></article>{summary.partyNames.map(party => <article className="result-total-card" key={party}><span>{party}</span><strong>{summary.totals[party].toLocaleString()}</strong><small>Total uploaded votes</small></article>)}
+        </section>
+        <section className="result-table-card">
+          <div className="result-table-title"><div><h2>Polling-unit breakdown</h2><p>Counts and evidence submitted from the field.</p></div><b>{reports.length} submitted</b></div>
+          <div className="result-table-scroll">
+            <table className="result-progress-table">
+              <thead><tr><th>LGA</th><th>Ward</th><th>Polling unit</th>{summary.partyNames.map(party => <th key={party}>{party}</th>)}<th>Location</th><th>Evidence</th><th>Uploaded</th></tr></thead>
+              <tbody>
+                {summary.rows.map((row) => (
+                  <tr key={row.id}><td>{row.lga || "—"}</td><td>{row.ward || "—"}</td><td><b>{row.pollingUnit || "—"}</b></td>{summary.partyNames.map(party => <td key={party}><strong>{Number(row.results.find(item => item.party === party)?.votes || 0).toLocaleString()}</strong></td>)}<td>{Number(row.lat).toFixed(5)}, {Number(row.lng).toFixed(5)}</td><td><div className="result-evidence">{(row.media || []).filter((item) => item.type === "image").slice(0, 2).map((item, index) => <a href={item.data} target="_blank" rel="noreferrer" key={`${row.id}-${index}`}><img src={item.data} alt={`Evidence for ${row.pollingUnit}`} /></a>)}</div></td><td>{new Date(row.createdAt).toLocaleString()}</td></tr>
+                ))}
+                {!summary.rows.length && <tr><td className="result-empty" colSpan={summary.partyNames.length + 7}>No polling-unit results have been uploaded yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
 function Dashboard({ session, onLogout }) {
   const [incidents, setIncidents] = useState([]);
   const [users, setUsers] = useState([]);
   const [reportUsers, setReportUsers] = useState([]);
   const [selected, setSelected] = useState(null);
   const [newPoint, setNewPoint] = useState(null);
+  const [newResultPoint, setNewResultPoint] = useState(null);
+  const [parties, setParties] = useState([]);
+  const [partyManagerOpen, setPartyManagerOpen] = useState(false);
   const [filter, setFilter] = useState("All");
   const [hiddenReportIds, setHiddenReportIds] = useState(() =>
     JSON.parse(localStorage.getItem("hidden-report-ids") || "[]"),
@@ -3897,6 +3975,7 @@ function Dashboard({ session, onLogout }) {
   const [manageOfficers, setManageOfficers] = useState(false);
   const [mapDataPanel, setMapDataPanel] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
   const [analysisLayers, setAnalysisLayers] = useState([]);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [emergencyAlerts, setEmergencyAlerts] = useState([]);
@@ -4109,14 +4188,16 @@ function Dashboard({ session, onLogout }) {
       request("/cameras", session.token),
       request("/map-layers", session.token),
       request("/chat/rooms", session.token),
+      request("/parties", session.token),
     ])
-      .then(([a, b, viewers, c, d, e]) => {
+      .then(([a, b, viewers, c, d, e, partyList]) => {
         setIncidents(a);
         setUsers(b);
         setReportUsers(viewers.filter((user) => user.role !== "Super Admin"));
         setCameras(c);
         setMapLayers(d);
         setChatRooms(e);
+        setParties(partyList);
       })
       .catch((err) => {
         if (err.message.includes("Session expired")) onLogout();
@@ -4210,6 +4291,7 @@ function Dashboard({ session, onLogout }) {
           old.some((i) => i.id === x.id) ? old : [x, ...old],
         );
     });
+    socket.on("parties:updated", setParties);
     socket.on("incident:updated", (x) =>
       setIncidents((old) =>
         canSeeReport(x)
@@ -4651,12 +4733,20 @@ function Dashboard({ session, onLogout }) {
   };
   const openPollingUnitResultForm = () => {
     clearMapTools();
-    setNewPoint({
-      ...currentMapPoint(),
-      reportType: POLLING_RESULT_TYPE,
-      pollingUnit: session.user.pollingUnit || "",
-    });
-    setNotice("Polling unit result form ready. Add vote counts and photo evidence.");
+    const point = gpsBestRef.current || currentMapPoint();
+    setNewResultPoint({ lat: Number(point.lat), lng: Number(point.lng) });
+    setNotice("Result form ready with your polling unit, location and current time.");
+  };
+  const savePollingResult = async (payload) => {
+    const item = await request("/results", session.token, { method: "POST", body: JSON.stringify(payload) });
+    setIncidents(old => old.some(entry => entry.id === item.id) ? old : [item, ...old]);
+    setNewResultPoint(null);
+    setNotice("Polling unit result submitted successfully");
+    setTimeout(() => setNotice(""), 3000);
+  };
+  const saveParties = async (partyList) => {
+    const saved = await request("/parties", session.token, { method: "PUT", body: JSON.stringify({ parties: partyList }) });
+    setParties(saved); setPartyManagerOpen(false); setNotice("Political-party list updated");
   };
   const pickIncidentPoint = () => {
     clearMapTools();
@@ -5899,6 +5989,16 @@ function Dashboard({ session, onLogout }) {
                 </button>
               )}
               {canAdmin && (
+                <button onClick={() => setResultsOpen(true)}>
+                  <FaChartBar /> Results
+                </button>
+              )}
+              {canAdmin && (
+                <button onClick={() => setPartyManagerOpen(true)}>
+                  <FaUserCog /> Political Parties
+                </button>
+              )}
+              {canAdmin && (
                 <button onClick={() => setMapDataPanel(true)}>
                   <FaMapMarkedAlt /> Map Data
                 </button>
@@ -6179,6 +6279,15 @@ function Dashboard({ session, onLogout }) {
             </button>
             {canAdmin && (
               <button
+                className="map-action result-center-open"
+                onClick={() => setResultsOpen(true)}
+                title="Election results"
+              >
+                Results
+              </button>
+            )}
+            {canAdmin && (
+              <button
                 className="map-action"
                 onClick={() => {
                   setAnalyticsOpen(true);
@@ -6315,9 +6424,7 @@ function Dashboard({ session, onLogout }) {
             <div className="self-camera-preview-actions">
               <button type="button" title="Switch camera" onClick={switchCamera}>
                 <FaCamera />
-              </button>
-              <button type="button" onClick={() => setSelfCameraPreview(false)}>
-                <FaTimes />
+                <span>{cameraFacingMode === "environment" ? "Front" : "Back"}</span>
               </button>
             </div>
           </div>
@@ -6371,19 +6478,13 @@ function Dashboard({ session, onLogout }) {
                     ?.replace("Polling unit: ", "") ||
                   "Not provided"}
               </p>
-              <b>Declared counts</b>
+              <b>{COMMAND_PARTY} votes</b>
               <pre>
                 {selected.resultCount ||
                   String(selected.description || "")
-                    .split("\n\nDeclared result counts:\n")[1] ||
-                  "No vote counts were recorded yet."}
+                    .split(`\n\n${COMMAND_PARTY} vote count:\n`)[1] ||
+                  `No ${COMMAND_PARTY} vote count was recorded yet.`}
               </pre>
-              {selected.partyResult && (
-                <>
-                  <b>Party result</b>
-                  <pre>{selected.partyResult}</pre>
-                </>
-              )}
             </div>
           )}
           {selected.media?.length > 0 && (
@@ -6522,6 +6623,7 @@ function Dashboard({ session, onLogout }) {
           )}
         </section>
       )}
+      {resultsOpen && canAdmin && <ResultsCenter incidents={incidents} onClose={() => setResultsOpen(false)} />}
       {activeEmergency && (
         <div className="emergency-alert-card">
           <b>Emergency from {activeEmergency.name}</b>
@@ -6560,6 +6662,8 @@ function Dashboard({ session, onLogout }) {
           currentUser={session.user}
         />
       )}
+      {newResultPoint && <PollingResultForm user={session.user} point={newResultPoint} parties={parties} onClose={() => setNewResultPoint(null)} onSave={savePollingResult} />}
+      {partyManagerOpen && canAdmin && <PartyManager parties={parties} onClose={() => setPartyManagerOpen(false)} onSave={saveParties} />}
       {emergencyOpen && (
         <EmergencyPanel
           onClose={() => setEmergencyOpen(false)}

@@ -29,7 +29,8 @@ const seed = {
   mapLayers: [],
   chatRooms: [],
   chatMembers: [],
-  chatMessages: []
+  chatMessages: [],
+  parties: []
 };
 
 let jsonDb = existsSync(dataFile)
@@ -40,6 +41,7 @@ jsonDb.mapLayers ||= [];
 jsonDb.chatRooms ||= [];
 jsonDb.chatMembers ||= [];
 jsonDb.chatMessages ||= [];
+jsonDb.parties ||= [];
 jsonDb.users = jsonDb.users.filter(user => !['u0', 'u1', 'u2', 'u3'].includes(user.id));
 jsonDb.users.unshift(...seed.users);
 jsonDb.users = jsonDb.users.map(user => {
@@ -161,6 +163,7 @@ async function initPostgres() {
       body text not null,
       created_at timestamptz default now()
     );
+    create table if not exists app_settings (key text primary key, value jsonb not null default '[]'::jsonb);
   `);
   await pool.query("alter table users add column if not exists rank text default ''");
   await pool.query("alter table users add column if not exists unit_type text default 'Division'");
@@ -179,7 +182,7 @@ async function initPostgres() {
   await pool.query("alter table incidents add column if not exists ward text default ''");
   await pool.query("alter table incidents add column if not exists polling_unit text default ''");
   await pool.query("alter table incidents add column if not exists result_count text default ''");
-  await pool.query("create unique index if not exists one_polling_result_per_unit on incidents (lower(lga), lower(ward), lower(polling_unit)) where report_type='Polling Unit Result'");
+  await pool.query("drop index if exists one_polling_result_per_unit");
   await pool.query("alter table map_layers add column if not exists category text default 'Point'");
   await pool.query("alter table map_layers add column if not exists operational_use text default 'Reference'");
   await pool.query("alter table map_layers add column if not exists color text default '#facc15'");
@@ -206,6 +209,16 @@ async function initPostgres() {
 }
 
 const store = {
+  async parties() {
+    if (!pool) return jsonDb.parties || [];
+    const { rows } = await pool.query("select value from app_settings where key='political_parties'");
+    return rows[0]?.value || [];
+  },
+  async setParties(parties) {
+    if (!pool) { jsonDb.parties = parties; saveJson(); return parties; }
+    await pool.query("insert into app_settings (key,value) values ('political_parties',$1) on conflict (key) do update set value=excluded.value", [JSON.stringify(parties)]);
+    return parties;
+  },
   async users() {
     if (!pool) return jsonDb.users;
     const { rows } = await pool.query('select * from users order by role, name');
@@ -539,24 +552,40 @@ app.put('/api/users/:id/password', auth, asyncRoute(async (req, res) => {
   await store.updateUserPassword(req.params.id, await bcrypt.hash(password, 10));
   res.json({ ok: true });
 }));
+app.get('/api/parties', auth, asyncRoute(async (_, res) => res.json(await store.parties())));
+app.put('/api/parties', auth, adminOnly, asyncRoute(async (req, res) => {
+  const parties = [...new Set((Array.isArray(req.body.parties) ? req.body.parties : []).map(value => String(value).trim()).filter(Boolean))].slice(0, 100);
+  const saved = await store.setParties(parties);
+  io.emit('parties:updated', saved);
+  res.json(saved);
+}));
+app.post('/api/results', auth, asyncRoute(async (req, res) => {
+  const parties = await store.parties();
+  const rawEntries = (Array.isArray(req.body.results) ? req.body.results : []).map(item => ({ party: String(item.party || '').trim(), votes: Number(item.votes) })).filter(item => parties.includes(item.party) && Number.isInteger(item.votes) && item.votes >= 0);
+  const entries = [...rawEntries.reduce((map, item) => map.set(item.party, { party: item.party, votes: (map.get(item.party)?.votes || 0) + item.votes }), new Map()).values()];
+  if (!entries.length) return res.status(400).json({ message: 'Select at least one uploaded party and enter its vote count' });
+  const media = Array.isArray(req.body.media) ? req.body.media.slice(0, 3) : [];
+  if (!media.some(item => item?.type === 'image')) return res.status(400).json({ message: 'A photograph of the signed result is required' });
+  const lat = Number(req.body.lat); const lng = Number(req.body.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(400).json({ message: 'Current location is required' });
+  const pollingUnit = String(req.user.pollingUnit || req.body.pollingUnit || '').trim();
+  if (!pollingUnit) return res.status(400).json({ message: 'The reporting account must have a polling unit' });
+  const createdAt = new Date().toISOString();
+  const result = { id: `r${Date.now()}`, title: `Polling Unit Result - ${pollingUnit}`, description: `Submitted by ${req.user.name} at ${createdAt}`, reportType: 'Polling Unit Result', severity: 'Low', status: 'Submitted', lat, lng, assignedTo: '', visibleTo: [], media, geometry: null, style: { source: 'result', icon: 'POI', color: '#d9aa4b', fillColor: '#d9aa4b' }, lga: req.user.lga || req.body.lga || '', ward: req.user.ward || req.body.ward || '', pollingUnit, resultCount: JSON.stringify(entries), createdAt, createdBy: req.user.id };
+  const created = await store.createIncident(result);
+  io.emit('incident:created', created);
+  res.status(201).json(created);
+}));
 app.get('/api/incidents', auth, asyncRoute(async (req, res) => res.json((await store.incidents()).filter(incident => canAccessIncident(req.user, incident)))));
 app.post('/api/incidents', auth, asyncRoute(async (req, res) => {
   const media = Array.isArray(req.body.media) ? req.body.media.slice(0, 6) : [];
   const mediaBytes = media.reduce((total, item) => total + Buffer.byteLength(String(item?.data || ''), 'utf8'), 0);
   if (mediaBytes > 14 * 1024 * 1024) return res.status(413).json({ message: 'Incident attachments are too large. Keep the total under 10MB.' });
-  const isResult = req.body.reportType === 'Polling Unit Result';
-  const allowedTypes = new Set(['Polling Unit Result', 'SOS-Emergency', 'Vote Buying', 'Thuggery and Violence', 'Voter Intimidation', 'Collusion', 'Compromised Privacy', 'Over-voting', 'Late Opening', 'Material Shortages', 'Missing Registers', 'Lack of Crowd Control', 'BVAS Failure', 'Network Connectivity', 'Battery Depletion']);
+  const allowedTypes = new Set(['SOS-Emergency', 'Vote Buying', 'Thuggery and Violence', 'Voter Intimidation', 'Collusion', 'Compromised Privacy', 'Over-voting', 'Late Opening', 'Material Shortages', 'Missing Registers', 'Lack of Crowd Control', 'BVAS Failure', 'Network Connectivity', 'Battery Depletion']);
   if (['Agent', 'Supervisor'].includes(req.user.role) && !allowedTypes.has(req.body.reportType)) return res.status(403).json({ message: 'This role cannot create that report type' });
   const lga = String(req.user.lga || req.body.lga || '').trim();
   const ward = String(req.user.ward || req.body.ward || '').trim();
   const pollingUnit = String((req.user.role === 'Agent' ? req.user.pollingUnit : req.body.pollingUnit) || '').trim();
-  if (isResult) {
-    if (!lga || !ward || !pollingUnit) return res.status(400).json({ message: 'An assigned LGA, ward and polling unit are required' });
-    if (!String(req.body.resultCount || '').trim()) return res.status(400).json({ message: 'Result counts are required' });
-    if (!media.some(item => item?.type === 'image')) return res.status(400).json({ message: 'A photograph of the signed result is required' });
-    const duplicate = (await store.incidents()).find(item => item.reportType === 'Polling Unit Result' && normalizeKey(item.lga) === normalizeKey(lga) && normalizeKey(item.ward) === normalizeKey(ward) && normalizeKey(item.pollingUnit) === normalizeKey(pollingUnit));
-    if (duplicate) return res.status(409).json({ message: 'A result has already been submitted for this polling unit. Contact an administrator to correct it.' });
-  }
   const visibleTo = [...new Set([
     ...(Array.isArray(req.body.visibleTo) ? req.body.visibleTo : []),
     ...(isSosIncident(req.body) ? sosVisibleTo({ ...req.user, userId: req.user.id, ...req.body }) : []),
