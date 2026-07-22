@@ -4164,6 +4164,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [cameraFacingMode, setCameraFacingMode] = useState("environment");
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [ipLogOpen, setIpLogOpen] = useState(false);
+  const [ipLogData, setIpLogData] = useState([]);
+  const [ipLogLoading, setIpLogLoading] = useState(false);
+  const [ipLogFilter, setIpLogFilter] = useState("all");
   const [situationalOpen, setSituationalOpen] = useState(false);
   const [liveIncidentsOpen, setLiveIncidentsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -4736,6 +4740,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     });
     setIncidents((old) => old.map((i) => (i.id === item.id ? item : i)));
     setSelected(item);
+  };
+  const fetchIpLog = async () => {
+    setIpLogLoading(true);
+    try {
+      const data = await request("/admin/ip-log?limit=200", session.token);
+      setIpLogData(data);
+    } catch (e) {
+      setNotice(e.message || "Unable to load IP log");
+    } finally {
+      setIpLogLoading(false);
+    }
   };
   const deleteIncident = async () => {
     if (
@@ -6504,6 +6519,14 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     </b>
                    
                   </button>
+                  {canAdmin && (
+                    <button onClick={() => { setIpLogOpen(true); fetchIpLog(); setOperationsOpen(false); }}>
+                      <b>
+                        <FaSearch /> IP Log
+                      </b>
+                      <span>Incident &amp; SOS source IPs</span>
+                    </button>
+                  )}
                  
                 </div>
               )}
@@ -7320,6 +7343,64 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       )}
       {newResultPoint && <PollingResultForm user={session.user} point={newResultPoint} parties={parties} onClose={() => setNewResultPoint(null)} onSave={savePollingResult} />}
       {profileOpen && <ProfileModal session={session} onClose={() => setProfileOpen(false)} onSave={saveProfile} />}
+      {ipLogOpen && canAdmin && (
+        <div className="modal-backdrop" onClick={() => setIpLogOpen(false)}>
+          <div className="modal ip-log-modal" onClick={e => e.stopPropagation()}>
+            <div className="panel-title">
+              <div>
+                <span className="eyebrow">ADMIN TOOL</span>
+                <h2>IP Address Log</h2>
+              </div>
+              <button className="icon-btn" onClick={() => setIpLogOpen(false)}><FaTimes /></button>
+            </div>
+            <p className="muted">Source IP addresses for all incident reports and SOS alerts.</p>
+            <div className="ip-log-filters">
+              {["all","incident","SOS","result"].map(f => (
+                <button key={f} className={ipLogFilter === f ? "active" : ""} onClick={() => setIpLogFilter(f)}>
+                  {f === "all" ? "All" : f === "SOS" ? "SOS" : f === "result" ? "Results" : "Incidents"}
+                </button>
+              ))}
+              <button className="ip-log-refresh" onClick={fetchIpLog} title="Refresh">
+                <FaSyncAlt />
+              </button>
+            </div>
+            {ipLogLoading ? (
+              <div className="ip-log-empty">Loading…</div>
+            ) : ipLogData.filter(e => ipLogFilter === "all" || e.type === ipLogFilter).length === 0 ? (
+              <div className="ip-log-empty">No entries yet.</div>
+            ) : (
+              <div className="ip-log-table-wrap">
+                <table className="ip-log-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Type</th>
+                      <th>User</th>
+                      <th>Role</th>
+                      <th>IP Address</th>
+                      <th>Incident ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ipLogData
+                      .filter(e => ipLogFilter === "all" || e.type === ipLogFilter)
+                      .map((e, i) => (
+                        <tr key={i} className={e.type === "SOS" ? "ip-log-sos" : e.type === "result" ? "ip-log-result" : ""}>
+                          <td>{new Date(e.timestamp).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}</td>
+                          <td><span className={`ip-type-chip ip-type-${e.type}`}>{e.type}</span></td>
+                          <td>{e.userName}</td>
+                          <td>{e.userRole}</td>
+                          <td><code>{e.ip}</code></td>
+                          <td><code>{e.incidentId}</code></td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {gpsRequiredBlocked && isAgent && <div className="modal-backdrop gps-required-gate"><div className="modal"><span className="eyebrow">LOCATION REQUIRED</span><h2>Allow Location</h2><p>Location must be on before you can use the app.</p><button className="primary wide" onClick={toggleGps}><LuLocateFixed /> Allow Location</button></div></div>}
       {partyManagerOpen && canAdmin && <PartyManager parties={parties} onClose={() => setPartyManagerOpen(false)} onSave={saveParties} />}
       {emergencyOpen && (
@@ -7377,7 +7458,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           onDeleteRoom={deleteChatRoom}
         />
       )}
-      {notice && <div className="toast">OK {notice}</div>}
+      {notice && <div className="toast">{notice}</div>}
     </main>
   );
 }

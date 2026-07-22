@@ -415,6 +415,20 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const activeCameraShares = new Map();
+
+// In-memory IP log — stores last 500 entries (incident + SOS submissions)
+const ipLog = [];
+const MAX_IP_LOG = 500;
+const getClientIp = req =>
+  (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+  req.headers['x-real-ip'] ||
+  req.socket?.remoteAddress ||
+  'unknown';
+const logIp = (type, user, incidentId, ip) => {
+  ipLog.unshift({ type, userId: user.id, userName: user.name, userRole: user.role, incidentId, ip, timestamp: new Date().toISOString() });
+  if (ipLog.length > MAX_IP_LOG) ipLog.length = MAX_IP_LOG;
+};
+
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 const auth = (req, res, next) => { try { req.user = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), secret); next(); } catch { res.status(401).json({ message: 'Session expired. Please sign in again.' }); } };
@@ -501,6 +515,13 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 };
 
 app.get('/api/health', (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API', database: pool ? 'neon-postgres' : 'json-file' }));
+app.get('/api/admin/ip-log', auth, adminOnly, (req, res) => {
+  const { userId, type, limit = 200 } = req.query;
+  let results = ipLog;
+  if (userId) results = results.filter(entry => entry.userId === userId);
+  if (type) results = results.filter(entry => entry.type === type);
+  res.json(results.slice(0, Number(limit)));
+});
 app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const user = await store.userByEmail(String(req.body.email || ''));
   if (!user || !(await bcrypt.compare(req.body.password || '', user.password))) return res.status(401).json({ message: 'Invalid email or password' });
@@ -590,6 +611,7 @@ app.post('/api/results', auth, asyncRoute(async (req, res) => {
   const createdAt = new Date().toISOString();
   const result = { id: `r${Date.now()}`, title: `Polling Unit Result - ${pollingUnit}`, description: `Submitted by ${req.user.name} at ${createdAt}`, reportType: 'Polling Unit Result', severity: 'Low', status: 'Submitted', lat, lng, assignedTo: '', visibleTo: [], media, geometry: null, style: { source: 'result', icon: 'POI', color: '#d9aa4b', fillColor: '#d9aa4b' }, lga: req.user.lga || req.body.lga || '', ward: req.user.ward || req.body.ward || '', pollingUnit, resultCount: JSON.stringify(entries), createdAt, createdBy: req.user.id };
   const created = await store.createIncident(result);
+  logIp('result', req.user, created.id, getClientIp(req));
   io.emit('incident:created', created);
   res.status(201).json(created);
 }));
@@ -610,6 +632,7 @@ app.post('/api/incidents', auth, asyncRoute(async (req, res) => {
   ].filter(Boolean))];
   const incident = { ...req.body, lga, ward, pollingUnit, visibleTo, media, id: `i${Date.now()}`, createdAt: new Date().toISOString(), createdBy: req.user.id };
   const created = await store.createIncident(incident);
+  logIp('incident', req.user, created.id, getClientIp(req));
   io.emit('incident:created', created);
   res.status(201).json(created);
 }));
@@ -727,7 +750,13 @@ io.on('connection', socket => {
     io.emit('gps:broadcast', safePoint);
   });
   socket.on('gps:stop', () => io.emit('gps:offline', { userId: socket.data.authUser.id, timestamp: new Date().toISOString() }));
-  socket.on('emergency:send', alert => emitEmergencyAlert(socket, { ...alert, ...(socket.data.user || {}), userId: socket.data.authUser.id, name: socket.data.authUser.name, role: socket.data.authUser.role }));
+  socket.on('emergency:send', alert => {
+    const ip = (socket.handshake.headers['x-forwarded-for'] || '').split(',')[0].trim() || socket.handshake.address || 'unknown';
+    const user = socket.data.authUser;
+    const alertId = alert.id || `em-${Date.now()}`;
+    logIp('SOS', { id: user.id, name: user.name, role: user.role }, alertId, ip);
+    emitEmergencyAlert(socket, { ...alert, id: alertId, ...(socket.data.user || {}), userId: user.id, name: user.name, role: user.role });
+  });
   socket.on('camera:register', user => { const safeUser = { ...user, userId: socket.data.authUser.id, name: socket.data.authUser.name, role: socket.data.authUser.role }; socket.data.cameraUser = { userId: safeUser.userId, name: safeUser.name, role: safeUser.role }; socket.data.user = { ...(socket.data.user || {}), ...safeUser, lat: Number(safeUser.lat), lng: Number(safeUser.lng) }; socket.join(`camera:user:${safeUser.userId}`); if (isAdminRole(safeUser)) socket.emit('camera:shares:list', [...activeCameraShares.values()]); });
   socket.on('camera:share:start', payload => { const safePayload = { ...payload, userId: socket.data.authUser.id, name: socket.data.authUser.name }; activeCameraShares.set(safePayload.userId, safePayload); socket.broadcast.emit('camera:share:start', safePayload); });
   socket.on('camera:share:stop', () => { const userId = socket.data.authUser.id; activeCameraShares.delete(userId); socket.broadcast.emit('camera:share:stop', { userId }); });
