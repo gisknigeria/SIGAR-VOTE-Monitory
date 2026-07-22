@@ -5575,6 +5575,11 @@ function Dashboard({ session, onLogout }) {
                   ? "System Administrator"
                   : session.user.role}
             </small>
+            {(session.user.role === "Admin" || session.user.role === "Super Admin") && (
+              <span className="role-pill">
+                {session.user.role === "Super Admin" ? "SUPER ADMIN" : "ADMIN"}
+              </span>
+            )}
           </div>
         </div>
         <form className="sidebar-search" onSubmit={geocode}>

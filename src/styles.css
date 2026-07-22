@@ -155,6 +155,7 @@ aside,.command-sidebar{background:linear-gradient(180deg,#310a18,#21060f)!import
 .brand-small span{color:var(--gold-400)!important}
 .sidebar-user>span,.user>span,.manage-row .avatar{background:#711c39!important;color:var(--gold-300)!important;border:1px solid #a84a68!important}
 .sidebar-section,.sidebar-user,.officer-summary,.filters{border-color:#572036!important}
+.role-pill{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:3px 8px;border-radius:999px;background:#c9972b;color:#1c0710;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
 .side-heading h2,.sidebar-section h3{color:var(--cream)!important}
 .muted,.incident-card p,.officer-row small,.manage-row small,.user small{color:#c49eab!important}
 .incident-card:hover,.incident-card.selected,.sidebar-action:hover{background:#541329!important;border-color:#8f3c58!important}
