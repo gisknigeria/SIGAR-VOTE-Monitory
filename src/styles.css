@@ -916,6 +916,8 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
   .mobile-topbar{display:none}
   /* Top controls: icons scroll left, coord hidden on mobile — offset past FAB */
   .map-top-controls{top:10px;left:62px;right:10px;display:flex;flex-wrap:nowrap;align-items:center;gap:6px}
+  .role-supervisor .map-top-controls{left:58px;right:10px}
+  .role-supervisor .map-top-left{padding-left:2px}
   .map-top-left{gap:5px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0;padding-bottom:2px}
   .map-top-left::-webkit-scrollbar{display:none}
   .map-top-left>*{flex-shrink:0}

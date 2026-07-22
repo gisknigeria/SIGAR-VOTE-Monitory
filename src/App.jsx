@@ -5994,7 +5994,7 @@ function Dashboard({ session, onLogout }) {
               </button>
               {(canCreateCustomReportType || isSupervisor) && (
                 <div className="map-home-dropdown">
-                  {canCreateCustomReportType && <button
+                  {(canCreateCustomReportType || isSupervisor) && <button
                     onClick={() => {
                       pickIncidentPoint();
                       setMapMenu("");
@@ -6002,7 +6002,7 @@ function Dashboard({ session, onLogout }) {
                   >
                     <ReportIcon iconKey="IP" size={14} /> Point
                   </button>}
-                  {canCreateCustomReportType && <button
+                  {(canCreateCustomReportType || isSupervisor) && <button
                     onClick={() => {
                       openPollingUnitResultForm();
                       setMapMenu("");
