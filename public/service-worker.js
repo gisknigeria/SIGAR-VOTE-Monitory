@@ -1,5 +1,5 @@
-const CACHE_NAME = 'election-monitor-command-v3';
-const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/icon.svg', '/icons/maskable-icon.svg'];
+const CACHE_NAME = 'election-monitor-command-v4';
+const APP_SHELL = ['/', '/manifest.webmanifest', '/bsa-logo.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
@@ -21,8 +21,8 @@ self.addEventListener('message', event => {
       tag: alert.id || 'election-monitor-emergency',
       renotify: true,
       requireInteraction: true,
-      icon: '/icons/icon.svg',
-      badge: '/icons/icon.svg',
+      icon: '/bsa-logo.png',
+      badge: '/bsa-logo.png',
       data: { url: '/', alert }
     }));
     return;

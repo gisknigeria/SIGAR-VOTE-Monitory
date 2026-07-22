@@ -12,15 +12,15 @@
   "categories": ["government", "productivity", "utilities"],
   "icons": [
     {
-      "src": "/icons/icon.svg",
+      "src": "/bsa-logo.png",
       "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/maskable-icon.svg",
+      "src": "/bsa-logo.png",
       "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ],
@@ -30,7 +30,7 @@
       "short_name": "Map",
       "description": "Open the live election monitoring map.",
       "url": "/",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/bsa-logo.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

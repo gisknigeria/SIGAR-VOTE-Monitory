@@ -470,7 +470,7 @@ const playEmergencyRing = (alert = {}) => {
           tag: alert.id || "election-monitor-emergency",
           renotify: true,
           requireInteraction: true,
-          icon: "/icons/icon.svg",
+          icon: "/bsa-logo.png",
         }),
       )
       .catch(() => new Notification(title, { body, requireInteraction: true }));
