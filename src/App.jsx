@@ -6269,83 +6269,87 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 </button>
               )}
             </div>}
-            <button
-              className={`sidebar-section-toggle sidebar-nav-dropdown live-toggle ${liveIncidentsOpen ? "open" : ""}`}
-              aria-expanded={liveIncidentsOpen}
-              onClick={() => setLiveIncidentsOpen((value) => {
-                const next = !value;
-                if (next) {
-                  setSituationalOpen(false);
-                  setToolsOpen(false);
-                }
-                return next;
-              })}
-            >
-              <h2>Live Incidence <em>{incidents.length}</em></h2>
-              <span>{liveIncidentsOpen ? "−" : "+"}</span>
-            </button>
-            {liveIncidentsOpen && <>
-            <div className="filters">
-              {["All", "Critical", "High", "Open"].map((x) => (
-                <button
-                  className={filter === x ? "active" : ""}
-                  onClick={() => setFilter(x)}
-                  key={x}
-                >
-                  {x}
-                </button>
-              ))}
-            </div>
-            <div className="incident-list">
-              {visible.map((item) => (
-                <button
-                  className={`incident-card ${selected?.id === item.id ? "selected" : ""}`}
-                  onClick={() => {
-                    setSelected(item);
-                    setOperationsOpen(false);
-                  }}
-                  key={item.id}
-                >
-                  <span
-                    className="severity"
-                    style={{ background: reportStyle(item).color }}
-                  ></span>
-                  <div>
-                    <div className="card-top">
-                      <b>{item.title}</b>
-                      <time>
-                        {new Date(item.createdAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </time>
-                    </div>
-                    <p>{item.description}</p>
-                    <div className="chips">
-                    <span
-                      className="report-type-chip"
-                      aria-label={item.reportType || "Incident"}
-                    >
-                        <ReportTypeIcon
-                          type={item.reportType}
-                          size={12}
-                          color={reportStyle(item).color}
-                        />
-                        <em>{item.reportType || "Incident"}</em>
-                      </span>
-                      <span>{item.status}</span>
-                      <span>
-                        {officers
-                          .find((x) => x.id === item.assignedTo)
-                          ?.name.split(" ")[1] || "Unassigned"}
-                      </span>
-                    </div>
+            <div className="sidebar-dropdown-section live-section">
+              <button
+                className={`sidebar-section-toggle sidebar-nav-dropdown live-toggle ${liveIncidentsOpen ? "open" : ""}`}
+                aria-expanded={liveIncidentsOpen}
+                onClick={() => setLiveIncidentsOpen((value) => {
+                  const next = !value;
+                  if (next) {
+                    setSituationalOpen(false);
+                    setToolsOpen(false);
+                  }
+                  return next;
+                })}
+              >
+                <h2>Live Incidence <em>{incidents.length}</em></h2>
+                <span>{liveIncidentsOpen ? "−" : "+"}</span>
+              </button>
+              {liveIncidentsOpen && (
+                <div className="sidebar-dropdown-body">
+                  <div className="filters">
+                    {["All", "Critical", "High", "Open"].map((x) => (
+                      <button
+                        className={filter === x ? "active" : ""}
+                        onClick={() => setFilter(x)}
+                        key={x}
+                      >
+                        {x}
+                      </button>
+                    ))}
                   </div>
-                </button>
-              ))}
+                  <div className="incident-list">
+                    {visible.map((item) => (
+                      <button
+                        className={`incident-card ${selected?.id === item.id ? "selected" : ""}`}
+                        onClick={() => {
+                          setSelected(item);
+                          setOperationsOpen(false);
+                        }}
+                        key={item.id}
+                      >
+                        <span
+                          className="severity"
+                          style={{ background: reportStyle(item).color }}
+                        ></span>
+                        <div>
+                          <div className="card-top">
+                            <b>{item.title}</b>
+                            <time>
+                              {new Date(item.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </time>
+                          </div>
+                          <p>{item.description}</p>
+                          <div className="chips">
+                            <span
+                              className="report-type-chip"
+                              aria-label={item.reportType || "Incident"}
+                            >
+                              <ReportTypeIcon
+                                type={item.reportType}
+                                size={12}
+                                color={reportStyle(item).color}
+                              />
+                              <em>{item.reportType || "Incident"}</em>
+                            </span>
+                            <span>{item.status}</span>
+                            <span>
+                              {officers
+                                .find((x) => x.id === item.assignedTo)
+                                ?.name.split(" ")[1] || "Unassigned"}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            </>}
-            <div className="officer-summary">
+            <div className="sidebar-dropdown-section situational-section officer-summary">
               <button
                 className={`sidebar-section-toggle sidebar-nav-dropdown situational-toggle ${situationalOpen ? "open" : ""}`}
                 aria-expanded={situationalOpen}
@@ -6361,16 +6365,20 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 <h3>Situational Rep</h3>
                 <span>{situationalOpen ? "−" : "+"}</span>
               </button>
-              {situationalOpen && officers.map((o) => (
-                <div className="officer-row" key={o.id}>
-                  <i className={o.status.toLowerCase()}></i>
-                  <div>
-                    <b>{o.rank ? `${o.rank} ${o.name}` : o.name}</b>
-                    <small>{o.unit}</small>
-                  </div>
-                  <span>{o.status}</span>
+              {situationalOpen && (
+                <div className="sidebar-dropdown-body">
+                  {officers.map((o) => (
+                    <div className="officer-row" key={o.id}>
+                      <i className={o.status.toLowerCase()}></i>
+                      <div>
+                        <b>{o.rank ? `${o.rank} ${o.name}` : o.name}</b>
+                        <small>{o.unit}</small>
+                      </div>
+                      <span>{o.status}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </>
         )}
