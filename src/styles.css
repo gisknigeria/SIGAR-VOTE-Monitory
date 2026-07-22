@@ -39,6 +39,28 @@
   aside{max-height:60dvh}
 }
 
+/* Field Agent dashboard must remain visible after the desktop/mobile grid rules. */
+.app-shell.role-agent{display:grid!important;grid-template:1fr/1fr!important}
+.role-agent .map-wrap{grid-column:1!important;grid-row:1!important;width:100%;height:100dvh;min-height:0}
+.role-agent .map-top-controls{display:none!important}
+.role-agent .agent-field-screen{z-index:900;overflow-y:auto;justify-content:flex-start;padding:34px 20px;min-height:100dvh}
+.agent-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,240px));gap:12px;width:min(500px,100%);margin-top:8px}
+.agent-action-card{min-height:128px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:7px;text-align:left;border:1px solid #793149;border-radius:14px;padding:17px;background:linear-gradient(145deg,#310a18,#210710);box-shadow:0 10px 26px #10020880}
+.agent-action-card svg,.agent-action-card>strong{font-size:22px!important;color:#ecc86f!important}
+.agent-action-card b{font-size:15px!important;color:#fff!important}
+.agent-action-card span{font-size:11px!important;line-height:1.45;color:#d5b8c2!important}
+.agent-action-card.result{border-color:#d9aa4b;background:linear-gradient(145deg,#741f3d,#3c0c1e)}
+.agent-action-card.active{border-color:#42d392;background:linear-gradient(145deg,#153c2d,#10251d)}
+.agent-action-card.sos{border-color:#ef4444;background:linear-gradient(145deg,#7f1d1d,#3f0b11)}
+.agent-action-card.sos>strong{color:#fff!important;font-size:20px!important}
+.agent-logout{display:flex;align-items:center;justify-content:center;gap:8px;width:min(500px,100%);margin-top:4px;border:1px solid #793149;border-radius:10px;padding:12px;background:#210710;color:#f7bdc7!important}
+@media(max-width:560px){
+  .role-agent .agent-field-screen{padding:24px 14px}
+  .agent-field-screen img{max-height:105px}
+  .agent-action-grid{grid-template-columns:1fr 1fr;gap:9px}
+  .agent-action-card{min-height:122px;padding:13px}
+}
+
 .app-shell.role-agent,.app-shell.role-supervisor{grid-template-columns:1fr}
 .role-agent .mobile-menu-fab,.role-supervisor .mobile-menu-fab{display:none}
 .agent-field-screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:90px 24px 32px;text-align:center;background:radial-gradient(circle at 50% 30%,#711b3b 0,transparent 32%),linear-gradient(145deg,#160a10,#260b18 58%,#12070c)}

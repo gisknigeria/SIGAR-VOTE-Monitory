@@ -6135,8 +6135,29 @@ function Dashboard({ session, onLogout }) {
           <span className="eyebrow">FIELD REPORTING</span>
           <h1>{session.user.pollingUnit || "Polling unit agent"}</h1>
           <p>{[session.user.lga, session.user.ward].filter(Boolean).join(" • ")}</p>
-          <button className="primary" onClick={openPollingUnitResultForm}>Report polling unit result with photo</button>
-          <small>The map is hidden for Agent accounts. Use the controls above to share GPS/location, camera, or send SOS.</small>
+          <div className="agent-action-grid">
+            <button className="agent-action-card result" onClick={openPollingUnitResultForm}>
+              <ReportIcon iconKey="POI" size={22} />
+              <b>Report result</b>
+              <span>Add counts and signed-result photo</span>
+            </button>
+            <button className={`agent-action-card ${sharingGps ? "active" : ""}`} onClick={toggleGps}>
+              <LuLocateFixed />
+              <b>{sharingGps ? "Stop GPS" : "Share GPS & location"}</b>
+              <span>{sharingGps ? "Your live position is being shared" : "Send your current field position"}</span>
+            </button>
+            <button className={`agent-action-card ${sharingCamera ? "active" : ""}`} onClick={toggleCamera}>
+              <FaVideo />
+              <b>{sharingCamera ? "Stop camera" : "Share camera"}</b>
+              <span>Send your live phone camera to command</span>
+            </button>
+            <button className="agent-action-card sos" onClick={() => setEmergencyOpen(true)}>
+              <strong>SOS</strong>
+              <b>Send emergency alert</b>
+              <span>Alert command with your current location</span>
+            </button>
+          </div>
+          <button className="agent-logout" onClick={onLogout}><FaSignOutAlt /> Logout</button>
         </div>}
         {!isAgent && <MapView
           incidents={mapVisibleIncidents}
