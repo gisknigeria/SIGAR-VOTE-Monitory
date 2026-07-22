@@ -54,8 +54,8 @@ if (!databaseUrl) saveJson();
 const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
 const publicUser = ({ password, ...user }) => user;
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-const toUser = row => row && ({ id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, rank: row.rank || '', active: row.active, unit: row.unit, unitType: row.unit_type || 'Division', command: row.command || '', division: row.division || '', station: row.station || '', lga: row.lga || '', lat: Number(row.lat) || 7.3775, lng: Number(row.lng) || 3.9470 });
-const toIncident = row => row && ({ id: row.id, title: row.title, description: row.description, reportType: row.report_type || 'IP', severity: row.severity, status: row.status, lat: Number(row.lat), lng: Number(row.lng), assignedTo: row.assigned_to || '', visibleTo: row.visible_to || [], media: row.media || [], geometry: row.geometry || null, style: row.style || null, createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at, createdBy: row.created_by || '' });
+const toUser = row => row && ({ id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, rank: row.rank || '', active: row.active, unit: row.unit, unitType: row.unit_type || 'Division', command: row.command || '', division: row.division || '', station: row.station || '', lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', lat: Number(row.lat) || 7.3775, lng: Number(row.lng) || 3.9470 });
+const toIncident = row => row && ({ id: row.id, title: row.title, description: row.description, reportType: row.report_type || 'IP', severity: row.severity, status: row.status, lat: Number(row.lat), lng: Number(row.lng), assignedTo: row.assigned_to || '', visibleTo: row.visible_to || [], media: row.media || [], geometry: row.geometry || null, style: row.style || null, lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', resultCount: row.result_count || '', createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at, createdBy: row.created_by || '' });
 const toCamera = row => row && ({ id: row.id, name: row.name, type: row.type, url: row.url, lat: Number(row.lat), lng: Number(row.lng), status: row.status, createdAt: row.created_at?.toISOString?.() || row.created_at });
 const toMapLayer = row => row && ({ id: row.id, name: row.name, type: row.type, data: row.data, url: row.url || '', bounds: row.bounds, opacity: Number(row.opacity ?? 0.65), fillOpacity: Number(row.fill_opacity ?? 0.18), category: row.category || (row.type === 'raster' ? 'Raster' : 'Point'), operationalUse: row.operational_use || 'Reference', color: row.color || '#facc15', fillColor: row.fill_color || '#f59e0b', lineWeight: Number(row.line_weight || 2), lineStyle: row.line_style || 'solid', pointIcon: row.point_icon || 'pin', pointIconColor: row.point_icon_color || '#ffffff', pointSize: Number(row.point_size || 24), showLabels: row.show_labels ?? true, labelField: row.label_field || 'name', popupFields: row.popup_fields || '', visible: row.visible ?? true, zIndex: Number(row.z_index || 0), createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at });
 const toChatRoom = row => row && ({ id: row.id, name: row.name, type: row.type || 'room', incidentId: row.incident_id || '', createdBy: row.created_by || '', createdAt: row.created_at?.toISOString?.() || row.created_at, members: row.members || [] });
@@ -78,6 +78,8 @@ async function initPostgres() {
       division text default '',
       station text default '',
       lga text default '',
+      ward text default '',
+      polling_unit text default '',
       lat double precision default 7.3775,
       lng double precision default 3.9470
     );
@@ -95,6 +97,10 @@ async function initPostgres() {
       media jsonb default '[]'::jsonb,
       geometry jsonb,
       style jsonb,
+      lga text default '',
+      ward text default '',
+      polling_unit text default '',
+      result_count text default '',
       created_at timestamptz default now(),
       updated_at timestamptz,
       created_by text default ''
@@ -162,11 +168,18 @@ async function initPostgres() {
   await pool.query("alter table users add column if not exists division text default ''");
   await pool.query("alter table users add column if not exists station text default ''");
   await pool.query("alter table users add column if not exists lga text default ''");
+  await pool.query("alter table users add column if not exists ward text default ''");
+  await pool.query("alter table users add column if not exists polling_unit text default ''");
   await pool.query("alter table incidents add column if not exists report_type text default 'IP'");
   await pool.query("alter table incidents add column if not exists visible_to jsonb default '[]'::jsonb");
   await pool.query("alter table incidents add column if not exists media jsonb default '[]'::jsonb");
   await pool.query("alter table incidents add column if not exists geometry jsonb");
   await pool.query("alter table incidents add column if not exists style jsonb");
+  await pool.query("alter table incidents add column if not exists lga text default ''");
+  await pool.query("alter table incidents add column if not exists ward text default ''");
+  await pool.query("alter table incidents add column if not exists polling_unit text default ''");
+  await pool.query("alter table incidents add column if not exists result_count text default ''");
+  await pool.query("create unique index if not exists one_polling_result_per_unit on incidents (lower(lga), lower(ward), lower(polling_unit)) where report_type='Polling Unit Result'");
   await pool.query("alter table map_layers add column if not exists category text default 'Point'");
   await pool.query("alter table map_layers add column if not exists operational_use text default 'Reference'");
   await pool.query("alter table map_layers add column if not exists color text default '#facc15'");
@@ -205,7 +218,7 @@ const store = {
   },
   async createUser(user) {
     if (!pool) { jsonDb.users.push(user); saveJson(); return user; }
-    const { rows } = await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning *', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.lga, user.lat, user.lng]);
+    const { rows } = await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,ward,polling_unit,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning *', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.lga, user.ward || '', user.pollingUnit || '', user.lat, user.lng]);
     return toUser(rows[0]);
   },
   async updateUserPassword(id, password) {
@@ -238,7 +251,7 @@ const store = {
   },
   async createIncident(incident) {
     if (!pool) { jsonDb.incidents.unshift(incident); saveJson(); return incident; }
-    const { rows } = await pool.query('insert into incidents (id,title,description,report_type,severity,status,lat,lng,assigned_to,visible_to,media,geometry,style,created_at,created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning *', [incident.id, incident.title, incident.description, incident.reportType, incident.severity, incident.status, incident.lat, incident.lng, incident.assignedTo, JSON.stringify(incident.visibleTo || []), JSON.stringify(incident.media || []), JSON.stringify(incident.geometry || null), JSON.stringify(incident.style || null), incident.createdAt, incident.createdBy]);
+    const { rows } = await pool.query('insert into incidents (id,title,description,report_type,severity,status,lat,lng,assigned_to,visible_to,media,geometry,style,lga,ward,polling_unit,result_count,created_at,created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *', [incident.id, incident.title, incident.description, incident.reportType, incident.severity, incident.status, incident.lat, incident.lng, incident.assignedTo, JSON.stringify(incident.visibleTo || []), JSON.stringify(incident.media || []), JSON.stringify(incident.geometry || null), JSON.stringify(incident.style || null), incident.lga || '', incident.ward || '', incident.pollingUnit || '', incident.resultCount || '', incident.createdAt, incident.createdBy]);
     return toIncident(rows[0]);
   },
   async updateIncident(id, patch) {
@@ -394,11 +407,13 @@ const canManageUsers = user => user?.role === 'Super Admin' || user?.role === 'A
 const visibleUsersFor = (viewer, users) => {
   const visibleUsers = users.filter(user => user.id !== viewer.id && user.role !== 'Super Admin');
   if (isAdminRole(viewer)) return visibleUsers;
+  if (viewer.role === 'Supervisor') return visibleUsers.filter(user => user.role === 'Agent' && normalizeKey(user.lga) === normalizeKey(viewer.lga) && normalizeKey(user.ward) === normalizeKey(viewer.ward));
+  if (viewer.role === 'Agent') return [];
   return visibleUsers.filter(user => canManageRank(viewer.rank, user.rank));
 };
 const canCreateUser = (viewer, rank, role) => {
-  if (viewer.role === 'Super Admin') return ['Agent', 'Response Team', 'Admin'].includes(role);
-  if (viewer.role === 'Admin') return ['Agent', 'Response Team'].includes(role);
+  if (viewer.role === 'Super Admin') return ['Agent', 'Supervisor', 'Response Team', 'Admin'].includes(role);
+  if (viewer.role === 'Admin') return ['Agent', 'Supervisor', 'Response Team'].includes(role);
   return false;
 };
 const canDeleteUser = (viewer, target) => {
@@ -409,7 +424,8 @@ const canDeleteUser = (viewer, target) => {
 };
 const canAccessRoom = (viewer, room) => !!room && (isAdminRole(viewer) || room.members?.includes(viewer.id));
 const isSosIncident = incident => incident?.reportType === 'SOS-Emergency' || incident?.style?.source === 'sos';
-const canAccessIncident = (viewer, incident) => isAdminRole(viewer) || incident.createdBy === viewer.id || incident.assignedTo === viewer.id || (incident.visibleTo || []).includes(viewer.id);
+const sameZone = (viewer, incident) => !!viewer?.lga && !!viewer?.ward && normalizeKey(viewer.lga) === normalizeKey(incident?.lga) && normalizeKey(viewer.ward) === normalizeKey(incident?.ward);
+const canAccessIncident = (viewer, incident) => isAdminRole(viewer) || (viewer?.role === 'Supervisor' && sameZone(viewer, incident)) || incident.createdBy === viewer.id || incident.assignedTo === viewer.id || (incident.visibleTo || []).includes(viewer.id);
 const normalizeKey = value => String(value || '').trim().toLowerCase();
 const normalizeCommandKey = value => normalizeCommand(value || '').toLowerCase();
 const userIdOf = user => user?.userId || user?.id;
@@ -445,7 +461,9 @@ const sosVisibleTo = alert => {
     const user = socket.data.user;
     const id = userIdOf(user);
     if (!id || id === userIdOf(alert) || isControlRoomUser(user)) continue;
-    if (sameOperationalSpace(alert, user) || distanceMeters(alert, user) <= 5000) ids.add(id);
+    const local = user.role === 'Supervisor' ? sameZone(user, alert) : sameOperationalSpace(alert, user);
+    const nearby = user.role !== 'Supervisor' && distanceMeters(alert, user) <= 5000;
+    if (local || nearby) ids.add(id);
   }
   return [...ids];
 };
@@ -456,8 +474,8 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
     const user = socket.data.user;
     if (!user?.userId) continue;
     const controlRoom = isControlRoomUser(user);
-    const localResponder = sameOperationalSpace(normalized, user);
-    const nearbyResponder = !controlRoom && distanceMeters(normalized, user) <= 5000;
+    const localResponder = user.role === 'Supervisor' ? sameZone(user, normalized) : sameOperationalSpace(normalized, user);
+    const nearbyResponder = !controlRoom && user.role !== 'Supervisor' && distanceMeters(normalized, user) <= 5000;
     if (controlRoom || localResponder || nearbyResponder) {
       socket.emit('emergency:alert', { ...normalized, silent: controlRoom });
     }
@@ -494,6 +512,8 @@ app.post('/api/users', auth, asyncRoute(async (req, res) => {
     division: String(req.body.division || '').trim(),
     station: String(req.body.station || '').trim(),
     lga: String(req.body.lga || '').trim(),
+    ward: String(req.body.ward || '').trim(),
+    pollingUnit: String(req.body.pollingUnit || '').trim(),
     lat: Number(req.body.lat) || 7.3775,
     lng: Number(req.body.lng) || 3.9470
   };
@@ -524,12 +544,25 @@ app.post('/api/incidents', auth, asyncRoute(async (req, res) => {
   const media = Array.isArray(req.body.media) ? req.body.media.slice(0, 6) : [];
   const mediaBytes = media.reduce((total, item) => total + Buffer.byteLength(String(item?.data || ''), 'utf8'), 0);
   if (mediaBytes > 14 * 1024 * 1024) return res.status(413).json({ message: 'Incident attachments are too large. Keep the total under 10MB.' });
+  const isResult = req.body.reportType === 'Polling Unit Result';
+  const allowedTypes = new Set(['Polling Unit Result', 'SOS-Emergency', 'Vote Buying', 'Thuggery and Violence', 'Voter Intimidation', 'Collusion', 'Compromised Privacy', 'Over-voting', 'Late Opening', 'Material Shortages', 'Missing Registers', 'Lack of Crowd Control', 'BVAS Failure', 'Network Connectivity', 'Battery Depletion']);
+  if (['Agent', 'Supervisor'].includes(req.user.role) && !allowedTypes.has(req.body.reportType)) return res.status(403).json({ message: 'This role cannot create that report type' });
+  const lga = String(req.user.lga || req.body.lga || '').trim();
+  const ward = String(req.user.ward || req.body.ward || '').trim();
+  const pollingUnit = String((req.user.role === 'Agent' ? req.user.pollingUnit : req.body.pollingUnit) || '').trim();
+  if (isResult) {
+    if (!lga || !ward || !pollingUnit) return res.status(400).json({ message: 'An assigned LGA, ward and polling unit are required' });
+    if (!String(req.body.resultCount || '').trim()) return res.status(400).json({ message: 'Result counts are required' });
+    if (!media.some(item => item?.type === 'image')) return res.status(400).json({ message: 'A photograph of the signed result is required' });
+    const duplicate = (await store.incidents()).find(item => item.reportType === 'Polling Unit Result' && normalizeKey(item.lga) === normalizeKey(lga) && normalizeKey(item.ward) === normalizeKey(ward) && normalizeKey(item.pollingUnit) === normalizeKey(pollingUnit));
+    if (duplicate) return res.status(409).json({ message: 'A result has already been submitted for this polling unit. Contact an administrator to correct it.' });
+  }
   const visibleTo = [...new Set([
     ...(Array.isArray(req.body.visibleTo) ? req.body.visibleTo : []),
     ...(isSosIncident(req.body) ? sosVisibleTo({ ...req.user, userId: req.user.id, ...req.body }) : []),
     req.body.assignedTo
   ].filter(Boolean))];
-  const incident = { ...req.body, visibleTo, media, id: `i${Date.now()}`, createdAt: new Date().toISOString(), createdBy: req.user.id };
+  const incident = { ...req.body, lga, ward, pollingUnit, visibleTo, media, id: `i${Date.now()}`, createdAt: new Date().toISOString(), createdBy: req.user.id };
   const created = await store.createIncident(incident);
   io.emit('incident:created', created);
   res.status(201).json(created);
@@ -654,7 +687,7 @@ io.on('connection', socket => {
   socket.on('camera:share:stop', () => { const userId = socket.data.authUser.id; activeCameraShares.delete(userId); socket.broadcast.emit('camera:share:stop', { userId }); });
   socket.on('camera:view:request', ({ officerId }) => io.to(`camera:user:${officerId}`).emit('camera:viewer:request', { viewerSocketId: socket.id }));
   socket.on('camera:signal', ({ target, data }) => io.to(target).emit('camera:signal', { from: socket.id, fromUserId: socket.data.cameraUser?.userId, fromName: socket.data.cameraUser?.name, data }));
-  socket.on('disconnect', () => { const user = socket.data.cameraUser; if (['Agent', 'Response Team'].includes(user?.role) && activeCameraShares.has(user.userId)) { activeCameraShares.delete(user.userId); socket.broadcast.emit('camera:share:stop', { userId: user.userId }); } });
+  socket.on('disconnect', () => { const user = socket.data.cameraUser; if (['Agent', 'Supervisor', 'Response Team'].includes(user?.role) && activeCameraShares.has(user.userId)) { activeCameraShares.delete(user.userId); socket.broadcast.emit('camera:share:stop', { userId: user.userId }); } });
 });
 
 app.use((err, _, res, __) => {

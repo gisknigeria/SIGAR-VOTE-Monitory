@@ -1,4 +1,4 @@
-export const OPERATION_ROLES = ["Admin", "Response Team", "Agent"];
+export const OPERATION_ROLES = ["Admin", "Response Team", "Supervisor", "Agent"];
 
 export const rankLevel = (role) => {
   if (role === "Super Admin") return -1;
@@ -28,5 +28,15 @@ export const UNIT_TYPES = [
   "Field Team",
   "Ward Desk",
 ];
+
+export const WARDS = Array.from(
+  { length: 20 },
+  (_, index) => `Ward ${String(index + 1).padStart(2, "0")}`,
+);
+
+export const POLLING_UNITS = Array.from(
+  { length: 50 },
+  (_, index) => `PU ${String(index + 1).padStart(3, "0")}`,
+);
 
 export const normalizeCommand = (value) => String(value || "").trim();

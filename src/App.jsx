@@ -74,7 +74,9 @@ import {
 } from "react-icons/md";
 import {
   OYO_LGAS,
+  POLLING_UNITS,
   UNIT_TYPES,
+  WARDS,
 } from "../shared/electionData.js";
 
 const API = "/api";
@@ -1362,7 +1364,7 @@ function MapView({
   );
 }
 
-function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
+function IncidentForm({ point, users, onClose, onSave, isAdmin, currentUser }) {
   const initialType = point.reportType || INCIDENT_TYPES[0];
   const initialStyle = {
     ...REPORT_TYPE_STYLES[initialType],
@@ -1377,7 +1379,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
     }
   });
   const [customTypeName, setCustomTypeName] = useState("");
-  const [pollingUnit, setPollingUnit] = useState(String(point?.pollingUnit || ""));
+  const [pollingUnit, setPollingUnit] = useState(String(point?.pollingUnit || currentUser?.pollingUnit || ""));
   const [resultCount, setResultCount] = useState(String(point?.resultCount || ""));
   const [form, setForm] = useState({
     title: "",
@@ -1395,6 +1397,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
   });
   const [mediaError, setMediaError] = useState("");
   const isResultReport = form.reportType === POLLING_RESULT_TYPE;
+  const isFieldRestricted = ["Agent", "Supervisor"].includes(currentUser?.role);
   const officerOptions = users.filter((user) =>
     ["Response Team", "Agent"].includes(user.role),
   );
@@ -1490,6 +1493,8 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
             reportType: nextType,
             pollingUnit: normalizedPollingUnit,
             resultCount: normalizedResultCount,
+            lga: currentUser?.lga || "",
+            ward: currentUser?.ward || "",
           });
         }}
       >
@@ -1538,14 +1543,18 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
         {isResultReport ? (
           <>
             <label>
-              Polling unit name or code
-              <input
+              Polling unit
+              <select
                 required
                 autoFocus
                 value={pollingUnit}
                 onChange={(e) => setPollingUnit(e.target.value)}
-                placeholder="e.g. Ward 04, PU 012"
-              />
+                disabled={currentUser?.role === "Agent"}
+              >
+                <option value="">Select polling unit</option>
+                {currentUser?.pollingUnit && !POLLING_UNITS.includes(currentUser.pollingUnit) && <option>{currentUser.pollingUnit}</option>}
+                {POLLING_UNITS.map((unit) => <option key={unit}>{unit}</option>)}
+              </select>
             </label>
             <label>
               Result count
@@ -1579,7 +1588,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
             </label>
           </>
         )}
-        <div className="report-style-box">
+        {!isFieldRestricted && <div className="report-style-box">
           <div
             className="report-style-preview"
             style={{
@@ -1662,8 +1671,8 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
               }
             />
           </label>
-        </div>
-        <div className="two-col">
+        </div>}
+        {!isFieldRestricted && <div className="two-col">
           <label>
             Assign responder
             <select
@@ -1696,7 +1705,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
                 ))}
             </select>
           </label>
-        </div>
+        </div>}
         <div className="report-capture-row">
           <label className="capture-btn">
             {isResultReport ? "Photograph signed result" : "Snap photo"}
@@ -1773,8 +1782,8 @@ function OfficerManager({
   onPassword,
 }) {
   const manageableRoles = currentUser.role === "Super Admin"
-    ? ["Admin", "Response Team", "Agent"]
-    : ["Response Team", "Agent"];
+    ? ["Admin", "Response Team", "Supervisor", "Agent"]
+    : ["Response Team", "Supervisor", "Agent"];
   const defaultRole = manageableRoles[manageableRoles.length - 1];
   const emptyForm = {
     name: "",
@@ -1787,12 +1796,15 @@ function OfficerManager({
     division: "",
     station: "",
     lga: OYO_LGAS[0],
+    ward: WARDS[0],
+    pollingUnit: POLLING_UNITS[0],
     lat: "7.3775",
     lng: "3.9470",
     role: defaultRole,
   };
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
+  const [managerTab, setManagerTab] = useState("create");
   const submit = async (e) => {
     e.preventDefault();
     setError("");
@@ -1825,8 +1837,24 @@ function OfficerManager({
             <FaTimes />
           </button>
         </div>
+        <div className="personnel-tabs" role="tablist" aria-label="Personnel management">
+          <button
+            type="button"
+            className={managerTab === "create" ? "active" : ""}
+            onClick={() => setManagerTab("create")}
+          >
+            Create account
+          </button>
+          <button
+            type="button"
+            className={managerTab === "list" ? "active" : ""}
+            onClick={() => setManagerTab("list")}
+          >
+            Existing users ({users.filter((user) => user.role !== "Super Admin").length})
+          </button>
+        </div>
         <div className="manager-grid">
-          <div className="manage-list">
+          {managerTab === "list" && <div className="manage-list">
             <h3>Visible personnel</h3>
             {users
               .filter((o) => o.role !== "Super Admin")
@@ -1861,8 +1889,8 @@ function OfficerManager({
                 </button>
               </div>
             ))}
-          </div>
-          <form onSubmit={submit}>
+          </div>}
+          {managerTab === "create" && <form className="personnel-create-form" onSubmit={submit}>
             <h3>Create personnel account</h3>
             <label>
               Full name
@@ -1932,6 +1960,21 @@ function OfficerManager({
             </div>
             <div className="two-col">
               <label>
+                Ward / supervisor zone
+                <select required value={form.ward} onChange={(e) => setForm({ ...form, ward: e.target.value })}>
+                  {WARDS.map((ward) => <option key={ward}>{ward}</option>)}
+                </select>
+              </label>
+              <label>
+                Polling unit {form.role === "Supervisor" ? "(optional)" : "assignment"}
+                <select required={form.role === "Agent"} value={form.pollingUnit} onChange={(e) => setForm({ ...form, pollingUnit: e.target.value })}>
+                  <option value="">All units in ward</option>
+                  {POLLING_UNITS.map((unit) => <option key={unit}>{unit}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="two-col">
+              <label>
                 Unit / team name
                 <input
                   required
@@ -1984,7 +2027,7 @@ function OfficerManager({
             <button className="primary wide" disabled={!manageableRoles.length}>
               Create account
             </button>
-          </form>
+          </form>}
         </div>
       </section>
     </div>
@@ -3885,6 +3928,9 @@ function Dashboard({ session, onLogout }) {
     [users, gpsPositions],
   );
   const canAdmin = ["Admin", "Super Admin"].includes(session.user.role);
+  const isAgent = session.user.role === "Agent";
+  const isSupervisor = session.user.role === "Supervisor";
+  const isFieldRole = isAgent || isSupervisor;
   const canCreateCustomReportType = ["Admin", "Super Admin"].includes(
     session.user.role,
   );
@@ -3892,6 +3938,8 @@ function Dashboard({ session, onLogout }) {
     ["Super Admin", "Admin"].includes(session.user.role);
   const canSeeReport = (item) =>
     canAdmin ||
+    (isSupervisor && session.user.lga && session.user.ward &&
+      item.lga === session.user.lga && item.ward === session.user.ward) ||
     item.createdBy === session.user.id ||
     item.assignedTo === session.user.id ||
     (item.visibleTo || []).includes(session.user.id);
@@ -4539,6 +4587,9 @@ function Dashboard({ session, onLogout }) {
     await loadRoute([here, routeResult.end]);
   };
   const currentMapPoint = () => {
+    const live = gpsBestRef.current;
+    if (Number.isFinite(Number(live?.lat)) && Number.isFinite(Number(live?.lng)))
+      return { lat: Number(live.lat), lng: Number(live.lng) };
     const center = mapRef.current?.getCenter();
     return center
       ? { lat: center.lat, lng: center.lng }
@@ -4554,9 +4605,7 @@ function Dashboard({ session, onLogout }) {
     setNewPoint({
       ...currentMapPoint(),
       reportType: POLLING_RESULT_TYPE,
-      pollingUnit: [session.user.unit, session.user.station, session.user.lga]
-        .filter(Boolean)
-        .join(" • "),
+      pollingUnit: session.user.pollingUnit || "",
     });
     setNotice("Polling unit result form ready. Add vote counts and photo evidence.");
   };
@@ -5483,7 +5532,7 @@ function Dashboard({ session, onLogout }) {
     window.addEventListener("pointerup", up);
   };
   return (
-    <main className="app-shell">
+    <main className={`app-shell role-${session.user.role.toLowerCase().replaceAll(" ", "-")}`}>
       {operationsOpen && (
         <button
           className="operations-backdrop"
@@ -5491,7 +5540,7 @@ function Dashboard({ session, onLogout }) {
           aria-label="Close sidebar"
         ></button>
       )}
-      <aside
+      {!isFieldRole && <aside
         className={`command-sidebar ${operationsOpen ? "open" : ""}`}
         style={{ "--sidebar-width": `${sidebarWidth}px` }}
       >
@@ -5852,7 +5901,7 @@ function Dashboard({ session, onLogout }) {
           aria-label="Resize sidebar"
           title="Drag to resize sidebar"
         ></button>
-      </aside>
+      </aside>}
       <section className="map-wrap">
         <button
           className="mobile-menu-fab"
@@ -5868,7 +5917,7 @@ function Dashboard({ session, onLogout }) {
         </button>
         <div className="map-top-controls" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
           <div className="map-top-left">
-            <div className={`map-home-menu ${mapMenu === "home" ? "open" : ""}`}>
+            {!isFieldRole && <div className={`map-home-menu ${mapMenu === "home" ? "open" : ""}`}>
               <button
                 className="map-menu-trigger"
                 type="button"
@@ -5905,14 +5954,14 @@ function Dashboard({ session, onLogout }) {
                    SOS <span>{showSosIncidents ? "Hide" : "Show"}</span>
                 </button>
               </div>
-            </div>
-            <div className={`map-home-menu incident-menu ${mapMenu === "incident" ? "open" : ""}`}>
+            </div>}
+            {!isAgent && <div className={`map-home-menu incident-menu ${mapMenu === "incident" ? "open" : ""}`}>
               <button
                 className="map-menu-trigger"
                 type="button"
                 title="New incident"
                 onClick={() => {
-                  if (!canCreateCustomReportType) {
+                  if (!canCreateCustomReportType && !isSupervisor) {
                     openIncidentPointForm();
                     return;
                   }
@@ -5921,24 +5970,24 @@ function Dashboard({ session, onLogout }) {
               >
                 <ReportIcon iconKey="IP" size={14} />
               </button>
-              {canCreateCustomReportType && (
+              {(canCreateCustomReportType || isSupervisor) && (
                 <div className="map-home-dropdown">
-                  <button
+                  {canCreateCustomReportType && <button
                     onClick={() => {
                       pickIncidentPoint();
                       setMapMenu("");
                     }}
                   >
                     <ReportIcon iconKey="IP" size={14} /> Point
-                  </button>
-                  <button
+                  </button>}
+                  {canCreateCustomReportType && <button
                     onClick={() => {
                       openPollingUnitResultForm();
                       setMapMenu("");
                     }}
                   >
                     <ReportIcon iconKey="POI" size={14} /> Polling Unit Result
-                  </button>
+                  </button>}
                   <button
                     onClick={() => {
                       startIncidentArea("circle");
@@ -5957,8 +6006,8 @@ function Dashboard({ session, onLogout }) {
                   </button>
                 </div>
               )}
-            </div>
-            <div className={`map-home-menu map-layer-menu ${mapMenu === "layers" ? "open" : ""}`}>
+            </div>}
+            {!isFieldRole && <div className={`map-home-menu map-layer-menu ${mapMenu === "layers" ? "open" : ""}`}>
               <button
                 className="map-menu-trigger"
                 type="button"
@@ -5985,15 +6034,15 @@ function Dashboard({ session, onLogout }) {
                   </select>
                 </label>
               </div>
-            </div>
-            <button
+            </div>}
+            {!isFieldRole && <button
               className="map-action street-view-tool icon-only"
               onClick={openStreetPhotos}
               title="Street View"
             >
               <FaStreetView />
-            </button>
-            {hasMapTools && (
+            </button>}
+            {!isFieldRole && hasMapTools && (
               <button
                 className="map-action clear-tools-btn"
                 onClick={() => {
@@ -6040,13 +6089,20 @@ function Dashboard({ session, onLogout }) {
                 <i>{phoneShares.length + cameras.length}</i>
               </button>
             )}
-            <button
+            {!isAgent && <button
               className="map-action"
               onClick={() => shareMap()}
               title="Share map"
             >
               <FaLocationArrow />
-            </button>
+            </button>}
+            {isAgent && <button
+              className="map-action result-report-action"
+              onClick={openPollingUnitResultForm}
+              title="Report polling unit result"
+            >
+              Result
+            </button>}
             <button
               className="map-action emergency-open"
               onClick={() => setEmergencyOpen(true)}
@@ -6056,7 +6112,7 @@ function Dashboard({ session, onLogout }) {
             </button>
           </div>
           <div className="map-top-right">
-            <form className="coord-jump" onSubmit={jump}>
+            {!isFieldRole && <form className="coord-jump" onSubmit={jump}>
               <span>COORD</span>
               <input
                 value={coords}
@@ -6064,7 +6120,7 @@ function Dashboard({ session, onLogout }) {
                 placeholder="7.3775, 3.9470"
               />
               <button>GO</button>
-            </form>
+            </form>}
             <button
               className="map-action logout-btn"
               onClick={onLogout}
@@ -6074,7 +6130,15 @@ function Dashboard({ session, onLogout }) {
             </button>
           </div>
         </div>
-        <MapView
+        {isAgent && <div className="agent-field-screen">
+          <img src="/bsa-logo.png" alt="BSA Oyo Ahead" />
+          <span className="eyebrow">FIELD REPORTING</span>
+          <h1>{session.user.pollingUnit || "Polling unit agent"}</h1>
+          <p>{[session.user.lga, session.user.ward].filter(Boolean).join(" • ")}</p>
+          <button className="primary" onClick={openPollingUnitResultForm}>Report polling unit result with photo</button>
+          <small>The map is hidden for Agent accounts. Use the controls above to share GPS/location, camera, or send SOS.</small>
+        </div>}
+        {!isAgent && <MapView
           incidents={mapVisibleIncidents}
           officers={officers}
           cameras={mapCameras}
@@ -6104,14 +6168,14 @@ function Dashboard({ session, onLogout }) {
           isAdmin={canAdmin}
           onLayerToggle={toggleMapLayer}
           onLayerOpacity={updateLayerOpacity}
-        />
-        <button
+        />}
+        {!isAgent && <button
           className="my-location-target"
           onClick={locateMe}
           title="Locate me"
         >
           <LuLocateFixed />
-        </button>
+        </button>}
       </section>
       {selected && (
         <section className="detail">
@@ -6334,6 +6398,7 @@ function Dashboard({ session, onLogout }) {
           onClose={() => setNewPoint(null)}
           onSave={save}
           isAdmin={canCreateCustomReportType}
+          currentUser={session.user}
         />
       )}
       {emergencyOpen && (

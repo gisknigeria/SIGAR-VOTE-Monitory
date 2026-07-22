@@ -39,6 +39,16 @@
   aside{max-height:60dvh}
 }
 
+.app-shell.role-agent,.app-shell.role-supervisor{grid-template-columns:1fr}
+.role-agent .mobile-menu-fab,.role-supervisor .mobile-menu-fab{display:none}
+.agent-field-screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:90px 24px 32px;text-align:center;background:radial-gradient(circle at 50% 30%,#711b3b 0,transparent 32%),linear-gradient(145deg,#160a10,#260b18 58%,#12070c)}
+.agent-field-screen img{width:min(280px,68vw);max-height:160px;object-fit:contain}
+.agent-field-screen h1{margin:0;font-size:clamp(24px,5vw,44px)!important}
+.agent-field-screen p{margin:0;color:#e7c77c!important}
+.agent-field-screen .primary{width:min(420px,100%);background:#8b1e46;color:#fff;border:1px solid #d9aa4b}
+.agent-field-screen small{max-width:520px;color:#d8bcc8!important;line-height:1.6}
+.result-report-action{width:auto!important;padding:0 10px!important;color:#f8d984!important;font-size:10px!important;font-weight:900!important}
+
 /* Election Monitoring Command Center — wine and gold campaign theme */
 :root{
   --wine-950:#1b050d;
