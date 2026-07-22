@@ -42,6 +42,9 @@
 /* Field Agent dashboard must remain visible after the desktop/mobile grid rules. */
 .app-shell.role-agent{display:grid!important;grid-template:1fr/1fr!important}
 .role-agent .map-wrap{grid-column:1!important;grid-row:1!important;width:100%;height:100dvh;min-height:0}
+.app-shell.role-supervisor{display:grid!important;grid-template:1fr/1fr!important}
+.role-supervisor .map-wrap{grid-column:1!important;grid-row:1!important;width:100%;height:100dvh;min-height:0}
+.role-supervisor .map-top-controls{left:14px;right:14px}
 .role-agent .map-top-controls{display:none!important}
 .role-agent .agent-field-screen{z-index:900;overflow-y:auto;justify-content:flex-start;padding:34px 20px;min-height:100dvh}
 .agent-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,240px));gap:12px;width:min(500px,100%);margin-top:8px}
