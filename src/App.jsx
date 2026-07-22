@@ -6029,7 +6029,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     <b>
                       <FaRulerCombined /> Measure
                     </b>
-                    <span>Distance on map</span>
+                    
                   </button>
                   <button
                     className={drawMode === "route" ? "active" : ""}
@@ -6038,7 +6038,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     <b>
                       <FaRoute /> Route
                     </b>
-                    <span>Start and destination</span>
+                    
                   </button>
                   {drawMode === "route" && <form className="route-input-tool" onSubmit={routeFromInputs}>
                     <input
@@ -6069,7 +6069,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                       <b>
                         <FaCircle /> Buffer
                       </b>
-                      <span>Radius incident</span>
+                    
                     </button>
                   )}
                   {canCreateCustomReportType && (
@@ -6080,7 +6080,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                       <b>
                         <FaDrawPolygon /> Freehand Incident
                       </b>
-                      <span>Draw area</span>
+                    
                     </button>
                   )}
                   {hasMapTools && (
@@ -6088,7 +6088,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                       <b>
                         <FaTools /> Clear Tools
                       </b>
-                      <span>Remove overlays</span>
+                      
                     </button>
                   )}
                   {areas.length > 0 && (
@@ -6096,7 +6096,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                       <b>
                         <FaMapMarkedAlt /> Share Area
                       </b>
-                      <span>Latest area</span>
+                     
                     </button>
                   )}
                   {areas.length > 0 && (
@@ -6104,7 +6104,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                       <b>
                         <FaTools /> Clear Areas
                       </b>
-                      <span>Remove areas</span>
+                     
                     </button>
                   )}
                   {canAdmin && (
@@ -6120,7 +6120,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                       <b>
                         <FaUserCog /> Manage Users
                       </b>
-                      <span>Users</span>
+                     
                     </button>
                   )}
                   <button onClick={toggleGps}>
@@ -6133,32 +6133,27 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     <b>
                       <FaVideo /> {sharingCamera ? "Stop Camera" : "Share Camera"}
                     </b>
-                    <span>Phone feed</span>
+                    
                   </button>
                   <button onClick={() => setCameraPanel(true)}>
                     <b>
-                      <FaVideo /> Cameras
+                      <FaVideo /> {phoneShares.length + cameras.length} feeds
                     </b>
-                    <span>{phoneShares.length + cameras.length} feeds</span>
+                  
                   </button>
                   <button onClick={() => setChatPanel(true)}>
                     <b>
                       <FaComments /> Chat
                     </b>
-                    <span>{chatRooms.length} rooms</span>
+                    
                   </button>
                   <button onClick={refreshApp}>
                     <b>
                       <FaSyncAlt /> {updateReady ? "Update Ready" : "Update App"}
                     </b>
-                    <span>Refresh</span>
+                   
                   </button>
-                  <button onClick={changeOwnPassword}>
-                    <b>
-                      <FaKey /> Change Password
-                    </b>
-                    <span>Account</span>
-                  </button>
+                 
                 </div>
               )}
               {canAdmin && (
