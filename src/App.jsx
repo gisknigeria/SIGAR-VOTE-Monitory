@@ -4191,6 +4191,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const offlineFallbackRef = useRef(false);
   const offlineUploadRef = useRef(false);
   const activeRoomRef = useRef(null);
+  const wakeLockRef = useRef(null);
+  const silentAudioRef = useRef(null);
   const officers = useMemo(
     () =>
       users
@@ -4619,6 +4621,58 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       else if (data.candidate && pc)
         await pc.addIceCandidate(data.candidate).catch(() => {});
     });
+    // Restart camera stream when app returns to foreground after being backgrounded
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === "visible" && sharingCameraRef.current) {
+        // Re-acquire wake lock (it gets released when tab hides)
+        acquireWakeLock();
+        // Check if our video track got killed by the browser
+        const stream = localCameraStreamRef.current;
+        const videoTrack = stream?.getVideoTracks()[0];
+        if (!videoTrack || videoTrack.readyState === "ended") {
+          try {
+            const facingMode = cameraFacingMode;
+            const newStream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+              audio: true,
+            });
+            localCameraStreamRef.current = newStream;
+            // Replace tracks in all active peer connections
+            Object.values(rtcPeersRef.current).forEach((pc) => {
+              const newVideo = newStream.getVideoTracks()[0];
+              const newAudio = newStream.getAudioTracks()[0];
+              pc.getSenders().forEach((sender) => {
+                if (sender.track?.kind === "video" && newVideo) sender.replaceTrack(newVideo);
+                if (sender.track?.kind === "audio" && newAudio) sender.replaceTrack(newAudio);
+              });
+            });
+            // Re-announce to server so admin can re-request if needed
+            socketRef.current?.emit("camera:share:start", {
+              userId: session.user.id,
+              name: session.user.name,
+              type: "Phone",
+              role: session.user.role,
+              email: session.user.email,
+              lga: session.user.lga,
+              ward: session.user.ward,
+              pollingUnit: session.user.pollingUnit,
+              station: session.user.station,
+            });
+            newStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+              if (localCameraStreamRef.current !== newStream) return;
+              sharingCameraRef.current = false;
+              stopOfflineVideoRecording();
+              socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
+              setSharingCamera(false);
+              setSelfCameraPreview(false);
+              releaseWakeLock();
+              stopSilentAudio();
+            });
+          } catch {}
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       if (gpsWatchRef.current != null)
         navigator.geolocation?.clearWatch(gpsWatchRef.current);
@@ -4630,6 +4684,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       socket.close();
       socketRef.current = null;
       window.removeEventListener("online", flushOfflineVideoQueue);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      releaseWakeLock();
+      stopSilentAudio();
     };
   }, []);
   const visible = incidents.filter(
@@ -5747,6 +5804,44 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       text: `${area.title || "Election monitoring operational area"}${area.note ? ` - ${area.note}` : ""}`,
     });
   };
+  // Keep the device awake while camera is sharing
+  const acquireWakeLock = async () => {
+    try {
+      if ("wakeLock" in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener("release", () => {
+          // Re-acquire if we lost it and still sharing (e.g. tab became visible again)
+          if (sharingCameraRef.current) acquireWakeLock();
+        });
+      }
+    } catch {}
+  };
+  const releaseWakeLock = () => {
+    wakeLockRef.current?.release().catch(() => {});
+    wakeLockRef.current = null;
+  };
+  // Silent audio context trick — keeps JS alive in browsers that throttle hidden tabs
+  const startSilentAudio = () => {
+    if (silentAudioRef.current) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0001; // Nearly silent
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start();
+      silentAudioRef.current = { ctx, oscillator };
+    } catch {}
+  };
+  const stopSilentAudio = () => {
+    try {
+      silentAudioRef.current?.oscillator.stop();
+      silentAudioRef.current?.ctx.close();
+    } catch {}
+    silentAudioRef.current = null;
+  };
   const getCameraStream = async (facingMode, includeAudio = true, exact = false) => {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
       throw new Error("Camera sharing requires HTTPS and a supported browser");
@@ -5772,6 +5867,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
       setSharingCamera(false);
       setSelfCameraPreview(false);
+      releaseWakeLock();
+      stopSilentAudio();
       setNotice("Camera sharing stopped");
       return;
     }
@@ -5781,6 +5878,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       sharingCameraRef.current = true;
       setSharingCamera(true);
       setSelfCameraPreview(cameraPreviewMode);
+      acquireWakeLock();
+      startSilentAudio();
       socketRef.current?.emit("camera:share:start", {
         userId: session.user.id,
         name: session.user.name,
@@ -5800,6 +5899,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
         setSharingCamera(false);
         setSelfCameraPreview(false);
+        releaseWakeLock();
+        stopSilentAudio();
       });
       if (!socketRef.current?.connected)
         startOfflineVideoRecording("Network connection unavailable");
@@ -5844,6 +5945,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
         setSharingCamera(false);
         setSelfCameraPreview(false);
+        releaseWakeLock();
+        stopSilentAudio();
       });
     } catch (error) {
       try {
