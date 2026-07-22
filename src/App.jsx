@@ -6269,6 +6269,37 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 </button>
               )}
             </div>}
+            <div className="sidebar-dropdown-section situational-section officer-summary">
+              <button
+                className={`sidebar-section-toggle sidebar-nav-dropdown situational-toggle ${situationalOpen ? "open" : ""}`}
+                aria-expanded={situationalOpen}
+                onClick={() => setSituationalOpen((value) => {
+                  const next = !value;
+                  if (next) {
+                    setLiveIncidentsOpen(false);
+                    setToolsOpen(false);
+                  }
+                  return next;
+                })}
+              >
+                <h3>Situational Rep</h3>
+                <span>{situationalOpen ? "−" : "+"}</span>
+              </button>
+              {situationalOpen && (
+                <div className="sidebar-dropdown-body">
+                  {officers.map((o) => (
+                    <div className="officer-row" key={o.id}>
+                      <i className={o.status.toLowerCase()}></i>
+                      <div>
+                        <b>{o.rank ? `${o.rank} ${o.name}` : o.name}</b>
+                        <small>{o.unit}</small>
+                      </div>
+                      <span>{o.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="sidebar-dropdown-section live-section">
               <button
                 className={`sidebar-section-toggle sidebar-nav-dropdown live-toggle ${liveIncidentsOpen ? "open" : ""}`}
@@ -6346,37 +6377,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-            <div className="sidebar-dropdown-section situational-section officer-summary">
-              <button
-                className={`sidebar-section-toggle sidebar-nav-dropdown situational-toggle ${situationalOpen ? "open" : ""}`}
-                aria-expanded={situationalOpen}
-                onClick={() => setSituationalOpen((value) => {
-                  const next = !value;
-                  if (next) {
-                    setLiveIncidentsOpen(false);
-                    setToolsOpen(false);
-                  }
-                  return next;
-                })}
-              >
-                <h3>Situational Rep</h3>
-                <span>{situationalOpen ? "−" : "+"}</span>
-              </button>
-              {situationalOpen && (
-                <div className="sidebar-dropdown-body">
-                  {officers.map((o) => (
-                    <div className="officer-row" key={o.id}>
-                      <i className={o.status.toLowerCase()}></i>
-                      <div>
-                        <b>{o.rank ? `${o.rank} ${o.name}` : o.name}</b>
-                        <small>{o.unit}</small>
-                      </div>
-                      <span>{o.status}</span>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
