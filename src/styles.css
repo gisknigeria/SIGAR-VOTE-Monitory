@@ -983,7 +983,7 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
   .topbar-actions{gap:6px;margin-left:auto;flex:0 0 auto}
   .topbar-icon-btn{width:38px;height:38px;border-radius:999px;font-size:13px}
   .topbar-icon-btn.emergency-open{min-width:52px;padding:0 11px;font-size:10px}
-  .command-sidebar{position:fixed;left:0;right:0;top:0;bottom:0;width:auto;max-width:none;min-width:0;z-index:1200;border:0;border-radius:0;overflow-y:auto;overflow-x:hidden;box-shadow:none;transform:translateX(calc(-100% - 0px));opacity:0;pointer-events:none;transition:transform .22s ease,opacity .22s ease;padding-bottom:max(14px, env(safe-area-inset-bottom))}
+  .command-sidebar{position:fixed;left:0;right:0;top:0;bottom:0;width:auto;max-width:none;min-width:0;z-index:1200;border:0;border-radius:0;overflow-y:auto;overflow-x:hidden;box-shadow:none;transform:translateX(calc(-100% - 0px));opacity:0;pointer-events:none;transition:transform .22s ease,opacity .22s ease;padding-bottom:max(24px, env(safe-area-inset-bottom))}
   .command-sidebar.open{transform:translateX(0);opacity:1;pointer-events:auto}
   .sidebar-actions{padding:10px 12px 8px;gap:8px}
   .sidebar-actions button{min-height:44px;padding:10px 12px}
@@ -1034,3 +1034,13 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .assign-select{width:100%;margin-top:4px;padding:9px 10px;border:1px solid #6f2940;border-radius:7px;background:#1c060e;color:var(--cream);font-size:12px;font-weight:600;cursor:pointer}
 .assign-select:focus{outline:none;border-color:var(--gold-400)}
 .assign-select option,.assign-select optgroup{background:#1c060e;color:var(--cream)}
+
+/* Sidebar user row — profile & logout buttons */
+.sidebar-user{justify-content:space-between}
+.sidebar-user-actions{display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0}
+.sidebar-user-btn{display:grid;place-items:center;width:34px;height:34px;border:1px solid #6f2940;border-radius:8px;background:#310a18;color:#d9aa4b;font-size:13px}
+.sidebar-user-btn:hover{border-color:#d9aa4b;background:#4a1228}
+.sidebar-user-btn.logout{color:#f87171;border-color:#7f1d1d;background:#2a1016}
+.sidebar-user-btn.logout:hover{border-color:#ef4444;background:#3f0f0f}
+/* On desktop, hide the sidebar user buttons (profile is in topbar dropdown) */
+@media(min-width:761px){.sidebar-user-actions{display:none}}

@@ -6268,6 +6268,22 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               </span>
             )}
           </div>
+          <div className="sidebar-user-actions">
+            <button
+              className="sidebar-user-btn"
+              onClick={() => { setProfileOpen(true); setOperationsOpen(false); }}
+              title="Profile"
+            >
+              <FaKey />
+            </button>
+            <button
+              className="sidebar-user-btn logout"
+              onClick={onLogout}
+              title="Logout"
+            >
+              <FaSignOutAlt />
+            </button>
+          </div>
         </div>
         <form className="sidebar-search" onSubmit={geocode}>
           <svg
