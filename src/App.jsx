@@ -246,7 +246,8 @@ const INCIDENT_TYPES = [
   "Network Connectivity",
   "Battery Depletion",
 ];
-const REPORT_TYPES = INCIDENT_TYPES;
+const POLLING_RESULT_TYPE = "Polling Unit Result";
+const REPORT_TYPES = [...INCIDENT_TYPES, POLLING_RESULT_TYPE];
 const REPORT_TYPE_STYLES = {
   "BS-Black Spot": {
     icon: "BS",
@@ -1362,7 +1363,7 @@ function MapView({
 }
 
 function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
-  const initialType = INCIDENT_TYPES[0];
+  const initialType = point.reportType || INCIDENT_TYPES[0];
   const initialStyle = {
     ...REPORT_TYPE_STYLES[initialType],
     ...(point.style || {}),
@@ -1376,6 +1377,8 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
     }
   });
   const [customTypeName, setCustomTypeName] = useState("");
+  const [pollingUnit, setPollingUnit] = useState(String(point?.pollingUnit || ""));
+  const [resultCount, setResultCount] = useState(String(point?.resultCount || ""));
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -1391,6 +1394,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
     lng: center.lng,
   });
   const [mediaError, setMediaError] = useState("");
+  const isResultReport = form.reportType === POLLING_RESULT_TYPE;
   const officerOptions = users.filter((user) =>
     ["Response Team", "Agent"].includes(user.role),
   );
@@ -1460,6 +1464,10 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
         className="modal report-modal"
         onSubmit={(e) => {
           e.preventDefault();
+          if (isResultReport && !form.media.some((item) => item.type === "image")) {
+            setMediaError("A clear photograph of the signed polling-unit result is required.");
+            return;
+          }
           const nextType =
             form.reportType === "Custom" && customTypeName.trim()
               ? customTypeName.trim()
@@ -1469,13 +1477,26 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
             localStorage.setItem("report-custom-types", JSON.stringify(nextCustomTypes));
             setCustomTypes(nextCustomTypes);
           }
-          onSave({ ...form, reportType: nextType });
+          const normalizedPollingUnit = pollingUnit.trim();
+          const normalizedResultCount = resultCount.trim();
+          onSave({
+            ...form,
+            title: isResultReport
+              ? `Polling Unit Result - ${normalizedPollingUnit}`
+              : form.title,
+            description: isResultReport
+              ? `Polling unit: ${normalizedPollingUnit}\n\nDeclared result counts:\n${normalizedResultCount}`
+              : form.description,
+            reportType: nextType,
+            pollingUnit: normalizedPollingUnit,
+            resultCount: normalizedResultCount,
+          });
         }}
       >
         <div className="panel-title">
           <div>
-            <span className="eyebrow">NEW FIELD INCIDENT</span>
-            <h2>Create incident</h2>
+            <span className="eyebrow">{isResultReport ? "ELECTION RESULT" : "NEW FIELD INCIDENT"}</span>
+            <h2>{isResultReport ? "Report polling unit result" : "Create incident"}</h2>
           </div>
           <button type="button" className="icon-btn" onClick={onClose}>
             <FaTimes />
@@ -1514,24 +1535,50 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
             </select>
           </label>
         </div>
-        <label>
-          Incident title
-          <input
-            required
-            autoFocus
-            value={form.title}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
-            placeholder="What is happening or what is this point?"
-          />
-        </label>
-        <label>
-          Notes
-          <textarea
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Write statement, observation, instructions or evidence notes..."
-          />
-        </label>
+        {isResultReport ? (
+          <>
+            <label>
+              Polling unit name or code
+              <input
+                required
+                autoFocus
+                value={pollingUnit}
+                onChange={(e) => setPollingUnit(e.target.value)}
+                placeholder="e.g. Ward 04, PU 012"
+              />
+            </label>
+            <label>
+              Result count
+              <textarea
+                required
+                value={resultCount}
+                onChange={(e) => setResultCount(e.target.value)}
+                placeholder={"Enter each party/candidate and vote count, one per line.\nExample:\nParty A: 120\nParty B: 86\nRejected ballots: 4"}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label>
+              Incident title
+              <input
+                required
+                autoFocus
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="What is happening or what is this point?"
+              />
+            </label>
+            <label>
+              Notes
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Write statement, observation, instructions or evidence notes..."
+              />
+            </label>
+          </>
+        )}
         <div className="report-style-box">
           <div
             className="report-style-preview"
@@ -1652,7 +1699,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
         </div>
         <div className="report-capture-row">
           <label className="capture-btn">
-            Snap photo
+            {isResultReport ? "Photograph signed result" : "Snap photo"}
             <input
               type="file"
               accept="image/*"
@@ -1660,7 +1707,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
               onChange={(e) => addMedia(e.target.files || [])}
             />
           </label>
-          <label className="capture-btn">
+          {!isResultReport && <label className="capture-btn">
             Record video
             <input
               type="file"
@@ -1668,8 +1715,8 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
               capture="environment"
               onChange={(e) => addMedia(e.target.files || [])}
             />
-          </label>
-          <label className="capture-btn">
+          </label>}
+          {!isResultReport && <label className="capture-btn">
             Attach media
             <input
               type="file"
@@ -1677,7 +1724,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
               multiple
               onChange={(e) => addMedia(e.target.files || [])}
             />
-          </label>
+          </label>}
         </div>
         {mediaError && <div className="error">{mediaError}</div>}
         {form.media.length > 0 && (
@@ -1708,7 +1755,9 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
           <button type="button" className="ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="primary">Submit incident</button>
+          <button className="primary">
+            {isResultReport ? "Submit polling unit result" : "Submit incident"}
+          </button>
         </div>
       </form>
     </div>
@@ -3501,6 +3550,38 @@ function AnalyticsPanel({
   onCsv,
   onClear,
 }) {
+  const resultReports = useMemo(
+    () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
+    [incidents],
+  );
+  const pollingUnitSummaries = useMemo(() => {
+    const grouped = new Map();
+    resultReports.forEach((item) => {
+      const unit = (item.pollingUnit || "Unspecified polling unit").trim();
+      if (!grouped.has(unit)) {
+        grouped.set(unit, {
+          unit,
+          count: 0,
+          total: 0,
+          submissions: [],
+        });
+      }
+      const entry = grouped.get(unit);
+      entry.count += 1;
+      entry.submissions.push(item);
+      const numbers = (item.resultCount || "")
+        .split(/\n|,/)
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+        .map((segment) => {
+          const match = segment.match(/(\d+(?:\.\d+)?)/);
+          return match ? Number(match[1]) : null;
+        })
+        .filter((value) => Number.isFinite(value));
+      entry.total += numbers.reduce((sum, value) => sum + value, 0);
+    });
+    return Array.from(grouped.values()).sort((a, b) => b.total - a.total);
+  }, [resultReports]);
   const [result, setResult] = useState("Click an analysis tool to execute");
   const pointLayers = mapLayers.filter(
     (layer) => layer.category === "Point" || layer.type === "geojson",
@@ -3660,6 +3741,25 @@ function AnalyticsPanel({
             Clear analysis
           </button>
         </div>
+        {pollingUnitSummaries.length > 0 && (
+          <div className="analytics-result polls-results-card">
+            <b>Polling unit vote results</b>
+            <span>
+              {pollingUnitSummaries.length} unit{pollingUnitSummaries.length === 1 ? "" : "s"} submitted results.
+            </span>
+            <div className="polling-unit-list">
+              {pollingUnitSummaries.map((entry) => (
+                <div className="polling-unit-item" key={entry.unit}>
+                  <div>
+                    <strong>{entry.unit}</strong>
+                    <small>{entry.count} submission{entry.count === 1 ? "" : "s"}</small>
+                  </div>
+                  <b>Total {entry.total}</b>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       <div className="analytics-grid">
         {ANALYTIC_TOOLS.map((tool) => (
@@ -4195,13 +4295,25 @@ function Dashboard({ session, onLogout }) {
   const save = async (form) => {
     const item = await request("/incidents", session.token, {
       method: "POST",
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        ...form,
+        createdBy: session.user.id,
+        createdAt: new Date().toISOString(),
+      }),
     });
+    const savedItem = {
+      ...form,
+      id: item.id,
+      createdBy: session.user.id,
+      createdAt: item.createdAt || new Date().toISOString(),
+      pollingUnit: form.pollingUnit || "",
+      resultCount: form.resultCount || "",
+    };
     setIncidents((old) =>
-      old.some((i) => i.id === item.id) ? old : [item, ...old],
+      old.some((i) => i.id === savedItem.id) ? old : [savedItem, ...old],
     );
     setNewPoint(null);
-    setSelected(item);
+    setSelected(savedItem);
     setDrawMode("");
     setNotice("Incident submitted successfully");
     setTimeout(() => setNotice(""), 2500);
@@ -4436,6 +4548,17 @@ function Dashboard({ session, onLogout }) {
     clearMapTools();
     setNewPoint(currentMapPoint());
     setNotice("Incident point ready. Complete the incident form.");
+  };
+  const openPollingUnitResultForm = () => {
+    clearMapTools();
+    setNewPoint({
+      ...currentMapPoint(),
+      reportType: POLLING_RESULT_TYPE,
+      pollingUnit: [session.user.unit, session.user.station, session.user.lga]
+        .filter(Boolean)
+        .join(" • "),
+    });
+    setNotice("Polling unit result form ready. Add vote counts and photo evidence.");
   };
   const pickIncidentPoint = () => {
     clearMapTools();
@@ -5810,6 +5933,14 @@ function Dashboard({ session, onLogout }) {
                   </button>
                   <button
                     onClick={() => {
+                      openPollingUnitResultForm();
+                      setMapMenu("");
+                    }}
+                  >
+                    <ReportIcon iconKey="POI" size={14} /> Polling Unit Result
+                  </button>
+                  <button
+                    onClick={() => {
                       startIncidentArea("circle");
                       setMapMenu("");
                     }}
@@ -6013,6 +6144,25 @@ function Dashboard({ session, onLogout }) {
             <span>{selected.reportType || "IP-Incident Point"}</span>
           </div>
           <p>{selected.description || "No written notes added."}</p>
+          {selected.reportType === POLLING_RESULT_TYPE && (
+            <div className="report-result-summary">
+              <b>Polling unit</b>
+              <p>
+                {selected.pollingUnit ||
+                  String(selected.description || "")
+                    .split("\n\nDeclared result counts:\n")[0]
+                    ?.replace("Polling unit: ", "") ||
+                  "Not provided"}
+              </p>
+              <b>Declared counts</b>
+              <pre>
+                {selected.resultCount ||
+                  String(selected.description || "")
+                    .split("\n\nDeclared result counts:\n")[1] ||
+                  "No vote counts were recorded yet."}
+              </pre>
+            </div>
+          )}
           {selected.media?.length > 0 && (
             <div className="report-media-grid">
               {selected.media.map((item, index) =>

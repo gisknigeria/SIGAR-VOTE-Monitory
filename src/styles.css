@@ -138,7 +138,7 @@ aside,.command-sidebar{background:linear-gradient(180deg,#310a18,#21060f)!import
 .modal-backdrop,.operations-backdrop{background:#14030aa8!important}
 .modal input,.modal textarea,.modal select,.detail select{background:#1c060e!important;border-color:#6f2940!important}
 .toast{background:#4c1327!important;border-color:#c18a3c!important;color:var(--gold-300)!important}
-.leaflet-tile-pane{filter:saturate(.68) sepia(.12) hue-rotate(295deg) brightness(.76)!important}
+.leaflet-tile-pane{filter:none!important}
 .leaflet-control-zoom a,.leaflet-control-layers{background:#320b1a!important;border-color:#773149!important;color:var(--gold-300)!important}
 
 @media(max-width:900px){
@@ -721,6 +721,12 @@ body{font-size:14px}
 .analytics-result{display:grid;gap:8px;padding:10px 12px;border:1px solid #304b66;border-radius:10px;background:#0c1724}
 .analytics-result b{color:#e6f2ff;font-size:11px}
 .analytics-result span{color:#8fb0c9;font-size:11px;line-height:1.5}
+.polls-results-card{gap:10px}
+.polling-unit-list{display:grid;gap:8px}
+.polling-unit-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid #244459;border-radius:8px;background:#0f2234}
+.polling-unit-item strong{display:block;color:#f1f7ff;font-size:11px}
+.polling-unit-item small{display:block;color:#7ea1bc;font-size:10px;margin-top:2px}
+.polling-unit-item b{color:#facc15;font-size:11px}
 .analytics-clear{justify-self:start;border:1px solid #36536f;background:#14283d;color:#e6f2ff;border-radius:6px;padding:8px 10px;font-size:10px;font-weight:800}
 .analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.analytics-grid button{display:grid;gap:5px;border:1px solid #28405a;background:linear-gradient(135deg,#102235,#0b1723);color:#cfe2f4;border-radius:8px;padding:10px;text-align:left;font-size:11px;min-height:82px;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.analytics-grid button:hover{transform:translateY(-1px);border-color:#3184e6;box-shadow:0 8px 20px #0f1722}.analytics-grid button b{color:#e6f2ff;font-size:11px}.analytics-grid button small{color:#86a3bd;font-size:10px;line-height:1.35}
 .analytics-summary{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:14px 0}.analytics-summary span{background:#09131f;border:1px solid #20344a;border-radius:6px;padding:8px;color:#8da7c1;font-size:10px}

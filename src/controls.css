@@ -1,7 +1,7 @@
 .map-tools{z-index:1000!important;pointer-events:auto}
 .map-tools button{pointer-events:auto;position:relative}
 .map-tools button.active{border-color:#facc15!important;background:#3b2f0d!important;color:#fff3b0!important;box-shadow:0 0 0 1px #facc1540,0 8px 24px #0006}
-.map-satellite .leaflet-tile-pane,.map-hybrid .leaflet-tile-pane{filter:saturate(1.28) contrast(1.08) brightness(1.03)}
+.map-satellite .leaflet-tile-pane,.map-hybrid .leaflet-tile-pane{filter:none}
 .share-map-tool{border-color:#286899!important;background:#113657!important;color:#8ed1ff!important}
 .danger-tool{border-color:#713842!important;background:#2c171d!important;color:#ff929f!important}
 .gps-share{border:1px solid #285078;background:#10263e;color:#8dbce8;border-radius:6px;padding:8px 10px;font-size:9px;white-space:nowrap}
