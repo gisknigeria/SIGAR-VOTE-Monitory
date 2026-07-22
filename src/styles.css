@@ -926,6 +926,8 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .map-action.clear-tools-btn.active{border-color:#f87171;background:#2a1016;color:#fca5a5;box-shadow:0 0 10px #ef444440;animation:clear-pulse 1.8s ease-in-out infinite}
 @keyframes clear-pulse{0%,100%{box-shadow:0 0 8px #ef444430}50%{box-shadow:0 0 16px #ef444480}}
 .map-action.emergency-open{background:#b91c1c;border-color:#7f1d1d;color:#fff;font:900 10px Inter}
+.sos-holding{touch-action:none;user-select:none;animation:sos-hold-pulse 1s ease-in-out infinite!important;box-shadow:0 0 0 4px #f59e0b99,0 0 24px #ef4444!important}
+@keyframes sos-hold-pulse{0%,100%{filter:brightness(1);transform:scale(1)}50%{filter:brightness(1.35);transform:scale(1.04)}}
 .map-action.logout-btn{color:#f87171}
 .map-action.logout-btn:hover{border-color:#ef4444;background:#2a1016;color:#fca5a5}
 .leaflet-control-attribution,.leaflet-control-attribution *{color:#1f2937!important;font-size:10px!important;font-weight:600!important}
@@ -1027,3 +1029,8 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .camera-live-pill button{display:grid;place-items:center;width:28px;height:28px;border:1px solid #ffffff55;border-radius:50%;background:#22222288;color:#fff;padding:0;font-size:12px}
 .camera-live-pill button:hover{border-color:#fff;background:#333}
 @keyframes live-pill-pulse{0%,100%{box-shadow:0 10px 30px #00000080,0 0 0 0 #ef444440}50%{box-shadow:0 10px 30px #00000080,0 0 0 8px #ef444410}}
+
+/* Inline assignment select in detail panel */
+.assign-select{width:100%;margin-top:4px;padding:9px 10px;border:1px solid #6f2940;border-radius:7px;background:#1c060e;color:var(--cream);font-size:12px;font-weight:600;cursor:pointer}
+.assign-select:focus{outline:none;border-color:var(--gold-400)}
+.assign-select option,.assign-select optgroup{background:#1c060e;color:var(--cream)}

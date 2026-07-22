@@ -4138,6 +4138,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [analysisLayers, setAnalysisLayers] = useState([]);
   const [pendingAreaAction, setPendingAreaAction] = useState(null);
   const [areaSearchResult, setAreaSearchResult] = useState(null);
+  const [sosHolding, setSosHolding] = useState(false);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [emergencyAlerts, setEmergencyAlerts] = useState([]);
   const [activeEmergency, setActiveEmergency] = useState(null);
@@ -4182,6 +4183,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const socketRef = useRef(null);
   const gpsWatchRef = useRef(null);
   const gpsBestRef = useRef(null);
+  const sosHoldTimerRef = useRef(null);
+  const sosLongTriggeredRef = useRef(false);
   const localCameraStreamRef = useRef(null);
   const rtcPeersRef = useRef({});
   const sharingCameraRef = useRef(false);
@@ -5293,6 +5296,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       if (gpsWatchRef.current != null)
         navigator.geolocation.clearWatch(gpsWatchRef.current);
       gpsWatchRef.current = null;
+      gpsBestRef.current = null;
       socketRef.current?.emit("gps:stop", { userId: session.user.id });
       setSharingGps(false);
       setNotice("Location sharing stopped");
@@ -5303,42 +5307,123 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       return;
     }
     setSharingGps(true);
-    setNotice("Waiting for GPS permission...");
-    gpsWatchRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        const point = {
-          userId: session.user.id,
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          speed: position.coords.speed || 0,
-          heading: position.coords.heading || 0,
-          accuracy: position.coords.accuracy,
-          timestamp: new Date().toISOString(),
-        };
-        socketRef.current?.emit("gps:update", point);
-        setGpsPositions((old) => ({
-          ...old,
-          [session.user.id]: { ...point, offline: false },
-        }));
-        if (isAgent) setGpsRequiredBlocked(false);
-        setNotice("Live GPS is being shared");
-      },
-      (error) => {
-        setSharingGps(false);
+    setNotice("Acquiring GPS fix...");
+    gpsBestRef.current = null;
+
+    // Accuracy thresholds — only accept fixes within these bounds
+    const ACCURACY_GOOD = 25;
+    const ACCURACY_MAX = 150;
+    const BROADCAST_INTERVAL = 4000;
+    let lastBroadcast = 0;
+    let warmUpCount = 0;
+
+    const onPosition = (position) => {
+      const { latitude, longitude, accuracy, speed, heading } = position.coords;
+
+      const fixAge = Date.now() - Number(position.timestamp || Date.now());
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy)) return;
+      if (accuracy > ACCURACY_MAX || fixAge > 15000) {
+        setNotice(`Waiting for accurate GPS… current accuracy ±${Math.round(accuracy || 0)} m`);
+        return;
+      }
+
+      const prev = gpsBestRef.current;
+      const now = Date.now();
+      let lat = latitude;
+      let lng = longitude;
+      if (prev) {
+        const elapsedSeconds = Math.max(1, (now - new Date(prev.timestamp).getTime()) / 1000);
+        const distance = L.latLng(prev.lat, prev.lng).distanceTo([latitude, longitude]);
+        const impliedSpeed = distance / elapsedSeconds;
+        const jumpAllowance = Math.max(80, accuracy * 3, Number(prev.accuracy || 0) * 3);
+        if (distance > jumpAllowance && impliedSpeed > 75 && accuracy >= Number(prev.accuracy || accuracy)) {
+          setNotice("Ignoring an inaccurate GPS jump; checking again…");
+          return;
+        }
+        if (distance <= jumpAllowance) {
+          const currentWeight = Math.min(0.85, Math.max(0.55, Number(prev.accuracy || accuracy) / (Number(prev.accuracy || accuracy) + accuracy)));
+          lat = prev.lat * (1 - currentWeight) + latitude * currentWeight;
+          lng = prev.lng * (1 - currentWeight) + longitude * currentWeight;
+        }
+      }
+      gpsBestRef.current = {
+        userId: session.user.id,
+        lat,
+        lng,
+        accuracy,
+        speed: speed ?? 0,
+        heading: heading ?? 0,
+        timestamp: new Date(now).toISOString(),
+      };
+
+      warmUpCount++;
+
+      // During warm-up (first 3 fixes) only show notice, don't broadcast yet
+      // unless the fix is already very good
+      const isGood = accuracy <= ACCURACY_GOOD;
+      if (warmUpCount < 3 && !isGood) {
+        setNotice(`GPS warming up… accuracy ±${Math.round(accuracy)} m`);
+        return;
+      }
+
+      const best = gpsBestRef.current;
+      // Throttle broadcasts — don't flood the server
+      if (now - lastBroadcast < BROADCAST_INTERVAL && !isGood) return;
+      lastBroadcast = now;
+
+      const point = {
+        userId: session.user.id,
+        lat: best.lat,
+        lng: best.lng,
+        accuracy: best.accuracy,
+        speed: best.speed,
+        heading: best.heading,
+        timestamp: new Date().toISOString(),
+      };
+
+      socketRef.current?.emit("gps:update", point);
+      setGpsPositions((old) => ({
+        ...old,
+        [session.user.id]: { ...point, offline: false },
+      }));
+      if (isAgent) setGpsRequiredBlocked(false);
+
+      const accuracyLabel = best.accuracy <= ACCURACY_GOOD
+        ? `±${Math.round(best.accuracy)} m (good)`
+        : `±${Math.round(best.accuracy)} m`;
+      setNotice(`GPS live — ${accuracyLabel}`);
+      setTimeout(() => setNotice(""), 4000);
+    };
+
+    const onError = (error) => {
+      // PERMISSION_DENIED — hard stop
+      if (error.code === 1) {
+        if (gpsWatchRef.current != null)
+          navigator.geolocation.clearWatch(gpsWatchRef.current);
         gpsWatchRef.current = null;
-        setNotice(
-          error.code === 1
-            ? "Location permission was denied"
-            : "Unable to read this device location",
-        );
+        setSharingGps(false);
+        setNotice("Location permission was denied");
         if (isAgent) setGpsRequiredBlocked(true);
+        return;
+      }
+      // POSITION_UNAVAILABLE or TIMEOUT — keep the watch alive, just show notice
+      setNotice("GPS signal lost — retrying...");
+    };
+
+    gpsWatchRef.current = navigator.geolocation.watchPosition(
+      onPosition,
+      onError,
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,        // never use a cached position
+        timeout: 20000,       // allow longer to get a proper fix
       },
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 },
     );
   };
   useEffect(() => {
     if (isAgent && !sharingGps) toggleGps();
   }, []);
+  useEffect(() => () => clearTimeout(sosHoldTimerRef.current), []);
   const locateMe = () => {
     const flyToPoint = (point, message = "Centered on your location") => {
       if (!point) return;
@@ -5347,26 +5432,34 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       setNotice(message);
       setTimeout(() => setNotice(""), 2500);
     };
+    // Use the best GPS fix we already have if it's recent (< 10 s old)
+    const best = gpsBestRef.current;
+    if (best && (Date.now() - new Date(best.timestamp).getTime()) < 10000) {
+      flyToPoint(best, `Centered on your location ±${Math.round(best.accuracy)} m`);
+      return;
+    }
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) =>
           flyToPoint({
             lat: position.coords.latitude,
             lng: position.coords.longitude,
-          }),
+          }, `Centered on your location ±${Math.round(position.coords.accuracy)} m`),
         () =>
           flyToPoint(
             gpsPositions[session.user.id] || session.user,
             "Centered on last known location",
           ),
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
       );
       return;
     }
     flyToPoint(gpsPositions[session.user.id] || session.user, "Centered on last known location");
   };
   const sendEmergency = async (details) => {
-    const fallback = gpsPositions[session.user.id] || session.user;
+    const verified = gpsBestRef.current;
+    const verifiedFresh = verified && Date.now() - new Date(verified.timestamp).getTime() < 30000;
+    const fallback = (verifiedFresh ? verified : null) || gpsPositions[session.user.id] || session.user;
     const dispatch = async (point) => {
       const alert = {
         id: `em-${Date.now()}`,
@@ -5423,19 +5516,55 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     };
     if (navigator.geolocation)
       navigator.geolocation.getCurrentPosition(
-        (p) => dispatch({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        (p) => dispatch(
+          p.coords.accuracy <= 100
+            ? { lat: p.coords.latitude, lng: p.coords.longitude }
+            : { lat: fallback.lat || OYO_CENTER[0], lng: fallback.lng || OYO_CENTER[1] },
+        ),
         () =>
           dispatch({
             lat: fallback.lat || OYO_CENTER[0],
             lng: fallback.lng || OYO_CENTER[1],
           }),
-        { enableHighAccuracy: true, timeout: 9000, maximumAge: 1500 },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
       );
     else
       dispatch({
         lat: fallback.lat || OYO_CENTER[0],
         lng: fallback.lng || OYO_CENTER[1],
       });
+  };
+  const startSosHold = (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    clearTimeout(sosHoldTimerRef.current);
+    sosLongTriggeredRef.current = false;
+    setSosHolding(true);
+    sosHoldTimerRef.current = setTimeout(() => {
+      sosLongTriggeredRef.current = true;
+      setSosHolding(false);
+      sendEmergency({ type: "Emergency", text: "" });
+    }, 5000);
+  };
+  const cancelSosHold = () => {
+    clearTimeout(sosHoldTimerRef.current);
+    sosHoldTimerRef.current = null;
+    setSosHolding(false);
+  };
+  const openSosNormally = (event) => {
+    if (sosLongTriggeredRef.current) {
+      event.preventDefault();
+      sosLongTriggeredRef.current = false;
+      return;
+    }
+    setEmergencyOpen(true);
+  };
+  const sosHoldProps = {
+    onPointerDown: startSosHold,
+    onPointerUp: cancelSosHold,
+    onPointerCancel: cancelSosHold,
+    onPointerLeave: cancelSosHold,
+    onContextMenu: (event) => event.preventDefault(),
+    onClick: openSosNormally,
   };
   const dismissEmergency = () => {
     stopEmergencyRing();
@@ -6206,7 +6335,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 <FaVideo /> {sharingCamera ? "Stop Camera" : "Share Camera"}
               </button>
               <button onClick={shareMap}><FaLocationArrow /> Share Map</button>
-              <button className="emergency-open" onClick={() => setEmergencyOpen(true)}>SOS</button>
+              <button className={`emergency-open ${sosHolding ? "sos-holding" : ""}`} {...sosHoldProps}>SOS</button>
               <button onClick={onLogout}><FaSignOutAlt /> Logout</button>
             </div>}
             {!isSupervisor && <div className="sidebar-actions compact">
@@ -6704,9 +6833,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               Result
             </button>}
             <button
-              className="map-action emergency-open"
-              onClick={() => setEmergencyOpen(true)}
-              title="SOS"
+              className={`map-action emergency-open ${sosHolding ? "sos-holding" : ""}`}
+              {...sosHoldProps}
+              title="Tap for SOS form or hold 5 seconds to send immediately"
             >
               SOS
             </button>
@@ -6748,7 +6877,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               <b>{sharingCamera ? "Stop camera" : "Share camera"}</b>
               <span>Send your live phone camera to command</span>
             </button>
-            <button className="agent-action-card sos" onClick={() => setEmergencyOpen(true)}>
+            <button className={`agent-action-card sos ${sosHolding ? "sos-holding" : ""}`} {...sosHoldProps}>
               <strong>SOS</strong>
               <b>Send emergency alert</b>
               <span>Alert your command immediately and provide a situation report</span>
@@ -6957,9 +7086,44 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             <div>
               <dt>ASSIGNED UNIT</dt>
               <dd>
-                {reportUsers.find((x) => x.id === selected.assignedTo)?.name ||
+                {canAdmin ? (
+                  <select
+                    className="assign-select"
+                    value={selected.assignedTo || ""}
+                    onChange={async (e) => {
+                      const item = await request(`/incidents/${selected.id}`, session.token, {
+                        method: "PUT",
+                        body: JSON.stringify({ assignedTo: e.target.value }),
+                      });
+                      setIncidents((old) => old.map((i) => (i.id === item.id ? item : i)));
+                      setSelected(item);
+                    }}
+                  >
+                    <option value="">— Unassigned —</option>
+                    {users
+                      .filter((u) => u.role === "Response Team")
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}{u.station ? ` · ${u.station}` : ""}
+                        </option>
+                      ))}
+                    {users.filter((u) => u.role === "Agent").length > 0 && (
+                      <optgroup label="── Agents ──">
+                        {users
+                          .filter((u) => u.role === "Agent")
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name}{u.pollingUnit ? ` · ${u.pollingUnit}` : ""}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                  </select>
+                ) : (
+                  reportUsers.find((x) => x.id === selected.assignedTo)?.name ||
                   officers.find((x) => x.id === selected.assignedTo)?.name ||
-                  "Unassigned"}
+                  "Unassigned"
+                )}
               </dd>
             </div>
             <div>
