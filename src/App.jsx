@@ -2185,6 +2185,7 @@ function CameraPanel({
 }) {
   const [recordAll, setRecordAll] = useState(false);
   const recordersRef = useRef({});
+  const requestedFeedsRef = useRef(new Set());
   const [form, setForm] = useState({
     name: "",
     type: "CCTV",
@@ -2216,6 +2217,21 @@ function CameraPanel({
     CCTV: cameraFeeds.filter((x) => x.feedType === "CCTV").length,
     Drone: cameraFeeds.filter((x) => x.feedType === "Drone").length,
   };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const availableIds = new Set(phoneFeeds.map((feed) => String(feed.userId)));
+    requestedFeedsRef.current.forEach((id) => {
+      if (!availableIds.has(String(id))) requestedFeedsRef.current.delete(id);
+    });
+    phoneFeeds.forEach((feed) => {
+      const id = String(feed.userId);
+      if (!remoteStreams[feed.userId] && !requestedFeedsRef.current.has(id)) {
+        requestedFeedsRef.current.add(id);
+        onView(feed.userId);
+      }
+    });
+  }, [isAdmin, phoneShares, remoteStreams, onView]);
 
   const saveFeedRecording = (feed, chunks, mimeType) => {
     if (!chunks.length) return;
@@ -5635,16 +5651,16 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       text: `${area.title || "Election monitoring operational area"}${area.note ? ` - ${area.note}` : ""}`,
     });
   };
-  const getCameraStream = async (facingMode) => {
+  const getCameraStream = async (facingMode, includeAudio = true, exact = false) => {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
       throw new Error("Camera sharing requires HTTPS and a supported browser");
     return navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode,
+        facingMode: exact ? { exact: facingMode } : { ideal: facingMode },
         width: { ideal: 1280 },
         height: { ideal: 720 },
       },
-      audio: true,
+      audio: includeAudio,
     });
   };
   const toggleCamera = async () => {
@@ -5702,20 +5718,28 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   };
   const switchCamera = async () => {
     if (!sharingCamera || !localCameraStreamRef.current) return;
+    const oldStream = localCameraStreamRef.current;
+    const oldVideoTrack = oldStream.getVideoTracks()[0];
+    const audioTracks = oldStream.getAudioTracks();
+    const nextFacingMode = cameraFacingMode === "environment" ? "user" : "environment";
     try {
-      const nextFacingMode = cameraFacingMode === "environment" ? "user" : "environment";
-      const nextStream = await getCameraStream(nextFacingMode);
-      const oldStream = localCameraStreamRef.current;
+      oldVideoTrack?.stop();
+      let cameraOnlyStream;
+      try {
+        cameraOnlyStream = await getCameraStream(nextFacingMode, false, true);
+      } catch {
+        cameraOnlyStream = await getCameraStream(nextFacingMode, false, false);
+      }
+      const nextVideoTrack = cameraOnlyStream.getVideoTracks()[0];
+      if (!nextVideoTrack) throw new Error("The selected camera is unavailable");
+      const nextStream = new MediaStream([nextVideoTrack, ...audioTracks]);
       localCameraStreamRef.current = nextStream;
       setCameraFacingMode(nextFacingMode);
       setSelfCameraPreview(true);
       Object.values(rtcPeersRef.current).forEach((pc) => {
         const videoSender = pc.getSenders().find((sender) => sender.track?.kind === "video");
-        const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio");
-        if (videoSender && nextStream.getVideoTracks()[0]) videoSender.replaceTrack(nextStream.getVideoTracks()[0]);
-        if (audioSender && nextStream.getAudioTracks()[0]) audioSender.replaceTrack(nextStream.getAudioTracks()[0]);
+        if (videoSender) videoSender.replaceTrack(nextVideoTrack);
       });
-      oldStream?.getTracks().forEach((track) => track.stop());
       setNotice(`${nextFacingMode === "user" ? "Front" : "Back"} camera active`);
       nextStream.getVideoTracks()[0]?.addEventListener("ended", () => {
         if (localCameraStreamRef.current !== nextStream) return;
@@ -5726,6 +5750,16 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         setSelfCameraPreview(false);
       });
     } catch (error) {
+      try {
+        const restoredStream = await getCameraStream(cameraFacingMode);
+        localCameraStreamRef.current = restoredStream;
+        Object.values(rtcPeersRef.current).forEach((pc) => {
+          const videoSender = pc.getSenders().find((sender) => sender.track?.kind === "video");
+          const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio");
+          if (videoSender) videoSender.replaceTrack(restoredStream.getVideoTracks()[0]);
+          if (audioSender) audioSender.replaceTrack(restoredStream.getAudioTracks()[0]);
+        });
+      } catch {}
       setNotice(
         error.name === "NotAllowedError"
           ? "Camera permission was denied"
@@ -6539,6 +6573,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 <FaCamera />
                 <span>Flip</span>
               </button>
+              <button type="button" className="end-live-head" title="End live camera" onClick={toggleCamera}>
+                <FaTimes />
+                <span>End live</span>
+              </button>
             </div>
           </div>
           <StreamVideo
@@ -6548,7 +6586,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           />
           <div className="self-camera-preview-footer">
             <span>{cameraFacingMode === "environment" ? "Back camera" : "Front camera"}</span>
-            <button type="button" onClick={toggleCamera}><FaTimes /> Stop sharing</button>
+            <button type="button" onClick={toggleCamera}><FaTimes /> End live</button>
           </div>
         </div>
       )}
