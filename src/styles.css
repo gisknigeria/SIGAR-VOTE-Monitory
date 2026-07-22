@@ -719,6 +719,8 @@ body{font-size:14px}
 .report-type-badge,.report-category-select{align-items:center;gap:7px}.report-category-select{display:grid;grid-template-columns:22px 1fr}.chips span{display:inline-flex;align-items:center;justify-content:center;min-height:20px}
 .report-media-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:14px 0}
 .report-media-grid img,.report-media-grid video{width:100%;aspect-ratio:4/3;object-fit:cover;border:1px solid #263b51;border-radius:7px;background:#08131f}
+.report-video-attachment{display:flex;flex-direction:column;gap:6px;min-width:0}
+.report-video-attachment a{display:block;padding:7px 9px;border:1px solid #6d2638;border-radius:6px;background:#35121c;color:#ffd7df;text-align:center;font-size:9px;text-decoration:none}
 .detail{overflow:auto}
 .detail-tool-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
 .detail-tool-row button{border:1px solid #28405a;background:#0b1826;color:#afc2d5;border-radius:5px;padding:10px;font-size:10px}
@@ -918,11 +920,10 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .tools-grid button.active{border-color:#38bdf8;background:#123152;box-shadow:inset 0 0 0 1px #38bdf855}
 .tools-grid button.danger-tool{border-color:#7f1d1d;background:#2a1016;color:#ffd5dc}
 
-.self-camera-preview{position:fixed;right:16px;bottom:16px;z-index:840;width:min(280px,calc(100vw - 32px));display:grid;gap:8px;padding:10px;border:1px solid #6f2940;background:#18070eeb;border-radius:12px;box-shadow:0 18px 40px #0008;backdrop-filter:blur(10px)}
-.self-camera-preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.self-camera-preview-head b{font-size:12px;color:#f8d9a8}
+.self-camera-preview{position:fixed;inset:0;z-index:2400;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:0;padding:0;background:#000;box-shadow:none}
+.self-camera-preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 18px;background:#000b;z-index:2}.self-camera-preview-head b{display:flex;align-items:center;gap:7px;font-size:12px;color:#fff}.self-camera-preview-head b i{width:9px;height:9px;border-radius:50%;background:#ef4444;box-shadow:0 0 10px #ef4444}
 .self-camera-preview-actions{display:flex;align-items:center;gap:6px}
-.self-camera-preview-actions button{display:grid;place-items:center;width:28px;height:28px;border:1px solid #6f2940;border-radius:999px;background:#261018;color:#f5d0db}
+.self-camera-preview-actions button{display:grid;place-items:center;width:44px;height:44px;border:1px solid #ffffff55;border-radius:999px;background:#111b;color:#fff}
 .self-camera-preview-actions button:first-child{width:auto;grid-auto-flow:column;gap:5px;padding:0 9px}.self-camera-preview-actions button span{font-size:9px!important;color:#f5dc9a!important}
 .result-center-open{width:auto!important;padding:0 9px!important;color:#f5dc9a!important;font-size:9px!important;font-weight:900!important}
 .results-center{position:fixed;z-index:2600;inset:0;display:flex;flex-direction:column;background:linear-gradient(145deg,#18050c,#2b0816 55%,#16040a);color:#fff;overflow:hidden}
@@ -934,8 +935,7 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .polling-result-modal{width:min(720px,94vw)!important;max-height:92dvh;overflow:auto}.result-capture-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:16px 0}.result-capture-meta>div{display:grid;gap:5px;padding:12px;border:1px solid #6f2940;border-radius:9px;background:#1b060d}.result-capture-meta span{font-size:9px!important;color:#bf9da9!important}.result-capture-meta b{font-size:11px!important;color:#f5dc9a!important}.party-vote-rows{display:grid;gap:9px;margin:16px 0}.party-vote-row{display:grid;grid-template-columns:minmax(0,1fr) 150px 38px;gap:8px;align-items:center}.party-vote-row select,.party-vote-row input{margin:0!important}.party-vote-row button{height:42px;border:1px solid #793149;border-radius:7px;background:#3a0d20}.add-party-result{margin:0 0 14px}.result-photo{display:flex!important;align-items:center;justify-content:center;min-height:48px;margin:0!important}.result-photo-ready{margin-top:8px;padding:9px;border-radius:7px;background:#123b2b;color:#86efac!important}.party-manager-modal textarea{min-height:260px}.party-manager-modal .muted{margin:12px 0}
 @media(max-width:620px){.result-capture-meta{grid-template-columns:1fr}.party-vote-row{grid-template-columns:1fr 110px 38px}}
 @media(max-width:700px){.results-center-head{padding:16px}.results-center-head h1{font-size:20px!important}.results-center-body{padding:14px}.result-total-strip{grid-template-columns:1fr 1fr;gap:8px}.result-total-card{min-height:105px;padding:13px}.result-total-card strong{font-size:22px!important}.result-table-scroll{max-height:none}}
-.self-camera-preview .recordable-video{display:grid;gap:6px}
-.self-camera-preview video{width:100%;max-height:180px;object-fit:cover;border-radius:8px;background:#000}
+.self-camera-preview .recordable-video{display:grid;min-height:0;background:#000}.self-camera-preview video{width:100%;height:100%;max-height:none;object-fit:cover;background:#000}.self-camera-preview-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px max(18px,env(safe-area-inset-bottom));background:#000}.self-camera-preview-footer>span{color:#ddd!important}.self-camera-preview-footer button{display:flex;align-items:center;gap:8px;border:1px solid #ef4444;border-radius:999px;padding:12px 18px;background:#b91c1c;color:#fff!important;font-weight:900!important}
 
 @media(max-width:760px){
   .app-shell{height:100dvh;grid-template:1fr/1fr}
@@ -959,8 +959,8 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
   .desktop-map-search{display:none}
   .map-top-left .map-view-panel{display:none}
   .sidebar-search{display:flex}
-  .self-camera-preview{right:10px;bottom:12px;width:min(240px,calc(100vw - 20px))}
-  .self-camera-preview video{max-height:140px}
+  .self-camera-preview{inset:0;width:auto}
+  .self-camera-preview video{max-height:none}
   .topbar-actions{gap:6px;margin-left:auto;flex:0 0 auto}
   .topbar-icon-btn{width:38px;height:38px;border-radius:999px;font-size:13px}
   .topbar-icon-btn.emergency-open{min-width:52px;padding:0 11px;font-size:10px}

@@ -2159,7 +2159,7 @@ function StreamVideo({ src, stream, muted = false, showControls = true }) {
   };
   return (
     <div className="recordable-video">
-      <video ref={ref} controls autoPlay playsInline muted={muted} />
+      <video ref={ref} controls={showControls} autoPlay playsInline muted={muted} />
       {showControls && (
         <button
           className={recording ? "record-stop" : ""}
@@ -2183,6 +2183,8 @@ function CameraPanel({
   onView,
   onShowMap,
 }) {
+  const [recordAll, setRecordAll] = useState(false);
+  const recordersRef = useRef({});
   const [form, setForm] = useState({
     name: "",
     type: "CCTV",
@@ -2214,6 +2216,68 @@ function CameraPanel({
     CCTV: cameraFeeds.filter((x) => x.feedType === "CCTV").length,
     Drone: cameraFeeds.filter((x) => x.feedType === "Drone").length,
   };
+
+  const saveFeedRecording = (feed, chunks, mimeType) => {
+    if (!chunks.length) return;
+    const blob = new Blob(chunks, { type: mimeType || "video/webm" });
+    const extension = blob.type.includes("mp4") ? "mp4" : "webm";
+    const pollingUnit = String(feed?.pollingUnit || feed?.station || "unknown-polling-unit")
+      .trim()
+      .replace(/[^a-z0-9_-]+/gi, "-")
+      .replace(/^-|-$/g, "");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${pollingUnit}_${timestamp}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  };
+
+  useEffect(() => {
+    const active = recordersRef.current;
+    if (recordAll) {
+      phoneFeeds.forEach((feed) => {
+        const stream = remoteStreams[feed.userId];
+        if (!stream || active[feed.userId] || typeof MediaRecorder === "undefined") return;
+        const preferred = [
+          "video/webm;codecs=vp8,opus",
+          "video/webm",
+          "video/mp4",
+        ].find((type) => MediaRecorder.isTypeSupported?.(type));
+        try {
+          const recorder = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined);
+          const entry = { recorder, chunks: [], feed };
+          active[feed.userId] = entry;
+          recorder.ondataavailable = (event) => {
+            if (event.data?.size) entry.chunks.push(event.data);
+          };
+          recorder.onstop = () => {
+            saveFeedRecording(entry.feed, entry.chunks, recorder.mimeType);
+            delete active[feed.userId];
+          };
+          recorder.start(1000);
+        } catch (error) {
+          console.error("Unable to record live feed", error);
+        }
+      });
+    }
+    Object.entries(active).forEach(([userId, entry]) => {
+      if ((!recordAll || !remoteStreams[userId]) && entry.recorder.state !== "inactive") {
+        entry.recorder.stop();
+      }
+    });
+  }, [recordAll, remoteStreams, phoneShares]);
+
+  useEffect(
+    () => () => {
+      Object.values(recordersRef.current).forEach(({ recorder }) => {
+        if (recorder.state !== "inactive") recorder.stop();
+      });
+    },
+    [],
+  );
   return (
     <section className="camera-panel">
       <div className="camera-head">
@@ -2236,10 +2300,24 @@ function CameraPanel({
           </button>
         ))}
       </div>
+      {isAdmin && (
+        <label className="record-all-feeds">
+          <input
+            type="checkbox"
+            checked={recordAll}
+            onChange={(event) => setRecordAll(event.target.checked)}
+          />
+          <span>Record all live feeds to this device</span>
+        </label>
+      )}
       <div className="camera-grid compact">
         {feeds.map((feed) =>
           feed.feedType === "Phone" ? (
-            <article className="camera-card" key={feed.id}>
+            <article
+              className="camera-card agent-feed-card"
+              key={feed.id}
+              title={`${feed.name || "Agent"} — ${feed.pollingUnit || feed.station || "Polling unit not assigned"}`}
+            >
               <div className="video-shell">
                 {remoteStreams[feed.userId] ? (
                   <StreamVideo stream={remoteStreams[feed.userId]} />
@@ -2266,6 +2344,15 @@ function CameraPanel({
                 {feed.lat && (
                   <button onClick={() => onShowMap(feed)}>Show on map</button>
                 )}
+              </div>
+              <div className="agent-feed-hover">
+                <b>{feed.name || "Agent"}</b>
+                <span>{feed.role || "Agent"}</span>
+                <span>Polling unit: {feed.pollingUnit || feed.station || "Not assigned"}</span>
+                {(feed.ward || feed.lga) && (
+                  <span>{[feed.ward, feed.lga].filter(Boolean).join(" · ")}</span>
+                )}
+                {feed.email && <span>{feed.email}</span>}
               </div>
             </article>
           ) : (
@@ -4109,8 +4196,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             assignedTo: "",
             visibleTo: [],
             media: [{
-              name: `offline-field-video-${Date.now()}.webm`,
+              name: `offline-field-video-${Date.now()}.${clip.blob.type.includes("mp4") ? "mp4" : "webm"}`,
               type: "video",
+              mimeType: clip.blob.type,
               size: clip.blob.size,
               data,
             }],
@@ -4133,11 +4221,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     const stream = localCameraStreamRef.current;
     if (!stream || offlineRecorderRef.current || typeof MediaRecorder === "undefined") return;
     offlineFallbackRef.current = true;
-    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-      ? "video/webm;codecs=vp8,opus"
-      : "video/webm";
+    const mimeType = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(type => MediaRecorder.isTypeSupported(type)) || "";
     const recorder = new MediaRecorder(stream, {
-      mimeType,
+      ...(mimeType ? { mimeType } : {}),
       videoBitsPerSecond: 400000,
       audioBitsPerSecond: 32000,
     });
@@ -4149,7 +4235,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     recorder.onstop = async () => {
       clearTimeout(offlineSegmentTimerRef.current);
       offlineRecorderRef.current = null;
-      const blob = new Blob(offlineChunksRef.current, { type: mimeType });
+      const blob = new Blob(offlineChunksRef.current, { type: recorder.mimeType || mimeType || "video/webm" });
       offlineChunksRef.current = [];
       if (blob.size) {
         const point = gpsBestRef.current || session.user;
@@ -4243,6 +4329,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         userId: session.user.id,
         name: session.user.name,
         type: "Phone",
+        role: session.user.role,
+        email: session.user.email,
+        lga: session.user.lga,
+        ward: session.user.ward,
+        pollingUnit: session.user.pollingUnit,
+        station: session.user.station,
       });
     const registerCameraUser = () => {
       socket.emit("camera:register", {
@@ -5581,9 +5673,16 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         userId: session.user.id,
         name: session.user.name,
         type: "Phone",
+        role: session.user.role,
+        email: session.user.email,
+        lga: session.user.lga,
+        ward: session.user.ward,
+        pollingUnit: session.user.pollingUnit,
+        station: session.user.station,
       });
       setNotice("Phone camera is live to command");
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        if (localCameraStreamRef.current !== stream) return;
         sharingCameraRef.current = false;
         stopOfflineVideoRecording();
         socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
@@ -5607,7 +5706,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       const nextFacingMode = cameraFacingMode === "environment" ? "user" : "environment";
       const nextStream = await getCameraStream(nextFacingMode);
       const oldStream = localCameraStreamRef.current;
-      oldStream?.getTracks().forEach((track) => track.stop());
       localCameraStreamRef.current = nextStream;
       setCameraFacingMode(nextFacingMode);
       setSelfCameraPreview(true);
@@ -5617,8 +5715,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         if (videoSender && nextStream.getVideoTracks()[0]) videoSender.replaceTrack(nextStream.getVideoTracks()[0]);
         if (audioSender && nextStream.getAudioTracks()[0]) audioSender.replaceTrack(nextStream.getAudioTracks()[0]);
       });
+      oldStream?.getTracks().forEach((track) => track.stop());
       setNotice(`${nextFacingMode === "user" ? "Front" : "Back"} camera active`);
       nextStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        if (localCameraStreamRef.current !== nextStream) return;
         sharingCameraRef.current = false;
         stopOfflineVideoRecording();
         socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
@@ -6433,11 +6533,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       {selfCameraPreview && localCameraStreamRef.current && (
         <div className="self-camera-preview">
           <div className="self-camera-preview-head">
-            <b>Your camera</b>
+            <b><i></i> LIVE</b>
             <div className="self-camera-preview-actions">
               <button type="button" title="Switch camera" onClick={switchCamera}>
                 <FaCamera />
-                <span>{cameraFacingMode === "environment" ? "Front" : "Back"}</span>
+                <span>Flip</span>
               </button>
             </div>
           </div>
@@ -6446,6 +6546,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             muted={true}
             showControls={false}
           />
+          <div className="self-camera-preview-footer">
+            <span>{cameraFacingMode === "environment" ? "Back camera" : "Front camera"}</span>
+            <button type="button" onClick={toggleCamera}><FaTimes /> Stop sharing</button>
+          </div>
         </div>
       )}
       {selected && (
@@ -6504,7 +6608,22 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             <div className="report-media-grid">
               {selected.media.map((item, index) =>
                 item.type === "video" ? (
-                  <video key={index} src={item.data} controls playsInline />
+                  <div className="report-video-attachment" key={index}>
+                    <video controls playsInline preload="metadata">
+                      <source
+                        src={item.data}
+                        type={
+                          item.mimeType ||
+                          (String(item.data || "").startsWith("data:video/mp4")
+                            ? "video/mp4"
+                            : "video/webm")
+                        }
+                      />
+                    </video>
+                    <a href={item.data} download={item.name || `report-video-${index + 1}.webm`}>
+                      Download video
+                    </a>
+                  </div>
                 ) : (
                   <img
                     key={index}
