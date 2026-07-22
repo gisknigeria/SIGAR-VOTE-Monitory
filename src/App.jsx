@@ -20,6 +20,8 @@ import {
   FaMapMarkedAlt,
   FaRoute,
   FaRulerCombined,
+  FaSearch,
+  FaShareAlt,
   FaSignOutAlt,
   FaStreetView,
   FaSyncAlt,
@@ -2184,6 +2186,7 @@ function CameraPanel({
   onShowMap,
 }) {
   const [recordAll, setRecordAll] = useState(false);
+  const [sharingFeedId, setSharingFeedId] = useState(null);
   const recordersRef = useRef({});
   const requestedFeedsRef = useRef(new Set());
   const [form, setForm] = useState({
@@ -2249,6 +2252,44 @@ function CameraPanel({
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  };
+
+  const shareFeedVideo = async (feed) => {
+    const stream = remoteStreams[feed.userId];
+    if (!stream || typeof MediaRecorder === "undefined") {
+      onView(feed.userId);
+      return;
+    }
+    try {
+      setSharingFeedId(feed.userId);
+      const mimeType = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+        .find((type) => MediaRecorder.isTypeSupported?.(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      recorder.ondataavailable = (event) => event.data?.size && chunks.push(event.data);
+      const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+      recorder.start(500);
+      setTimeout(() => recorder.state !== "inactive" && recorder.stop(), 10000);
+      await stopped;
+      const type = recorder.mimeType || mimeType || "video/webm";
+      const extension = type.includes("mp4") ? "mp4" : "webm";
+      const unit = String(feed.pollingUnit || feed.station || "live-feed").replace(/[^a-z0-9_-]+/gi, "-");
+      const file = new File(chunks, `${unit}_${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`, { type });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ title: "Election monitoring live feed", text: `${feed.name || "Field agent"} — ${feed.pollingUnit || "Polling unit"}`, files: [file] });
+      } else {
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(file);
+        link.download = file.name;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+        alert("The video was downloaded. You can attach it to your social media post.");
+      }
+    } catch (error) {
+      if (error.name !== "AbortError") alert(error.message || "Unable to share this feed");
+    } finally {
+      setSharingFeedId(null);
+    }
   };
 
   useEffect(() => {
@@ -2360,6 +2401,9 @@ function CameraPanel({
                 {feed.lat && (
                   <button onClick={() => onShowMap(feed)}>Show on map</button>
                 )}
+                <button disabled={sharingFeedId === feed.userId} onClick={() => shareFeedVideo(feed)}>
+                  {sharingFeedId === feed.userId ? "Recording 10s…" : "Share video"}
+                </button>
               </div>
               <div className="agent-feed-hover">
                 <b>{feed.name || "Agent"}</b>
@@ -4092,6 +4136,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
   const [analysisLayers, setAnalysisLayers] = useState([]);
+  const [pendingAreaAction, setPendingAreaAction] = useState(null);
+  const [areaSearchResult, setAreaSearchResult] = useState(null);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [emergencyAlerts, setEmergencyAlerts] = useState([]);
   const [activeEmergency, setActiveEmergency] = useState(null);
@@ -4117,7 +4163,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [situationalOpen, setSituationalOpen] = useState(false);
-  const [liveIncidentsOpen, setLiveIncidentsOpen] = useState(true);
+  const [liveIncidentsOpen, setLiveIncidentsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [gpsRequiredBlocked, setGpsRequiredBlocked] = useState(session.user.role === "Agent");
@@ -5104,21 +5150,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const addArea = (area) => {
     const center = reportCenter(area);
     if (canAdmin) {
-      const searchArea = window.confirm("Choose area action:\n\nOK = Search and aggregate this area\nCancel = Create an incident report");
-      if (searchArea) {
-        const inside = (point) => {
-          if (area.type === "circle") return L.latLng(area.center).distanceTo(L.latLng(point.lat, point.lng)) <= area.radius;
-          const polygon = L.polygon(area.points); return polygon.getBounds().contains([point.lat, point.lng]);
-        };
-        const agentsInside = officers.filter(inside);
-        const incidentsInside = incidents.filter(inside);
-        const pollingUnits = new Set(agentsInside.map(agent => agent.pollingUnit).filter(Boolean));
-        const diameter = area.type === "circle" ? area.radius * 2 : 0;
-        setAreas(old => [...old, { ...area, title: "Area search" }]);
-        setDrawMode("");
-        setNotice(`Area search: ${agentsInside.length} agents, ${pollingUnits.size} polling units, ${incidentsInside.length} incidents, ${mapLayers.length} uploaded map layers${diameter ? `, ${formatDistance(area.radius)} radius, ${formatDistance(diameter)} diameter` : ""}.`);
-        return;
-      }
+      setPendingAreaAction(area);
+      setDrawMode("");
+      return;
     }
     setNewPoint({
       ...(center || { lat: OYO_CENTER[0], lng: OYO_CENTER[1] }),
@@ -5127,6 +5161,67 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     setDrawMode("");
     setNotice("Incident area captured. Complete the incident form.");
     setTimeout(() => setNotice(""), 2500);
+  };
+  const reportPendingArea = () => {
+    const area = pendingAreaAction;
+    if (!area) return;
+    const center = reportCenter(area);
+    setPendingAreaAction(null);
+    setNewPoint({ ...(center || { lat: OYO_CENTER[0], lng: OYO_CENTER[1] }), geometry: area });
+  };
+  const searchPendingArea = () => {
+    const area = pendingAreaAction;
+    if (!area) return;
+    const inside = (point) => {
+      if (!Number.isFinite(Number(point.lat)) || !Number.isFinite(Number(point.lng))) return false;
+      if (area.type === "circle") return L.latLng(area.center).distanceTo(L.latLng(point.lat, point.lng)) <= area.radius;
+      return L.polygon(area.points).getBounds().contains([point.lat, point.lng]);
+    };
+    const agents = officers.filter(inside);
+    const foundIncidents = incidents.filter(inside);
+    const pollingUnits = [...new Set(agents.map((agent) => agent.pollingUnit).filter(Boolean))];
+    const result = {
+      id: `search-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      area,
+      agents,
+      incidents: foundIncidents,
+      pollingUnits,
+      mapLayerCount: mapLayers.length,
+      radius: area.type === "circle" ? area.radius : null,
+      diameter: area.type === "circle" ? area.radius * 2 : null,
+    };
+    setAreas((old) => [...old, { ...area, title: "Saved area search" }]);
+    setPendingAreaAction(null);
+    setAreaSearchResult(result);
+  };
+  const areaSearchText = (result) => [
+    `Area search — ${new Date(result.createdAt).toLocaleString()}`,
+    `Agents: ${result.agents.length}`,
+    `Polling units: ${result.pollingUnits.length}`,
+    `Incidents: ${result.incidents.length}`,
+    `Map layers: ${result.mapLayerCount}`,
+    result.radius ? `Radius: ${formatDistance(result.radius)}` : null,
+    result.diameter ? `Diameter: ${formatDistance(result.diameter)}` : null,
+    result.pollingUnits.length ? `Polling units: ${result.pollingUnits.join(", ")}` : null,
+  ].filter(Boolean).join("\n");
+  const saveAreaSearch = (result) => {
+    const saved = JSON.parse(localStorage.getItem("command-saved-area-searches") || "[]");
+    localStorage.setItem("command-saved-area-searches", JSON.stringify([result, ...saved].slice(0, 50)));
+    setNotice("Area search saved on this device");
+    setTimeout(() => setNotice(""), 2500);
+  };
+  const shareAreaSearch = async (result) => {
+    const text = areaSearchText(result);
+    try {
+      if (navigator.share) await navigator.share({ title: "Election monitoring area search", text });
+      else {
+        await navigator.clipboard.writeText(text);
+        setNotice("Search result copied — paste it into your messaging app");
+      }
+    } catch (error) {
+      if (error.name !== "AbortError") setNotice("Could not share this search result");
+    }
   };
   const clearAreas = () => {
     if (!areas.length || !window.confirm("Remove all drawn operational areas?"))
@@ -5684,7 +5779,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       localCameraStreamRef.current = stream;
       sharingCameraRef.current = true;
       setSharingCamera(true);
-      setSelfCameraPreview(true);
+      setSelfCameraPreview(false);
       socketRef.current?.emit("camera:share:start", {
         userId: session.user.id,
         name: session.user.name,
@@ -5735,7 +5830,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       const nextStream = new MediaStream([nextVideoTrack, ...audioTracks]);
       localCameraStreamRef.current = nextStream;
       setCameraFacingMode(nextFacingMode);
-      setSelfCameraPreview(true);
+      setSelfCameraPreview(false);
       Object.values(rtcPeersRef.current).forEach((pc) => {
         const videoSender = pc.getSenders().find((sender) => sender.track?.kind === "video");
         if (videoSender) videoSender.replaceTrack(nextVideoTrack);
@@ -6013,7 +6108,14 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             {!isSupervisor && <div className="sidebar-actions compact">
               <button
                 onClick={() => {
-                  setToolsOpen((value) => !value);
+                  setToolsOpen((value) => {
+                    const next = !value;
+                    if (next) {
+                      setSituationalOpen(false);
+                      setLiveIncidentsOpen(false);
+                    }
+                    return next;
+                  });
                   setAnalyticsOpen(false);
                 }}
                 className={toolsOpen ? "active" : ""}
@@ -6167,7 +6269,18 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 </button>
               )}
             </div>}
-            <button className="sidebar-section-toggle live-toggle" onClick={() => setLiveIncidentsOpen(value => !value)}>
+            <button
+              className={`sidebar-section-toggle sidebar-nav-dropdown live-toggle ${liveIncidentsOpen ? "open" : ""}`}
+              aria-expanded={liveIncidentsOpen}
+              onClick={() => setLiveIncidentsOpen((value) => {
+                const next = !value;
+                if (next) {
+                  setSituationalOpen(false);
+                  setToolsOpen(false);
+                }
+                return next;
+              })}
+            >
               <h2>Live Incidence <em>{incidents.length}</em></h2>
               <span>{liveIncidentsOpen ? "−" : "+"}</span>
             </button>
@@ -6233,7 +6346,18 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </div>
             </>}
             <div className="officer-summary">
-              <button className="sidebar-section-toggle" onClick={() => setSituationalOpen(value => !value)}>
+              <button
+                className={`sidebar-section-toggle sidebar-nav-dropdown situational-toggle ${situationalOpen ? "open" : ""}`}
+                aria-expanded={situationalOpen}
+                onClick={() => setSituationalOpen((value) => {
+                  const next = !value;
+                  if (next) {
+                    setLiveIncidentsOpen(false);
+                    setToolsOpen(false);
+                  }
+                  return next;
+                })}
+              >
                 <h3>Situational Rep</h3>
                 <span>{situationalOpen ? "−" : "+"}</span>
               </button>
@@ -6826,6 +6950,47 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           isAdmin={canCreateCustomReportType}
           currentUser={session.user}
         />
+      )}
+      {pendingAreaAction && (
+        <div className="modal-backdrop">
+          <section className="modal area-action-modal">
+            <div className="panel-title">
+              <div><span className="eyebrow">BUFFER / FREEHAND</span><h2>Choose an action</h2></div>
+              <button className="icon-btn" onClick={() => setPendingAreaAction(null)}><FaTimes /></button>
+            </div>
+            <p className="muted">Search and aggregate everything inside this area, or use the area for a new incident report.</p>
+            <div className="area-action-grid">
+              <button className="primary" onClick={searchPendingArea}><FaSearch /> Search area</button>
+              <button className="ghost" onClick={reportPendingArea}><ReportIcon iconKey="IP" size={15} /> Report incident</button>
+            </div>
+          </section>
+        </div>
+      )}
+      {areaSearchResult && (
+        <div className="modal-backdrop">
+          <section className="modal area-search-result-modal">
+            <div className="panel-title">
+              <div><span className="eyebrow">AREA SEARCH RESULT</span><h2>Search summary</h2></div>
+              <button className="icon-btn" onClick={() => setAreaSearchResult(null)}><FaTimes /></button>
+            </div>
+            <div className="area-search-kpis">
+              <div><strong>{areaSearchResult.agents.length}</strong><span>Agents</span></div>
+              <div><strong>{areaSearchResult.pollingUnits.length}</strong><span>Polling units</span></div>
+              <div><strong>{areaSearchResult.incidents.length}</strong><span>Incidents</span></div>
+              <div><strong>{areaSearchResult.mapLayerCount}</strong><span>Map layers</span></div>
+            </div>
+            {(areaSearchResult.radius || areaSearchResult.pollingUnits.length > 0) && (
+              <div className="area-search-detail">
+                {areaSearchResult.radius && <p>Radius: <b>{formatDistance(areaSearchResult.radius)}</b> · Diameter: <b>{formatDistance(areaSearchResult.diameter)}</b></p>}
+                {areaSearchResult.pollingUnits.length > 0 && <p>Polling units: <b>{areaSearchResult.pollingUnits.join(", ")}</b></p>}
+              </div>
+            )}
+            <div className="actions">
+              <button className="ghost" onClick={() => saveAreaSearch(areaSearchResult)}>Save search</button>
+              <button className="primary" onClick={() => shareAreaSearch(areaSearchResult)}><FaShareAlt /> Share</button>
+            </div>
+          </section>
+        </div>
       )}
       {newResultPoint && <PollingResultForm user={session.user} point={newResultPoint} parties={parties} onClose={() => setNewResultPoint(null)} onSave={savePollingResult} />}
       {profileOpen && <ProfileModal session={session} onClose={() => setProfileOpen(false)} onSave={saveProfile} />}
