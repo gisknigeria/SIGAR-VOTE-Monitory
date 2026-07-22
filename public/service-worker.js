@@ -16,7 +16,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('message', event => {
   if (event.data?.type === 'EMERGENCY_NOTIFICATION') {
     const alert = event.data.alert || {};
-    event.waitUntil(self.registration.showNotification(`Emergency from ${alert.name || 'officer'}`, {
+    event.waitUntil(self.registration.showNotification(`Emergency from ${alert.name || 'field agent'}`, {
       body: `${alert.type || 'Emergency'}${alert.text ? ` - ${alert.text}` : ''}`,
       tag: alert.id || 'election-monitor-emergency',
       renotify: true,

@@ -8,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
-import { canManageRank, normalizeCommand, ranksBelow } from '../shared/policeData.js';
+import { canManageRank, normalizeCommand, ranksBelow } from '../shared/electionData.js';
 
 const { Pool } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -32,7 +32,9 @@ const seed = {
   chatMessages: []
 };
 
-let jsonDb = existsSync(dataFile) ? JSON.parse(readFileSync(dataFile, 'utf8')) : seed;
+let jsonDb = existsSync(dataFile)
+  ? JSON.parse(readFileSync(dataFile, 'utf8'))
+  : JSON.parse(JSON.stringify(seed));
 jsonDb.cameras ||= [];
 jsonDb.mapLayers ||= [];
 jsonDb.chatRooms ||= [];
@@ -383,7 +385,7 @@ const server = createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const activeCameraShares = new Map();
 app.use(cors());
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '20mb' }));
 const auth = (req, res, next) => { try { req.user = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), secret); next(); } catch { res.status(401).json({ message: 'Session expired. Please sign in again.' }); } };
 const isAdminRole = user => ['Admin', 'Super Admin'].includes(user?.role);
 const adminOnly = (req, res, next) => isAdminRole(req.user) ? next() : res.status(403).json({ message: 'Admin access required' });
@@ -519,12 +521,15 @@ app.put('/api/users/:id/password', auth, asyncRoute(async (req, res) => {
 }));
 app.get('/api/incidents', auth, asyncRoute(async (req, res) => res.json((await store.incidents()).filter(incident => canAccessIncident(req.user, incident)))));
 app.post('/api/incidents', auth, asyncRoute(async (req, res) => {
+  const media = Array.isArray(req.body.media) ? req.body.media.slice(0, 6) : [];
+  const mediaBytes = media.reduce((total, item) => total + Buffer.byteLength(String(item?.data || ''), 'utf8'), 0);
+  if (mediaBytes > 14 * 1024 * 1024) return res.status(413).json({ message: 'Incident attachments are too large. Keep the total under 10MB.' });
   const visibleTo = [...new Set([
     ...(Array.isArray(req.body.visibleTo) ? req.body.visibleTo : []),
     ...(isSosIncident(req.body) ? sosVisibleTo({ ...req.user, userId: req.user.id, ...req.body }) : []),
     req.body.assignedTo
   ].filter(Boolean))];
-  const incident = { ...req.body, visibleTo, media: Array.isArray(req.body.media) ? req.body.media.slice(0, 6) : [], id: `i${Date.now()}`, createdAt: new Date().toISOString(), createdBy: req.user.id };
+  const incident = { ...req.body, visibleTo, media, id: `i${Date.now()}`, createdAt: new Date().toISOString(), createdBy: req.user.id };
   const created = await store.createIncident(incident);
   io.emit('incident:created', created);
   res.status(201).json(created);
@@ -622,17 +627,31 @@ app.post('/api/chat/rooms/:id/messages', auth, asyncRoute(async (req, res) => {
   io.emit('chat:message', { roomId: req.params.id, message });
   res.status(201).json(message);
 }));
-app.post('/api/gps/ping', (req, res) => { io.emit('gps:broadcast', req.body); res.json({ received: true }); });
+app.post('/api/gps/ping', auth, (req, res) => {
+  const point = { ...req.body, userId: req.user.id, timestamp: new Date().toISOString() };
+  io.emit('gps:broadcast', point);
+  res.json({ received: true });
+});
+io.use((socket, next) => {
+  try {
+    socket.data.authUser = jwt.verify(socket.handshake.auth?.token || '', secret);
+    next();
+  } catch {
+    next(new Error('Unauthorized realtime connection'));
+  }
+});
 io.on('connection', socket => {
+  socket.data.user = { ...socket.data.authUser, userId: socket.data.authUser.id };
   socket.on('gps:update', point => {
-    socket.data.user = { ...(socket.data.user || {}), userId: point.userId || socket.data.user?.userId, lat: Number(point.lat), lng: Number(point.lng) };
-    io.emit('gps:broadcast', { ...point, timestamp: point.timestamp || new Date().toISOString() });
+    const safePoint = { ...point, userId: socket.data.authUser.id, lat: Number(point.lat), lng: Number(point.lng), timestamp: point.timestamp || new Date().toISOString() };
+    socket.data.user = { ...(socket.data.user || {}), userId: safePoint.userId, lat: safePoint.lat, lng: safePoint.lng };
+    io.emit('gps:broadcast', safePoint);
   });
-  socket.on('gps:stop', ({ userId }) => io.emit('gps:offline', { userId, timestamp: new Date().toISOString() }));
-  socket.on('emergency:send', alert => emitEmergencyAlert(socket, { ...(socket.data.user || {}), ...alert }));
-  socket.on('camera:register', user => { socket.data.cameraUser = { userId: user.userId, name: user.name, role: user.role }; socket.data.user = { ...(socket.data.user || {}), ...user, lat: Number(socket.data.user?.lat ?? user.lat), lng: Number(socket.data.user?.lng ?? user.lng) }; socket.join(`camera:user:${user.userId}`); if (isAdminRole(user)) socket.emit('camera:shares:list', [...activeCameraShares.values()]); });
-  socket.on('camera:share:start', payload => { activeCameraShares.set(payload.userId, payload); socket.broadcast.emit('camera:share:start', payload); });
-  socket.on('camera:share:stop', payload => { activeCameraShares.delete(payload.userId); socket.broadcast.emit('camera:share:stop', payload); });
+  socket.on('gps:stop', () => io.emit('gps:offline', { userId: socket.data.authUser.id, timestamp: new Date().toISOString() }));
+  socket.on('emergency:send', alert => emitEmergencyAlert(socket, { ...alert, ...(socket.data.user || {}), userId: socket.data.authUser.id, name: socket.data.authUser.name, role: socket.data.authUser.role }));
+  socket.on('camera:register', user => { const safeUser = { ...user, userId: socket.data.authUser.id, name: socket.data.authUser.name, role: socket.data.authUser.role }; socket.data.cameraUser = { userId: safeUser.userId, name: safeUser.name, role: safeUser.role }; socket.data.user = { ...(socket.data.user || {}), ...safeUser, lat: Number(safeUser.lat), lng: Number(safeUser.lng) }; socket.join(`camera:user:${safeUser.userId}`); if (isAdminRole(safeUser)) socket.emit('camera:shares:list', [...activeCameraShares.values()]); });
+  socket.on('camera:share:start', payload => { const safePayload = { ...payload, userId: socket.data.authUser.id, name: socket.data.authUser.name }; activeCameraShares.set(safePayload.userId, safePayload); socket.broadcast.emit('camera:share:start', safePayload); });
+  socket.on('camera:share:stop', () => { const userId = socket.data.authUser.id; activeCameraShares.delete(userId); socket.broadcast.emit('camera:share:stop', { userId }); });
   socket.on('camera:view:request', ({ officerId }) => io.to(`camera:user:${officerId}`).emit('camera:viewer:request', { viewerSocketId: socket.id }));
   socket.on('camera:signal', ({ target, data }) => io.to(target).emit('camera:signal', { from: socket.id, fromUserId: socket.data.cameraUser?.userId, fromName: socket.data.cameraUser?.name, data }));
   socket.on('disconnect', () => { const user = socket.data.cameraUser; if (['Agent', 'Response Team'].includes(user?.role) && activeCameraShares.has(user.userId)) { activeCameraShares.delete(user.userId); socket.broadcast.emit('camera:share:stop', { userId: user.userId }); } });

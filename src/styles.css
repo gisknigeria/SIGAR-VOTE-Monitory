@@ -153,6 +153,21 @@ aside,.command-sidebar{background:linear-gradient(180deg,#310a18,#21060f)!import
   .login-card h2{font-size:26px!important}
 }
 
+/* Readable incident labels and map tooltips */
+.incident-card:hover .card-top b,
+.incident-card:hover .card-top time,
+.incident-card:hover p{color:var(--cream)!important}
+.report-type-chip{gap:5px;max-width:150px;padding-inline:7px!important}
+.report-type-chip em{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:normal;color:var(--gold-300)!important;font-size:9px!important}
+.incident-card:hover .report-type-chip{background:var(--gold-400)!important;border-color:var(--gold-300)!important}
+.incident-card:hover .report-type-chip em{color:var(--wine-950)!important}
+.leaflet-tooltip{background:var(--cream)!important;border:1px solid var(--gold-500)!important;color:var(--wine-950)!important;box-shadow:0 8px 24px #1b050d66!important}
+.leaflet-tooltip *{color:var(--wine-950)!important}
+.leaflet-tooltip-top:before{border-top-color:var(--gold-500)!important}
+.leaflet-tooltip-bottom:before{border-bottom-color:var(--gold-500)!important}
+.leaflet-tooltip-left:before{border-left-color:var(--gold-500)!important}
+.leaflet-tooltip-right:before{border-right-color:var(--gold-500)!important}
+
 .camera-marker{width:30px;height:30px;display:grid;place-items:center;border:2px solid #38bdf8;border-radius:9px;background:#07111fe8;color:#9edcff;box-shadow:0 0 0 4px #0005,0 0 20px #38bdf866;font-size:14px}
 .camera-marker.drone{border-color:#ff7c8a;color:#ffb0ba;box-shadow:0 0 0 4px #0005,0 0 20px #ef444466}
 .eye-logo{position:relative;overflow:hidden;background:radial-gradient(circle at 50% 45%,#38bdf8 0 10%,#0b1724 11% 24%,#facc15 25% 32%,#0f766e 33% 100%);color:#f8fafc;text-shadow:0 2px 8px #000;font-weight:900}

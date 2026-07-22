@@ -16,7 +16,7 @@
 5. Apply the Blueprint and wait for the health check to pass.
 6. Open the generated `onrender.com` URL and confirm `/api/health` returns an OK response. Its `database` field should say `neon-postgres`.
 
-The Starter plan is intentional: Render's free web service cannot attach a persistent disk. Without a disk, officer accounts and incidents stored in the current JSON file can be lost on restarts and deploys.
+The Starter plan is intentional: Render's free web service cannot attach a persistent disk. Without a disk, personnel accounts and incidents stored in the current JSON file can be lost on restarts and deploys.
 
 The single service supports WebSockets, so live incident and GPS updates use the same public HTTPS domain.
 

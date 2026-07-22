@@ -47,7 +47,6 @@ import {
   MdTrain,
   MdFlight,
   MdAnchor,
-  MdLocalPolice,
   MdLocalShipping,
   MdConstruction,
   MdTraffic,
@@ -73,13 +72,10 @@ import {
   MdCropSquare,
   MdAdjust,
 } from "react-icons/md";
-import { GiPoliceBadge } from "react-icons/gi";
 import {
-  OYO_COMMANDS,
+  OYO_LGAS,
   UNIT_TYPES,
-  divisionsForCommand,
-  normalizeCommand,
-} from "../shared/policeData.js";
+} from "../shared/electionData.js";
 
 const API = "/api";
 const OYO_CENTER = [7.3775, 3.947];
@@ -93,7 +89,7 @@ const severityColor = {
   High: "#fb923c",
   Critical: "#ef4444",
 };
-const OFFICER_POSITIONS = [
+const FIELD_TEAM_POSITIONS = [
   [7.3898, 3.8951],
   [7.4182, 3.9137],
   [7.8429, 3.9368],
@@ -139,7 +135,6 @@ const LEGACY_CATEGORY_GEOMETRY = {
   Boundary: "Polygon",
   Water: "Polygon",
   Vegetation: "Polygon",
-  "Police Zone": "Polygon",
   "No-Go Zone": "Polygon",
   Settlement: "Point",
   Custom: "Point",
@@ -179,7 +174,6 @@ const POINT_ICONS = [
   { key: "train", label: "Train", Component: MdTrain },
   { key: "airport", label: "Airport", Component: MdFlight },
   { key: "anchor", label: "Anchor", Component: MdAnchor },
-  { key: "police", label: "Police", Component: MdLocalPolice },
   { key: "truck", label: "Truck", Component: MdLocalShipping },
   { key: "construction", label: "Construction", Component: MdConstruction },
   { key: "traffic", label: "Traffic", Component: MdTraffic },
@@ -228,7 +222,7 @@ const reportIconSvg = (iconKey, color = "#ffffff", size = 18) => {
 const LINE_STYLES = { solid: "", dashed: "9 7", dotted: "2 7" };
 const OPERATIONAL_USES = [
   "Reference",
-  "Patrol Route",
+  "Field Route",
   "Checkpoint",
   "Hotspot",
   "No-Go Zone",
@@ -284,13 +278,6 @@ const REPORT_TYPE_STYLES = {
     opacity: 0.8,
     fillOpacity: 0.16,
   },
-  "STN-Station": {
-    icon: "STN",
-    color: "#16a34a",
-    fillColor: "#4ade80",
-    opacity: 0.8,
-    fillOpacity: 0.14,
-  },
   "IP-Incident Point": {
     icon: "IP",
     color: "#ef4444",
@@ -318,14 +305,12 @@ const REPORT_TYPE_ICONS = {
   "KP-Key Point": FaKey,
   "VP-Vulnerable Point": MdWarning,
   "POI-Point of Interest": MdPlace,
-  "STN-Station": MdLocalPolice,
   "IP-Incident Point": MdLocationPin,
   "SOS-Emergency": MdWarning,
   BS: FaBullseye,
   KP: FaKey,
   VP: MdWarning,
   POI: MdPlace,
-  STN: MdLocalPolice,
   IP: MdLocationPin,
   SOS: MdWarning,
   custom: MdHexagon,
@@ -375,7 +360,7 @@ const ANALYTIC_HELP = {
   "Find Hot Spots":
     "Highlights clusters where multiple incidents are near each other.",
   "Find Nearest":
-    "Draws a green line from the selected incident or map center to the nearest officer.",
+    "Draws a green line from the selected incident or map center to the nearest field responder.",
   "Summarize Nearby":
     "Counts incidents within 5 km of the selected incident or map center.",
   "Geo-Lookup": "Looks up the address/name for the current map center.",
@@ -449,7 +434,7 @@ const playEmergencyRing = (alert = {}) => {
       ctx.close?.();
     }, 60000);
   } catch {}
-  const title = `Emergency from ${alert.name || "officer"}`;
+  const title = `Emergency from ${alert.name || "field agent"}`;
   const body = `${alert.type || "Emergency"}${alert.text ? ` - ${alert.text}` : ""}`;
   if ("Notification" in window && Notification.permission === "granted") {
     navigator.serviceWorker?.ready
@@ -480,6 +465,61 @@ async function request(path, token, options = {}) {
   if (!response.ok) throw new Error(body?.message || "Request failed");
   return body;
 }
+
+const OFFLINE_VIDEO_DB = "election-monitor-offline-video";
+const OFFLINE_VIDEO_STORE = "clips";
+const openOfflineVideoDb = () =>
+  new Promise((resolve, reject) => {
+    const openRequest = indexedDB.open(OFFLINE_VIDEO_DB, 1);
+    openRequest.onupgradeneeded = () => {
+      if (!openRequest.result.objectStoreNames.contains(OFFLINE_VIDEO_STORE))
+        openRequest.result.createObjectStore(OFFLINE_VIDEO_STORE, { keyPath: "id" });
+    };
+    openRequest.onsuccess = () => resolve(openRequest.result);
+    openRequest.onerror = () => reject(openRequest.error);
+  });
+const offlineVideoTransaction = async (mode, action) => {
+  const db = await openOfflineVideoDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(OFFLINE_VIDEO_STORE, mode);
+    const result = action(transaction.objectStore(OFFLINE_VIDEO_STORE));
+    transaction.oncomplete = () => { db.close(); resolve(result?.result); };
+    transaction.onerror = () => { db.close(); reject(transaction.error); };
+  });
+};
+const listOfflineVideos = async () => {
+  const db = await openOfflineVideoDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(OFFLINE_VIDEO_STORE, "readonly");
+    const getRequest = transaction.objectStore(OFFLINE_VIDEO_STORE).getAll();
+    getRequest.onsuccess = () =>
+      resolve(getRequest.result.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)));
+    getRequest.onerror = () => reject(getRequest.error);
+    transaction.oncomplete = () => db.close();
+  });
+};
+const deleteOfflineVideo = (id) =>
+  offlineVideoTransaction("readwrite", (store) => store.delete(id));
+const queueOfflineVideo = async (blob, details) => {
+  await offlineVideoTransaction("readwrite", (store) =>
+    store.put({
+      id: `offline-video-${Date.now()}-${crypto.randomUUID?.() || Math.random()}`,
+      blob,
+      createdAt: new Date().toISOString(),
+      ...details,
+    }),
+  );
+  const clips = await listOfflineVideos();
+  for (const clip of clips.slice(0, Math.max(0, clips.length - 20)))
+    await deleteOfflineVideo(clip.id);
+};
+const blobToDataUrl = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 
 function LayerControlPanel({ layers, isAdmin, onToggle, onOpacity, onClose }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -583,7 +623,7 @@ function LayerControlPanel({ layers, isAdmin, onToggle, onOpacity, onClose }) {
                     <div className="lcp-layer-info">
                       <span className="lcp-layer-name">{layer.name}</span>
                       <span className="lcp-layer-type">
-                        {layer.type === "raster" ? "Raster" : "GIS"} -{" "}
+                        {layer.type === "raster" ? "Raster" : "Map layer"} -{" "}
                         {layerGeometry(layer)}
                       </span>
                     </div>
@@ -1191,7 +1231,7 @@ function MapView({
                   )
                   .join("");
                 layerGeo.bindPopup(
-                  `<div class="gis-popup"><strong>${label || layerItem.name}</strong><small>${layerItem.operationalUse || layerItem.category || "GIS layer"}</small>${rows}</div>`,
+                  `<div class="gis-popup"><strong>${label || layerItem.name}</strong><small>${layerItem.operationalUse || layerItem.category || "Map layer"}</small>${rows}</div>`,
                 );
               },
             });
@@ -1360,6 +1400,9 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
   const named = (user) => (user.rank ? `${user.rank} ${user.name}` : user.name);
   const addMedia = (files) => {
     setMediaError("");
+    let remainingBytes =
+      10 * 1024 * 1024 -
+      form.media.reduce((sum, item) => sum + Number(item.size || 0), 0);
     [...files].slice(0, 6 - form.media.length).forEach((file) => {
       if (!file.type.startsWith("image/") && !file.type.startsWith("video/"))
         return;
@@ -1367,6 +1410,11 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
         setMediaError("Each photo or video must be 8MB or smaller.");
         return;
       }
+      if (file.size > remainingBytes) {
+        setMediaError("Attachments can be up to 10MB in total per incident.");
+        return;
+      }
+      remainingBytes -= file.size;
       const reader = new FileReader();
       reader.onload = () =>
         setForm((old) => ({
@@ -1376,6 +1424,7 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
             {
               name: file.name,
               type: file.type.startsWith("video/") ? "video" : "image",
+              size: file.size,
               data: reader.result,
             },
           ].slice(0, 6),
@@ -1511,7 +1560,6 @@ function IncidentForm({ point, users, onClose, onSave, isAdmin }) {
                 "KP",
                 "VP",
                 "POI",
-                "STN",
                 "IP",
                 ...POINT_ICONS.map((icon) => icon.key),
               ].map((icon) => {
@@ -1679,40 +1727,23 @@ function OfficerManager({
     ? ["Admin", "Response Team", "Agent"]
     : ["Response Team", "Agent"];
   const defaultRole = manageableRoles[manageableRoles.length - 1];
-  const defaultCommand = OYO_COMMANDS[0] || "";
-  const defaultDivision = divisionsForCommand(defaultCommand)[0];
   const emptyForm = {
     name: "",
     email: "",
     password: "",
     rank: defaultRole,
-    unit: defaultDivision?.name || "",
-    unitType: "Division",
-    command: defaultCommand,
-    division: defaultDivision?.name || "",
+    unit: "Field Team",
+    unitType: "Field Team",
+    command: "Oyo State Election Operations",
+    division: "",
     station: "",
-    lga: defaultDivision?.lga || "",
+    lga: OYO_LGAS[0],
     lat: "7.3775",
     lng: "3.9470",
     role: defaultRole,
   };
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
-  const commandDivisions = divisionsForCommand(form.command);
-  const pickCommand = (command) => {
-    const first = divisionsForCommand(command)[0];
-    setForm({
-      ...form,
-      command,
-      division: first?.name || "",
-      lga: first?.lga || "",
-      unit: first?.name || command,
-    });
-  };
-  const pickDivision = (name) => {
-    const found = commandDivisions.find((item) => item.name === name);
-    setForm({ ...form, division: name, lga: found?.lga || "", unit: name });
-  };
   const submit = async (e) => {
     e.preventDefault();
     setError("");
@@ -1767,9 +1798,7 @@ function OfficerManager({
                       : o.role === "Super Admin"
                         ? "System Administrator"
                         : o.role} -{" "}
-                    {o.email} - {o.unitType || "Division"} -{" "}
-                    {o.command || "No command"} -{" "}
-                    {o.station || o.division || o.unit}
+                    {o.email} - {o.lga || "No LGA"} - {o.unit || o.unitType}
                   </small>
                 </div>
                 <button
@@ -1822,12 +1851,16 @@ function OfficerManager({
             )}
             <div className="two-col">
               <label>
-                Unit type
+                Deployment team
                 <select
                   required
                   value={form.unitType}
                   onChange={(e) =>
-                    setForm({ ...form, unitType: e.target.value })
+                    setForm({
+                      ...form,
+                      unitType: e.target.value,
+                      unit: e.target.value,
+                    })
                   }
                 >
                   {UNIT_TYPES.map((type) => (
@@ -1836,62 +1869,35 @@ function OfficerManager({
                 </select>
               </label>
               <label>
-                Area command
-                <select
-                  required
-                  value={form.command}
-                  onChange={(e) => pickCommand(e.target.value)}
-                >
-                  {OYO_COMMANDS.map((command) => (
-                    <option key={command}>{command}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="two-col">
-              <label>
-                Division
-                <select
-                  required
-                  value={form.division}
-                  onChange={(e) => pickDivision(e.target.value)}
-                >
-                  {commandDivisions.map((item) => (
-                    <option key={item.name}>{item.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Station / unit name
-                <input
-                  value={form.station}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      station: e.target.value,
-                      unit: e.target.value || form.division,
-                    })
-                  }
-                  placeholder="HQTS, station or special unit"
-                />
-              </label>
-            </div>
-            <div className="two-col">
-              <label>
                 LGA
-                <input
+                <select
                   required
                   value={form.lga}
                   onChange={(e) => setForm({ ...form, lga: e.target.value })}
-                />
+                >
+                  {OYO_LGAS.map((lga) => (
+                    <option key={lga}>{lga}</option>
+                  ))}
+                </select>
               </label>
+            </div>
+            <div className="two-col">
               <label>
-                Unit / call sign
+                Unit / team name
                 <input
                   required
                   value={form.unit}
                   onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                  placeholder="Patrol 04"
+                  placeholder="e.g. Ward 4 Field Team"
+                />
+              </label>
+              <label>
+                Contact/call sign
+                <input
+                  required
+                  value={form.station}
+                  onChange={(e) => setForm({ ...form, station: e.target.value })}
+                  placeholder="e.g. Team Alpha"
                 />
               </label>
             </div>
@@ -1926,7 +1932,7 @@ function OfficerManager({
               />
             </label>
             {error && <div className="error">{error}</div>}
-            <button className="primary wide" disabled={!manageableRanks.length}>
+            <button className="primary wide" disabled={!manageableRoles.length}>
               Create account
             </button>
           </form>
@@ -2150,7 +2156,7 @@ function CameraPanel({
               No {view === "All" ? "" : view.toLowerCase()} feeds registered
             </b>
             <span>
-              Add an HLS stream or ask an officer to share their phone camera.
+              Add an HLS stream or ask a field agent to share their phone camera.
             </span>
           </div>
         )}
@@ -2632,7 +2638,7 @@ function MapDataPanel({
       <div className="camera-head">
         <div>
           <span className="eyebrow">
-            {isSuperAdmin ? "SYSTEM ADMIN GIS" : "ADMIN GIS"}
+            {isSuperAdmin ? "SYSTEM MAP ADMIN" : "MAP ADMIN"}
           </span>
           <h2>Custom Map Builder</h2>
         </div>
@@ -2973,14 +2979,6 @@ function MapDataPanel({
               </a>
               <span>-</span>
               <a
-                href="https://diva-gis.org/gdata"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                DIVA-GIS
-              </a>
-              <span>-</span>
-              <a
                 href="https://download.geofabrik.de/africa/nigeria.html"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -2999,7 +2997,7 @@ function MapDataPanel({
               <span>
                 {isSuperAdmin
                   ? "Switch to the Upload tab and add your first shapefile."
-                  : "Ask a system administrator to upload GIS layers first."}
+                  : "Ask a system administrator to upload map layers first."}
               </span>
             </div>
           )}
@@ -3108,7 +3106,7 @@ function ChatPanel({
               <b>No chat rooms yet</b>
               <span>
                 {isAdmin
-                  ? "Create one and add officers."
+                  ? "Create one and add field personnel."
                   : "Command will add you to a room."}
               </span>
             </div>
@@ -3129,7 +3127,7 @@ function ChatPanel({
                   setNewRoom({ ...newRoom, userId: e.target.value })
                 }
               >
-                <option value="">Add officer now</option>
+                <option value="">Add field personnel now</option>
                 {officers.map((user) => (
                   <option key={user.id} value={user.id}>
                     {names[user.id]}
@@ -3166,7 +3164,7 @@ function ChatPanel({
                       value={memberId}
                       onChange={(e) => setMemberId(e.target.value)}
                     >
-                      <option value="">Add officer</option>
+                      <option value="">Add field personnel</option>
                       {officers
                         .filter(
                           (user) =>
@@ -3464,7 +3462,7 @@ function EmergencyPanel({ onClose, onSend }) {
       <form className="modal emergency-send-modal" onSubmit={submit}>
         <div className="panel-title">
           <div>
-            <span className="eyebrow">OFFICER EMERGENCY</span>
+            <span className="eyebrow">FIELD EMERGENCY</span>
             <h2>Send SOS alert</h2>
           </div>
           <button type="button" className="icon-btn" onClick={onClose}>
@@ -3748,6 +3746,12 @@ function Dashboard({ session, onLogout }) {
   const gpsBestRef = useRef(null);
   const localCameraStreamRef = useRef(null);
   const rtcPeersRef = useRef({});
+  const sharingCameraRef = useRef(false);
+  const offlineRecorderRef = useRef(null);
+  const offlineChunksRef = useRef([]);
+  const offlineSegmentTimerRef = useRef(null);
+  const offlineFallbackRef = useRef(false);
+  const offlineUploadRef = useRef(false);
   const activeRoomRef = useRef(null);
   const officers = useMemo(
     () =>
@@ -3760,11 +3764,11 @@ function Dashboard({ session, onLogout }) {
             lat:
               live?.lat ??
               (Number(u.lat) ||
-                OFFICER_POSITIONS[index % OFFICER_POSITIONS.length][0]),
+                FIELD_TEAM_POSITIONS[index % FIELD_TEAM_POSITIONS.length][0]),
             lng:
               live?.lng ??
               (Number(u.lng) ||
-                OFFICER_POSITIONS[index % OFFICER_POSITIONS.length][1]),
+                FIELD_TEAM_POSITIONS[index % FIELD_TEAM_POSITIONS.length][1]),
             status: live?.offline
               ? "Offline"
               : live
@@ -3791,6 +3795,88 @@ function Dashboard({ session, onLogout }) {
     item.createdBy === session.user.id ||
     item.assignedTo === session.user.id ||
     (item.visibleTo || []).includes(session.user.id);
+  const flushOfflineVideoQueue = async () => {
+    if (offlineUploadRef.current || !navigator.onLine) return;
+    offlineUploadRef.current = true;
+    try {
+      const clips = await listOfflineVideos();
+      for (const clip of clips) {
+        const data = await blobToDataUrl(clip.blob);
+        const point = gpsBestRef.current || session.user;
+        await request("/incidents", session.token, {
+          method: "POST",
+          body: JSON.stringify({
+            title: "Recovered offline field video",
+            description: `Automatically recorded while live video was unavailable. Captured ${new Date(clip.createdAt).toLocaleString()}.`,
+            reportType: "Network Connectivity",
+            severity: "High",
+            status: "Open",
+            lat: Number(clip.lat ?? point.lat) || OYO_CENTER[0],
+            lng: Number(clip.lng ?? point.lng) || OYO_CENTER[1],
+            assignedTo: "",
+            visibleTo: [],
+            media: [{
+              name: `offline-field-video-${Date.now()}.webm`,
+              type: "video",
+              size: clip.blob.size,
+              data,
+            }],
+            style: { source: "offline-video", icon: "video", color: "#d9aa4b", fillColor: "#ecc86f" },
+          }),
+        });
+        await deleteOfflineVideo(clip.id);
+      }
+      if (clips.length) {
+        setNotice(`${clips.length} offline video ${clips.length === 1 ? "clip" : "clips"} sent to admin`);
+        setTimeout(() => setNotice(""), 4000);
+      }
+    } catch {
+      // Keep queued clips on the device and retry on the next connection.
+    } finally {
+      offlineUploadRef.current = false;
+    }
+  };
+  const startOfflineVideoRecording = (reason = "Live connection unavailable") => {
+    const stream = localCameraStreamRef.current;
+    if (!stream || offlineRecorderRef.current || typeof MediaRecorder === "undefined") return;
+    offlineFallbackRef.current = true;
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+      ? "video/webm;codecs=vp8,opus"
+      : "video/webm";
+    const recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 400000,
+      audioBitsPerSecond: 32000,
+    });
+    offlineChunksRef.current = [];
+    offlineRecorderRef.current = recorder;
+    recorder.ondataavailable = (event) => {
+      if (event.data?.size) offlineChunksRef.current.push(event.data);
+    };
+    recorder.onstop = async () => {
+      clearTimeout(offlineSegmentTimerRef.current);
+      offlineRecorderRef.current = null;
+      const blob = new Blob(offlineChunksRef.current, { type: mimeType });
+      offlineChunksRef.current = [];
+      if (blob.size) {
+        const point = gpsBestRef.current || session.user;
+        await queueOfflineVideo(blob, { lat: point.lat, lng: point.lng }).catch(() => {});
+        if (navigator.onLine) flushOfflineVideoQueue();
+      }
+      if (offlineFallbackRef.current && sharingCameraRef.current)
+        setTimeout(() => startOfflineVideoRecording(reason), 250);
+    };
+    recorder.start(5000);
+    offlineSegmentTimerRef.current = setTimeout(() => recorder.stop(), 45000);
+    navigator.storage?.persist?.().catch(() => {});
+    setNotice(`${reason}. Recording safely on this device.`);
+  };
+  const stopOfflineVideoRecording = () => {
+    offlineFallbackRef.current = false;
+    clearTimeout(offlineSegmentTimerRef.current);
+    if (offlineRecorderRef.current?.state !== "inactive")
+      offlineRecorderRef.current?.stop();
+  };
   useEffect(() => {
     activeRoomRef.current = activeRoom;
   }, [activeRoom]);
@@ -3841,13 +3927,22 @@ function Dashboard({ session, onLogout }) {
       });
     const socket = io({
       transports: ["polling", "websocket"],
+      auth: { token: session.token },
       reconnectionAttempts: 10,
       timeout: 15000,
     });
     socketRef.current = socket;
-    socket.on("connect_error", () =>
-      setNotice("Realtime connection is reconnecting..."),
-    );
+    window.addEventListener("online", flushOfflineVideoQueue);
+    if (navigator.onLine) flushOfflineVideoQueue();
+    socket.on("connect_error", () => {
+      setNotice("Realtime connection is reconnecting...");
+      if (localCameraStreamRef.current)
+        startOfflineVideoRecording("Network connection unavailable");
+    });
+    socket.on("disconnect", () => {
+      if (localCameraStreamRef.current)
+        startOfflineVideoRecording("Network connection lost");
+    });
     const announceCameraShare = () =>
       socket.emit("camera:share:start", {
         userId: session.user.id,
@@ -3869,6 +3964,8 @@ function Dashboard({ session, onLogout }) {
         lng: session.user.lng,
       });
       if (localCameraStreamRef.current) announceCameraShare();
+      stopOfflineVideoRecording();
+      flushOfflineVideoQueue();
     };
     socket.on("connect", registerCameraUser);
     if (socket.connected) registerCameraUser();
@@ -3876,6 +3973,24 @@ function Dashboard({ session, onLogout }) {
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
       });
+      const connectionTimer = setTimeout(() => {
+        if (pc.connectionState !== "connected" && localCameraStreamRef.current)
+          startOfflineVideoRecording("Live video could not connect");
+      }, 15000);
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") {
+          clearTimeout(connectionTimer);
+          stopOfflineVideoRecording();
+          setNotice("Live video connected");
+          setTimeout(() => setNotice(""), 2500);
+        } else if (["failed", "disconnected"].includes(pc.connectionState)) {
+          startOfflineVideoRecording(
+            pc.connectionState === "failed"
+              ? "Live video could not connect"
+              : "Live video connection interrupted",
+          );
+        }
+      };
       pc.onicecandidate = (event) => {
         if (event.candidate)
           socket.emit("camera:signal", {
@@ -4056,12 +4171,14 @@ function Dashboard({ session, onLogout }) {
     return () => {
       if (gpsWatchRef.current != null)
         navigator.geolocation?.clearWatch(gpsWatchRef.current);
+      stopOfflineVideoRecording();
       localCameraStreamRef.current
         ?.getTracks()
         .forEach((track) => track.stop());
       Object.values(rtcPeersRef.current).forEach((pc) => pc.close());
       socket.close();
       socketRef.current = null;
+      window.removeEventListener("online", flushOfflineVideoQueue);
     };
   }, []);
   const visible = incidents.filter(
@@ -4385,36 +4502,16 @@ function Dashboard({ session, onLogout }) {
     const unitType = String(user.unitType || user.role || "").toLowerCase();
     const isHeadquarters =
       canAdmin ||
-      unitType.includes("hqt") ||
-      normalizeCommand(user.command) === "Oyo State Command";
+      unitType.includes("command center");
     if (isHeadquarters) {
       mapRef.current?.fitBounds(OYO_BOUNDS);
       return;
     }
-    const userCommand = normalizeCommand(user.command || user.unit);
-    const unitNames = new Set(
-      divisionsForCommand(userCommand).map((unit) => unit.name.toLowerCase()),
-    );
-    const sameCommandUsers = users.filter(
+    const localUsers = users.filter(
       (item) =>
-        normalizeCommand(item.command) === userCommand ||
-        unitNames.has(String(item.unit || item.division || "").toLowerCase()),
+        (user.lga && item.lga === user.lga) ||
+        (user.unit && item.unit === user.unit),
     );
-    const sameDivisionUsers = users.filter(
-      (item) =>
-        String(item.division || item.unit || "").toLowerCase() ===
-        String(user.division || user.unit || "").toLowerCase(),
-    );
-    const sameStationUsers = users.filter(
-      (item) =>
-        String(item.station || item.unit || "").toLowerCase() ===
-        String(user.station || user.unit || "").toLowerCase(),
-    );
-    const localUsers = unitType.includes("station")
-      ? sameStationUsers
-      : unitType.includes("division")
-        ? sameDivisionUsers
-        : sameCommandUsers;
     const localIds = new Set(localUsers.map((item) => item.id));
     const localReports = incidents.filter(
       (item) =>
@@ -4909,8 +5006,8 @@ function Dashboard({ session, onLogout }) {
           },
         ]);
       return nearest
-        ? `Nearest officer: ${nearest.name} - ${formatDistance(nearest.distance)}. Green line drawn.`
-        : "No officers available";
+        ? `Nearest responder: ${nearest.name} - ${formatDistance(nearest.distance)}. Green line drawn.`
+        : "No field responders available";
     }
     if (tool === "Summarize Nearby") {
       clearAnalysis();
@@ -5090,6 +5187,8 @@ function Dashboard({ session, onLogout }) {
   };
   const toggleCamera = async () => {
     if (sharingCamera) {
+      sharingCameraRef.current = false;
+      stopOfflineVideoRecording();
       localCameraStreamRef.current
         ?.getTracks()
         .forEach((track) => track.stop());
@@ -5102,6 +5201,8 @@ function Dashboard({ session, onLogout }) {
       return;
     }
     try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
+        throw new Error("Camera sharing requires HTTPS and a supported browser");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "environment",
@@ -5111,6 +5212,7 @@ function Dashboard({ session, onLogout }) {
         audio: true,
       });
       localCameraStreamRef.current = stream;
+      sharingCameraRef.current = true;
       setSharingCamera(true);
       socketRef.current?.emit("camera:share:start", {
         userId: session.user.id,
@@ -5118,11 +5220,19 @@ function Dashboard({ session, onLogout }) {
         type: "Phone",
       });
       setNotice("Phone camera is live to command");
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        sharingCameraRef.current = false;
+        stopOfflineVideoRecording();
+        socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
+        setSharingCamera(false);
+      });
+      if (!socketRef.current?.connected)
+        startOfflineVideoRecording("Network connection unavailable");
     } catch (error) {
       setNotice(
         error.name === "NotAllowedError"
           ? "Camera permission was denied"
-          : "Unable to start this camera",
+          : error.message || "Unable to start this camera",
       );
     }
     setTimeout(() => setNotice(""), 3000);
@@ -5186,8 +5296,15 @@ function Dashboard({ session, onLogout }) {
     });
     setMapLayers((old) => old.filter((x) => x.id !== item.id));
   };
-  const viewPhoneCamera = (officerId) =>
-    socketRef.current?.emit("camera:view:request", { officerId });
+  const viewPhoneCamera = (officerId) => {
+    if (!socketRef.current?.connected) {
+      setNotice("Realtime connection is offline. Please retry in a moment.");
+      return;
+    }
+    socketRef.current.emit("camera:view:request", { officerId });
+    setNotice("Connecting to live phone camera...");
+    setTimeout(() => setNotice(""), 5000);
+  };
   const mapCameras = useMemo(
     () => [
       ...cameras.map((c) => ({ ...c, feedType: c.type || "CCTV" })),
@@ -5556,12 +5673,16 @@ function Dashboard({ session, onLogout }) {
                     </div>
                     <p>{item.description}</p>
                     <div className="chips">
-                    <span title={item.reportType || "Incident"}>
+                    <span
+                      className="report-type-chip"
+                      aria-label={item.reportType || "Incident"}
+                    >
                         <ReportTypeIcon
                           type={item.reportType}
                           size={12}
                           color={reportStyle(item).color}
                         />
+                        <em>{item.reportType || "Incident"}</em>
                       </span>
                       <span>{item.status}</span>
                       <span>
@@ -5936,7 +6057,7 @@ function Dashboard({ session, onLogout }) {
               <dt>VISIBLE TO</dt>
               <dd>
                 {canAdmin
-                  ? "Admin and CP see all incidents"
+                  ? "Administrators can see all incidents"
                   : "Assigned viewers only"}
                 {selected.visibleTo?.length
                   ? ` - ${selected.visibleTo.map((id) => reportUsers.find((x) => x.id === id)?.name || id).join(", ")}`
