@@ -2072,14 +2072,20 @@ function OfficerManager({
                   onChange={(e) => handleLgaChange(e.target.value)}
                 >
                   {locationOptions.lgas.map((lga) => (
-                    <option key={lga}>{lga}</option>
+                    <option key={lga} value={lga}>
+                      LGA {String(lga).padStart(2, "0")}
+                    </option>
                   ))}
                 </select>
               </label>
               <label>
                 Ward / supervisor zone
                 <select required value={form.ward} onChange={(e) => handleWardChange(e.target.value)}>
-                  {locationOptions.wards.map((ward) => <option key={ward}>{ward}</option>)}
+                  {locationOptions.wards.map((ward) => (
+                    <option key={ward} value={ward}>
+                      Ward {String(ward).padStart(2, "0")}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>
@@ -2087,7 +2093,11 @@ function OfficerManager({
               Polling unit {form.role === "Supervisor" ? "(optional)" : "assignment"}
               <select required={form.role === "Agent"} value={form.pollingUnit} onChange={(e) => setForm({ ...form, pollingUnit: e.target.value })}>
                 <option value="">All units in ward</option>
-                {locationOptions.pollingUnits.map((unit) => <option key={unit}>{unit}</option>)}
+                {locationOptions.pollingUnits.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
               </select>
             </label>
             <div className="two-col">
