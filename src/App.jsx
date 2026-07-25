@@ -6907,7 +6907,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 className="map-action report-action"
                 onClick={() => {
                   setAnalyticsOpen(true);
-                  setOperationsOpen(true);
+                  setOperationsOpen(false);
                 }}
                 title="Report"
               >
