@@ -186,9 +186,16 @@ export const NIGERIA_REGISTRATION_LOCATION_DATA = {
   },
 };
 
+const normalizeLocationValue = (value) => String(value || "").replace(/^0+/, "") || "0";
+
 const parsePollingUnitCode = (code) => {
   const [state = "", lga = "", ward = "", unit = ""] = String(code || "").split("/");
-  return { state, lga, ward, unit };
+  return {
+    state: normalizeLocationValue(state),
+    lga: normalizeLocationValue(lga),
+    ward: normalizeLocationValue(ward),
+    unit: normalizeLocationValue(unit),
+  };
 };
 
 export const NIGERIA_STATES = Object.keys(NIGERIA_REGISTRATION_LOCATION_DATA);
@@ -203,21 +210,23 @@ export const normalizeRegistrationState = (state) => {
 
 export const getRegistrationLocationOptions = (state, lga = "", ward = "") => {
   const normalizedState = normalizeRegistrationState(state);
+  const normalizedLga = normalizeLocationValue(lga);
+  const normalizedWard = normalizeLocationValue(ward);
   const selected = NIGERIA_REGISTRATION_LOCATION_DATA[normalizedState];
   const allLgas = selected?.lgas || [];
   const allWards = selected?.wards || [];
   const allUnits = selected?.pollingUnits || [];
 
-  const unitsByLga = lga
-    ? allUnits.filter((code) => parsePollingUnitCode(code).lga === String(lga))
+  const unitsByLga = normalizedLga
+    ? allUnits.filter((code) => parsePollingUnitCode(code).lga === normalizedLga)
     : allUnits;
 
-  const wardOptions = lga
+  const wardOptions = normalizedLga
     ? Array.from(new Set(unitsByLga.map((code) => parsePollingUnitCode(code).ward)))
     : allWards;
 
-  const unitsByWard = ward
-    ? unitsByLga.filter((code) => parsePollingUnitCode(code).ward === String(ward))
+  const unitsByWard = normalizedWard
+    ? unitsByLga.filter((code) => parsePollingUnitCode(code).ward === normalizedWard)
     : unitsByLga;
 
   return {
