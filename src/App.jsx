@@ -841,7 +841,82 @@ function MapView({
   const customLayers = useRef([]);
   const toolLayers = useRef([]);
   const tile = useRef(null);
+  const boundaryOverlay = useRef(null);
+  const lgaOverlay = useRef(null);
+  const hoverBoundaryLayer = useRef(null);
   const [layerPanelOpen, setLayerPanelOpen] = useState(false);
+  const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
+  const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
+  const [selectedBoundaryLabel, setSelectedBoundaryLabel] = useState("");
+
+  const normalizeBoundaryKey = (value) =>
+    String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+  const getStateKey = (feature) =>
+    normalizeBoundaryKey(
+      feature.properties?.STATE_NAME ||
+        feature.properties?.state ||
+        feature.properties?.STATE ||
+        feature.properties?.state_name ||
+        feature.properties?.admin1Name ||
+        feature.properties?.name ||
+        feature.properties?.NAME ||
+        "",
+    );
+
+  const getLgaKey = (feature) =>
+    normalizeBoundaryKey(
+      feature.properties?.ADM2_EN ||
+        feature.properties?.lga_name ||
+        feature.properties?.LGA ||
+        feature.properties?.lga ||
+        feature.properties?.LTNAME ||
+        "",
+    );
+
+  const getBoundaryLabel = (feature) =>
+    feature.properties?.STATE_NAME ||
+    feature.properties?.state ||
+    feature.properties?.NAME ||
+    feature.properties?.name ||
+    feature.properties?.ADM2_EN ||
+    feature.properties?.lga_name ||
+    feature.properties?.LGA ||
+    feature.properties?.lga ||
+    feature.properties?.shapeName ||
+    "";
+
+  const buildBoundaryFeatures = () =>
+    mapLayers
+      .filter(
+        (layerItem) =>
+          layerItem.visible !== false &&
+          layerItem.type === "geojson" &&
+          layerItem.data?.features,
+      )
+      .flatMap((layerItem) =>
+        layerItem.data.features.filter((feature) =>
+          feature.geometry?.type?.includes("Polygon"),
+        ),
+      );
+
+  const clearBoundaryHighlight = () => {
+    setSelectedBoundaryState("");
+    setSelectedBoundaryLabel("");
+    lgaOverlay.current?.remove();
+    lgaOverlay.current = null;
+    hoverBoundaryLayer.current = null;
+  };
+
+  const handleBoundaryClick = (feature) => {
+    const label = getBoundaryLabel(feature);
+    const stateKey = getStateKey(feature);
+    const lgaKey = getLgaKey(feature);
+    const selectedKey = stateKey || lgaKey || label;
+    setSelectedBoundaryState(selectedKey);
+    setSelectedBoundaryLabel(label);
+  };
+
   useEffect(() => {
     if (leaflet.current || !el.current) return;
     const map = L.map(el.current, {
@@ -1279,6 +1354,128 @@ function MapView({
         }
       });
   }, [mapLayers]);
+
+  useEffect(() => {
+    const map = leaflet.current;
+    if (!map) return;
+
+    boundaryOverlay.current?.remove();
+    boundaryOverlay.current = null;
+    lgaOverlay.current?.remove();
+    lgaOverlay.current = null;
+    hoverBoundaryLayer.current = null;
+
+    if (!showBoundaryLayer) {
+      return;
+    }
+
+    const boundaryFeatures = buildBoundaryFeatures();
+    if (!boundaryFeatures.length) return;
+
+    const boundaryGeo = L.geoJSON(
+      { type: "FeatureCollection", features: boundaryFeatures },
+      {
+        style: () => ({
+          color: "#60a5fa",
+          weight: 2,
+          dashArray: "6 4",
+          fillOpacity: 0,
+          opacity: 0.85,
+        }),
+        onEachFeature: (feature, layerGeo) => {
+          const label = getBoundaryLabel(feature);
+          layerGeo.on({
+            mouseover: (e) => {
+              const target = e.target;
+              hoverBoundaryLayer.current = target;
+              target.setStyle({
+                weight: 4,
+                color: "#38bdf8",
+                fillOpacity: 0.18,
+                opacity: 1,
+              });
+              if (label) {
+                target.bindTooltip(label, { sticky: true }).openTooltip();
+              }
+              if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge)
+                target.bringToFront();
+            },
+            mouseout: (e) => {
+              const target = e.target;
+              if (boundaryGeo) boundaryGeo.resetStyle(target);
+              target.closeTooltip();
+            },
+            click: (e) => {
+              L.DomEvent.stopPropagation(e);
+              handleBoundaryClick(feature);
+            },
+          });
+        },
+      },
+    ).addTo(map);
+
+    boundaryOverlay.current = boundaryGeo;
+  }, [mapLayers, showBoundaryLayer]);
+
+  useEffect(() => {
+    const map = leaflet.current;
+    if (!map) return;
+
+    lgaOverlay.current?.remove();
+    lgaOverlay.current = null;
+
+    if (!showBoundaryLayer || !selectedBoundaryState) return;
+
+    const boundaryFeatures = buildBoundaryFeatures();
+    const normalized = normalizeBoundaryKey(selectedBoundaryState);
+    const lgaFeatures = boundaryFeatures.filter((feature) => {
+      const stateKey = getStateKey(feature);
+      const lgaKey = getLgaKey(feature);
+      if (stateKey && stateKey === normalized) return true;
+      if (lgaKey && lgaKey === normalized) return true;
+      return false;
+    });
+
+    if (!lgaFeatures.length) return;
+
+    const lgaGeo = L.geoJSON(
+      { type: "FeatureCollection", features: lgaFeatures },
+      {
+        style: () => ({
+          color: "#fbbf24",
+          weight: 3,
+          dashArray: "4 5",
+          fillOpacity: 0.08,
+          opacity: 0.9,
+        }),
+        onEachFeature: (feature, layerGeo) => {
+          const label = getBoundaryLabel(feature);
+          if (label) layerGeo.bindTooltip(label, { sticky: true });
+          layerGeo.on({
+            mouseover: (e) => {
+              const target = e.target;
+              target.setStyle({
+                weight: 4,
+                color: "#f59e0b",
+                fillOpacity: 0.2,
+                opacity: 1,
+              });
+              if (label) target.openTooltip();
+              if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge)
+                target.bringToFront();
+            },
+            mouseout: (e) => {
+              if (lgaGeo) lgaGeo.resetStyle(e.target);
+              e.target.closeTooltip();
+            },
+          });
+        },
+      },
+    ).addTo(map);
+
+    lgaOverlay.current = lgaGeo;
+  }, [selectedBoundaryState, showBoundaryLayer, mapLayers]);
+
   useEffect(() => {
     const map = leaflet.current;
     if (!map) return;
@@ -1842,15 +2039,30 @@ function OfficerManager({
   currentUser,
   onClose,
   onCreate,
+  onUpdate,
   onDelete,
   onPassword,
 }) {
+  const isSupervisor = currentUser.role === "Supervisor";
   const manageableRoles = currentUser.role === "Super Admin"
     ? ["Admin", "Response Team", "Supervisor", "Agent"]
     : ["Response Team", "Supervisor", "Agent"];
+  const canEditAssignment = (user) => {
+    if (user.role !== "Agent") return false;
+    if (currentUser.role === "Super Admin" || currentUser.role === "Admin") return true;
+    if (isSupervisor) {
+      return (
+        user.state === currentUser.state &&
+        user.lga === currentUser.lga &&
+        user.ward === currentUser.ward
+      );
+    }
+    return false;
+  };
   const defaultRole = manageableRoles[manageableRoles.length - 1];
   const initialLocationOptions = getRegistrationLocationOptions(DEFAULT_REGISTRATION_STATE);
   const emptyForm = {
+    id: "",
     name: "",
     email: "",
     password: "",
@@ -1860,10 +2072,12 @@ function OfficerManager({
     command: "Oyo State Election Operations",
     division: "",
     station: "",
-    state: DEFAULT_REGISTRATION_STATE,
-    lga: initialLocationOptions.lgas[0] || "",
-    ward: initialLocationOptions.wards[0] || "",
-    pollingUnit: initialLocationOptions.pollingUnits[0] || "",
+    state: isSupervisor ? currentUser.state : DEFAULT_REGISTRATION_STATE,
+    lga: isSupervisor ? currentUser.lga : initialLocationOptions.lgas[0] || "",
+    ward: isSupervisor ? currentUser.ward : initialLocationOptions.wards[0] || "",
+    pollingUnit: isSupervisor
+      ? currentUser.pollingUnit || initialLocationOptions.pollingUnits[0] || ""
+      : initialLocationOptions.pollingUnits[0] || "",
     lat: "7.3775",
     lng: "3.9470",
     role: defaultRole,
@@ -1915,16 +2129,27 @@ function OfficerManager({
     }));
   };
   const [error, setError] = useState("");
+  const [editingUser, setEditingUser] = useState(null);
   const [managerTab, setManagerTab] = useState("create");
+  const isEditing = Boolean(form.id);
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     try {
-      await onCreate(form);
+      if (isEditing) {
+        await onUpdate(form);
+      } else {
+        await onCreate(form);
+      }
       setForm(emptyForm);
+      setEditingUser(null);
     } catch (err) {
       setError(err.message);
     }
+  };
+  const cancelEdit = () => {
+    setForm(emptyForm);
+    setEditingUser(null);
   };
   const resetPassword = async (user) => {
     const password = window.prompt(`Enter new password for ${user.name}`);
@@ -1995,6 +2220,18 @@ function OfficerManager({
                 >
                   Password
                 </button>
+                {canEditAssignment(o) && (
+                  <button
+                    className="unit-action-btn"
+                    onClick={() => {
+                      setEditingUser(o);
+                      setManagerTab("create");
+                      setForm({ ...o, password: "" });
+                    }}
+                  >
+                    Edit assignment
+                  </button>
+                )}
                 <button className="delete-btn" onClick={() => onDelete(o)}>
                   Delete
                 </button>
@@ -2002,7 +2239,7 @@ function OfficerManager({
             ))}
           </div>}
           {managerTab === "create" && <form className="personnel-create-form" onSubmit={submit}>
-            <h3>Create personnel account</h3>
+            <h3>{isEditing ? "Edit agent assignment" : "Create personnel account"}</h3>
             <label>
               Full name
               <input
@@ -2022,7 +2259,7 @@ function OfficerManager({
                 placeholder="name@command.local"
               />
             </label>
-            {canManageRoles && (
+            {canManageRoles && !isEditing && (
               <label>
                 System role
                 <select
@@ -2058,7 +2295,12 @@ function OfficerManager({
               </label>
               <label>
                 State
-                <select required value={form.state} onChange={(e) => handleStateChange(e.target.value)}>
+                <select
+                  required
+                  value={form.state}
+                  onChange={(e) => handleStateChange(e.target.value)}
+                  disabled={isSupervisor}
+                >
                   {NIGERIA_STATES.map((state) => <option key={state}>{state}</option>)}
                 </select>
               </label>
@@ -2070,6 +2312,7 @@ function OfficerManager({
                   required
                   value={form.lga}
                   onChange={(e) => handleLgaChange(e.target.value)}
+                  disabled={isSupervisor}
                 >
                   {locationOptions.lgas.map((lga) => (
                     <option key={lga} value={lga}>
@@ -2080,7 +2323,12 @@ function OfficerManager({
               </label>
               <label>
                 Ward / supervisor zone
-                <select required value={form.ward} onChange={(e) => handleWardChange(e.target.value)}>
+                <select
+                  required
+                  value={form.ward}
+                  onChange={(e) => handleWardChange(e.target.value)}
+                  disabled={isSupervisor}
+                >
                   {locationOptions.wards.map((ward) => (
                     <option key={ward} value={ward}>
                       Ward {String(ward).padStart(2, "0")}
@@ -2091,7 +2339,11 @@ function OfficerManager({
             </div>
             <label>
               Polling unit {form.role === "Supervisor" ? "(optional)" : "assignment"}
-              <select required={form.role === "Agent"} value={form.pollingUnit} onChange={(e) => setForm({ ...form, pollingUnit: e.target.value })}>
+              <select
+                required={form.role === "Agent"}
+                value={form.pollingUnit}
+                onChange={(e) => setForm({ ...form, pollingUnit: e.target.value })}
+              >
                 <option value="">All units in ward</option>
                 {locationOptions.pollingUnits.map((unit) => (
                   <option key={unit} value={unit}>
@@ -2108,6 +2360,7 @@ function OfficerManager({
                   value={form.unit}
                   onChange={(e) => setForm({ ...form, unit: e.target.value })}
                   placeholder="e.g. Ward 4 Field Team"
+                  disabled={isEditing}
                 />
               </label>
               <label>
@@ -2121,18 +2374,20 @@ function OfficerManager({
               </label>
             </div>
             <div className="two-col">
-              <label>
-                Password
-                <input
-                  required
-                  minLength="6"
-                  type="password"
-                  value={form.password}
-                  onChange={(e) =>
-                    setForm({ ...form, password: e.target.value })
-                  }
-                />
-              </label>
+              {!isEditing && (
+                <label>
+                  Password
+                  <input
+                    required
+                    minLength="6"
+                    type="password"
+                    value={form.password}
+                    onChange={(e) =>
+                      setForm({ ...form, password: e.target.value })
+                    }
+                  />
+                </label>
+              )}
               <label>
                 Initial latitude
                 <input
@@ -2151,9 +2406,16 @@ function OfficerManager({
               />
             </label>
             {error && <div className="error">{error}</div>}
-            <button className="primary wide" disabled={!manageableRoles.length}>
-              Create account
-            </button>
+            <div className="form-actions">
+              <button className="primary wide" disabled={!manageableRoles.length}>
+                {isEditing ? "Save changes" : "Create account"}
+              </button>
+              {isEditing && (
+                <button type="button" className="ghost" onClick={cancelEdit}>
+                  Cancel edit
+                </button>
+              )}
+            </div>
           </form>}
         </div>
       </section>
@@ -5208,6 +5470,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     setNotice(`${user.name} created`);
     setTimeout(() => setNotice(""), 2500);
   };
+  const updateOfficer = async (form) => {
+    if (!form?.id) throw new Error("No user selected for update");
+    const user = await request(`/users/${form.id}`, session.token, {
+      method: "PUT",
+      body: JSON.stringify(form),
+    });
+    setUsers((old) => old.map((u) => (u.id === user.id ? user : u)));
+    setNotice(`${user.name} updated`);
+    setTimeout(() => setNotice(""), 2500);
+    return user;
+  };
   const updateUserPassword = async (user, password) => {
     await request(`/users/${user.id}/password`, session.token, {
       method: "PUT",
@@ -6951,6 +7224,22 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 <FaChartBar />
               </button>
             )}
+            <button
+              className={`map-action border-toggle ${showBoundaryLayer ? "active" : ""}`}
+              onClick={() => setShowBoundaryLayer((value) => !value)}
+              title={showBoundaryLayer ? "Hide state/LGA borders" : "Show state/LGA borders"}
+            >
+              <FaMapMarkedAlt />
+            </button>
+            {selectedBoundaryLabel && showBoundaryLayer && (
+              <button
+                className="map-action border-clear"
+                onClick={clearBoundarySelection}
+                title="Clear selected state/LGA"
+              >
+                <FaTimes />
+              </button>
+            )}
             {canAdmin && (
               <button
                 className="map-action camera-count"
@@ -6993,6 +7282,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               />
               <button>GO</button>
             </form>}
+            {selectedBoundaryLabel && showBoundaryLayer && (
+              <div className="boundary-info-card">
+                <strong>Selected</strong>
+                <span>{selectedBoundaryLabel}</span>
+              </div>
+            )}
             <div className={`profile-menu ${profileMenuOpen ? "open" : ""}`}>
               <button className="map-action logout-btn" onClick={() => setProfileMenuOpen(value => !value)} title="Profile menu"><span>{session.user.name?.[0] || "U"}</span></button>
               <div className="profile-dropdown"><div><b>{session.user.name}</b><small>{session.user.role}</small></div><button onClick={() => setProfileOpen(true)}><FaKey /> Profile</button><button onClick={onLogout}><FaSignOutAlt /> Logout</button></div>
@@ -7532,6 +7827,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           currentUser={session.user}
           onClose={() => setManageOfficers(false)}
           onCreate={createOfficer}
+          onUpdate={updateOfficer}
           onDelete={deleteOfficer}
           onPassword={updateUserPassword}
         />
