@@ -836,6 +836,8 @@ function MapView({
   onLayerToggle,
   onLayerOpacity,
   showBoundaryLayer,
+  showStateBorders,
+  showLgaBorders,
   selectedBoundaryState,
   onBoundarySelect,
   onBoundaryClear,
@@ -849,6 +851,10 @@ function MapView({
   const tile = useRef(null);
   const boundaryOverlay = useRef(null);
   const lgaOverlay = useRef(null);
+  const nigeriaStateOverlay = useRef(null);
+  const nigeriaLgaOverlay = useRef(null);
+  const nigeriaStateLabels = useRef([]);
+  const nigeriaLgaLabels = useRef([]);
   const hoverBoundaryLayer = useRef(null);
   const [layerPanelOpen, setLayerPanelOpen] = useState(false);
 
@@ -898,9 +904,15 @@ function MapView({
           layerItem.data?.features,
       )
       .flatMap((layerItem) =>
-        layerItem.data.features.filter((feature) =>
-          feature.geometry?.type?.includes("Polygon"),
-        ),
+        layerItem.data.features.filter((feature) => {
+          if (!feature.geometry?.type?.includes("Polygon")) return false;
+          const p = feature.properties || {};
+          // Exclude features picked up by dedicated state/LGA overlays
+          const isStateFeature = p.STATE_NAME || p.admin1Name || p.NAME_1 || p.State || (p.state && !p.ADM2_EN && !p.lga_name && !p.LGA);
+          const isLgaFeature = p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
+          if (isStateFeature || isLgaFeature) return false;
+          return true;
+        }),
       );
 
   const handleBoundaryClick = (feature) => {
@@ -1348,6 +1360,207 @@ function MapView({
         }
       });
   }, [mapLayers]);
+
+  // Nigeria state and LGA boundary overlays (built-in and uploaded layers)
+  useEffect(() => {
+    const map = leaflet.current;
+    if (!map) return;
+    nigeriaStateOverlay.current?.remove();
+    nigeriaStateOverlay.current = null;
+    nigeriaStateLabels.current.forEach((l) => l.remove());
+    nigeriaStateLabels.current = [];
+    if (!showStateBorders) return;
+
+    const boundarySources = [
+      ...(nigeriaBoundaryData ? [{ type: "geojson", data: nigeriaBoundaryData, builtIn: true }] : []),
+      ...mapLayers.filter((l) => l.visible !== false && l.type === "geojson" && l.data?.features),
+    ];
+
+    const stateFeatures = boundarySources.flatMap((source) => {
+      const features = source.data?.features || [];
+      if (source.builtIn) {
+        const groups = new Map();
+        features.forEach((feature) => {
+          const p = feature.properties || {};
+          const stateName = p.statename || p.STATE_NAME || p.admin1Name || p.NAME_1 || p.State || p.state || p.name || p.NAME || "";
+          if (!stateName || !feature.geometry?.type?.includes("Polygon")) return;
+          const existing = groups.get(stateName) || [];
+          existing.push(feature);
+          groups.set(stateName, existing);
+        });
+        return Array.from(groups.entries()).map(([name, groupedFeatures]) => ({
+          type: "Feature",
+          properties: { name },
+          geometry: {
+            type: "MultiPolygon",
+            coordinates: groupedFeatures
+              .map((item) => item.geometry?.type?.includes("Polygon") ? [item.geometry.coordinates] : [])
+              .filter(Boolean),
+          },
+        }));
+      }
+
+      return features.filter((feature) => {
+        const p = feature.properties || {};
+        const hasState = p.STATE_NAME || p.admin1Name || p.NAME_1 || p.State || (p.state && !p.ADM2_EN && !p.lga_name && !p.LGA);
+        const isPolygon = feature.geometry?.type?.includes("Polygon");
+        return hasState && isPolygon;
+      });
+    });
+
+    if (!stateFeatures.length) return;
+    const stateLayer = L.geoJSON(
+      { type: "FeatureCollection", features: stateFeatures },
+      {
+        pane: "overlayPane",
+        style: () => ({
+          color: "#e2475a",
+          weight: 2.5,
+          dashArray: "",
+          fillOpacity: 0.04,
+          fillColor: "#e2475a",
+          opacity: 0.9,
+        }),
+        onEachFeature: (feature, layerGeo) => {
+          const name =
+            feature.properties?.name ||
+            feature.properties?.STATE_NAME ||
+            feature.properties?.admin1Name ||
+            feature.properties?.NAME_1 ||
+            feature.properties?.State ||
+            feature.properties?.state ||
+            feature.properties?.statename ||
+            feature.properties?.NAME ||
+            "";
+          if (name) {
+            layerGeo.bindTooltip(name, { permanent: false, sticky: true, className: "nigeria-state-tooltip" });
+            try {
+              const center = layerGeo.getBounds().getCenter();
+              const label = L.marker(center, {
+                icon: L.divIcon({
+                  className: "nigeria-state-label",
+                  html: `<span>${name}</span>`,
+                  iconSize: null,
+                  iconAnchor: [0, 0],
+                }),
+                interactive: false,
+                zIndexOffset: -100,
+              });
+              label.addTo(map);
+              nigeriaStateLabels.current.push(label);
+            } catch {}
+          }
+          layerGeo.on({
+            mouseover: (e) => {
+              e.target.setStyle({ weight: 4, color: "#ff3d55", fillOpacity: 0.12, opacity: 1 });
+              if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
+            },
+            mouseout: (e) => stateLayer.resetStyle(e.target),
+            click: (e) => {
+              L.DomEvent.stopPropagation(e);
+              const key = String(name).trim().toLowerCase().replace(/\s+/g, " ");
+              onBoundarySelect?.(key, name);
+            },
+          });
+        },
+      },
+    ).addTo(map);
+    nigeriaStateOverlay.current = stateLayer;
+    stateLayer.bringToFront();
+  }, [showStateBorders, nigeriaBoundaryData, mapLayers, onBoundarySelect]);
+
+  // Nigeria LGA boundary overlay (built-in and uploaded layers)
+  useEffect(() => {
+    const map = leaflet.current;
+    if (!map) return;
+    nigeriaLgaOverlay.current?.remove();
+    nigeriaLgaOverlay.current = null;
+    nigeriaLgaLabels.current.forEach((l) => l.remove());
+    nigeriaLgaLabels.current = [];
+    if (!showLgaBorders) return;
+
+    const boundarySources = [
+      ...(nigeriaBoundaryData ? [{ type: "geojson", data: nigeriaBoundaryData, builtIn: true }] : []),
+      ...mapLayers.filter((l) => l.visible !== false && l.type === "geojson" && l.data?.features),
+    ];
+
+    const lgaFeatures = boundarySources.flatMap((source) => {
+      const features = source.data?.features || [];
+      if (source.builtIn) {
+        return features.filter((feature) => {
+          const p = feature.properties || {};
+          const hasLga = p.lganame || p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
+          const isPolygon = feature.geometry?.type?.includes("Polygon");
+          return hasLga && isPolygon;
+        });
+      }
+      return features.filter((feature) => {
+        const p = feature.properties || {};
+        const hasLga = p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
+        const isPolygon = feature.geometry?.type?.includes("Polygon");
+        return hasLga && isPolygon;
+      });
+    });
+
+    if (!lgaFeatures.length) return;
+    const lgaLayer = L.geoJSON(
+      { type: "FeatureCollection", features: lgaFeatures },
+      {
+        pane: "overlayPane",
+        style: () => ({
+          color: "#34d399",
+          weight: 1.5,
+          dashArray: "4 5",
+          fillOpacity: 0.03,
+          fillColor: "#34d399",
+          opacity: 0.85,
+        }),
+        onEachFeature: (feature, layerGeo) => {
+          const name =
+            feature.properties?.lganame ||
+            feature.properties?.ADM2_EN ||
+            feature.properties?.lga_name ||
+            feature.properties?.LGA ||
+            feature.properties?.lga ||
+            feature.properties?.LTNAME ||
+            feature.properties?.name ||
+            "";
+          if (name) {
+            layerGeo.bindTooltip(name, { permanent: false, sticky: true, className: "nigeria-lga-tooltip" });
+            try {
+              const center = layerGeo.getBounds().getCenter();
+              const label = L.marker(center, {
+                icon: L.divIcon({
+                  className: "nigeria-lga-label",
+                  html: `<span>${name}</span>`,
+                  iconSize: null,
+                  iconAnchor: [0, 0],
+                }),
+                interactive: false,
+                zIndexOffset: -50,
+              });
+              label.addTo(map);
+              nigeriaLgaLabels.current.push(label);
+            } catch {}
+          }
+          layerGeo.on({
+            mouseover: (e) => {
+              e.target.setStyle({ weight: 3, color: "#22c55e", fillOpacity: 0.14, opacity: 1 });
+              if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
+            },
+            mouseout: (e) => lgaLayer.resetStyle(e.target),
+            click: (e) => {
+              L.DomEvent.stopPropagation(e);
+              const key = String(name).trim().toLowerCase().replace(/\s+/g, " ");
+              onBoundarySelect?.(key, name);
+            },
+          });
+        },
+      },
+    ).addTo(map);
+    nigeriaLgaOverlay.current = lgaLayer;
+    lgaLayer.bringToFront();
+  }, [showLgaBorders, nigeriaBoundaryData, mapLayers, onBoundarySelect]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -2040,6 +2253,7 @@ function OfficerManager({
   onUpdate,
   onDelete,
   onPassword,
+  onRoleChange,
 }) {
   const isSupervisor = currentUser.role === "Supervisor";
   const manageableRoles = currentUser.role === "Super Admin"
@@ -2137,6 +2351,9 @@ function OfficerManager({
   const [error, setError] = useState("");
   const [editingUser, setEditingUser] = useState(null);
   const [managerTab, setManagerTab] = useState("create");
+  const [roleChangeUser, setRoleChangeUser] = useState(null);
+  const [roleChangeForm, setRoleChangeForm] = useState({ role: "", ward: "", lga: "", state: "" });
+  const [roleChangeError, setRoleChangeError] = useState("");
   const isEditing = Boolean(form.id);
   const submit = async (e) => {
     e.preventDefault();
@@ -2164,6 +2381,20 @@ function OfficerManager({
       await onPassword(user, password);
     } catch (err) {
       setError(err.message);
+    }
+  };
+  const openRoleChange = (user) => {
+    setRoleChangeUser(user);
+    setRoleChangeForm({ role: user.role, ward: user.ward || "", lga: user.lga || "", state: user.state || "" });
+    setRoleChangeError("");
+  };
+  const submitRoleChange = async () => {
+    setRoleChangeError("");
+    try {
+      await onRoleChange(roleChangeUser, { role: roleChangeForm.role, ward: roleChangeForm.ward, lga: roleChangeForm.lga, state: roleChangeForm.state });
+      setRoleChangeUser(null);
+    } catch (err) {
+      setRoleChangeError(err.message);
     }
   };
   const canManageRoles = ["Super Admin", "Admin"].includes(currentUser.role);
@@ -2198,6 +2429,53 @@ function OfficerManager({
         <div className="manager-grid">
           {managerTab === "list" && <div className="manage-list">
             <h3>Visible personnel</h3>
+            {roleChangeUser && (
+              <div className="role-change-panel">
+                <div className="role-change-header">
+                  <b>Change role / ward: {roleChangeUser.name}</b>
+                  <button className="icon-btn" onClick={() => setRoleChangeUser(null)}><FaTimes /></button>
+                </div>
+                <div className="role-change-fields">
+                  <label>
+                    New role
+                    <select value={roleChangeForm.role} onChange={(e) => setRoleChangeForm(f => ({ ...f, role: e.target.value }))}>
+                      <option value="Supervisor">Supervisor</option>
+                      <option value="Agent">Agent</option>
+                    </select>
+                  </label>
+                  <label>
+                    State
+                    <select value={roleChangeForm.state} onChange={(e) => {
+                      const ns = normalizeRegistrationState(e.target.value);
+                      const opts = getRegistrationLocationOptions(ns);
+                      setRoleChangeForm(f => ({ ...f, state: ns, lga: opts.lgas[0] || "", ward: opts.wards[0] || "" }));
+                    }}>
+                      {stateOptions.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    LGA
+                    <select value={roleChangeForm.lga} onChange={(e) => {
+                      const opts = getRegistrationLocationOptions(roleChangeForm.state, e.target.value);
+                      setRoleChangeForm(f => ({ ...f, lga: e.target.value, ward: opts.wards[0] || "" }));
+                    }}>
+                      {getRegistrationLocationOptions(roleChangeForm.state).lgas.map(l => <option key={l}>{l}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Ward
+                    <select value={roleChangeForm.ward} onChange={(e) => setRoleChangeForm(f => ({ ...f, ward: e.target.value }))}>
+                      {getRegistrationLocationOptions(roleChangeForm.state, roleChangeForm.lga).wards.map(w => <option key={w}>{w}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {roleChangeError && <div className="error">{roleChangeError}</div>}
+                <div className="role-change-actions">
+                  <button className="primary" onClick={submitRoleChange}>Save changes</button>
+                  <button className="ghost" onClick={() => setRoleChangeUser(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
             {users
               .filter((o) => o.role !== "Super Admin")
               .map((o) => (
@@ -2236,6 +2514,15 @@ function OfficerManager({
                     }}
                   >
                     Edit assignment
+                  </button>
+                )}
+                {canManageRoles && (o.role === "Supervisor" || o.role === "Agent") && (
+                  <button
+                    className="unit-action-btn role-change-btn"
+                    onClick={() => openRoleChange(o)}
+                    title={o.role === "Supervisor" ? "Demote to Agent or change ward" : "Promote to Supervisor or change ward"}
+                  >
+                    {o.role === "Supervisor" ? "⬇ Demote / Ward" : "⬆ Promote / Ward"}
                   </button>
                 )}
                 <button className="delete-btn" onClick={() => onDelete(o)}>
@@ -4532,7 +4819,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [emergencyAlerts, setEmergencyAlerts] = useState([]);
   const [activeEmergency, setActiveEmergency] = useState(null);
   const [mapLayers, setMapLayers] = useState([]);
+  const [nigeriaBoundaryData, setNigeriaBoundaryData] = useState(null);
   const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
+  const [showStateBorders, setShowStateBorders] = useState(true);
+  const [showLgaBorders, setShowLgaBorders] = useState(true);
   const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
   const [selectedBoundaryLabel, setSelectedBoundaryLabel] = useState("");
   const [drawMode, setDrawMode] = useState("");
@@ -4582,6 +4872,24 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   );
   const mapRef = useRef(null);
   const socketRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/nigeria-boundaries.geojson")
+      .then((response) => {
+        if (!response.ok) throw new Error(`Boundary data failed: ${response.status}`);
+        return response.json();
+      })
+      .then((data) => {
+        if (!cancelled) setNigeriaBoundaryData(data);
+      })
+      .catch((error) => {
+        console.warn("Unable to load Nigeria boundary data", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const gpsWatchRef = useRef(null);
   const gpsBestRef = useRef(null);
   const sosHoldTimerRef = useRef(null);
@@ -5513,6 +5821,19 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     });
     setNotice(`Password updated for ${user.name}`);
     setTimeout(() => setNotice(""), 2500);
+  };
+  const changeUserRole = async (user, changes) => {
+    const updated = await request(`/users/${user.id}/role`, session.token, {
+      method: "PUT",
+      body: JSON.stringify(changes),
+    });
+    setUsers((old) => old.map((u) => (u.id === updated.id ? updated : u)));
+    const action = updated.role !== user.role
+      ? (updated.role === "Supervisor" ? "promoted to Supervisor" : "demoted to Agent")
+      : "ward updated";
+    setNotice(`${updated.name} ${action}`);
+    setTimeout(() => setNotice(""), 3000);
+    return updated;
   };
   const changeOwnPassword = async () => {
     const password = window.prompt("Enter your new password");
@@ -7250,12 +7571,35 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               </button>
             )}
             <button
-              className={`map-action border-toggle ${showBoundaryLayer ? "active" : ""}`}
-              onClick={() => setShowBoundaryLayer((value) => !value)}
-              title={showBoundaryLayer ? "Hide state/LGA borders" : "Show state/LGA borders"}
+              className={`map-action border-toggle ${(showStateBorders || showLgaBorders) ? "active" : ""}`}
+              onClick={() => {
+                const anyOn = showStateBorders || showLgaBorders;
+                setShowStateBorders(!anyOn);
+                setShowLgaBorders(!anyOn);
+                setShowBoundaryLayer(!anyOn);
+              }}
+              title={(showStateBorders || showLgaBorders) ? "Hide all borders" : "Show all borders"}
             >
               <FaMapMarkedAlt />
             </button>
+            {(showStateBorders || showLgaBorders) && (
+              <>
+                <button
+                  className={`map-action border-sub-toggle ${showStateBorders ? "active" : ""}`}
+                  onClick={() => setShowStateBorders(v => !v)}
+                  title={showStateBorders ? "Hide state borders" : "Show state borders"}
+                >
+                  ST
+                </button>
+                <button
+                  className={`map-action border-sub-toggle lga-toggle ${showLgaBorders ? "active" : ""}`}
+                  onClick={() => setShowLgaBorders(v => !v)}
+                  title={showLgaBorders ? "Hide LGA borders" : "Show LGA borders"}
+                >
+                  LGA
+                </button>
+              </>
+            )}
             {selectedBoundaryLabel && showBoundaryLayer && (
               <button
                 className="map-action border-clear"
@@ -7379,6 +7723,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           onLayerToggle={toggleMapLayer}
           onLayerOpacity={updateLayerOpacity}
           showBoundaryLayer={showBoundaryLayer}
+          showStateBorders={showStateBorders}
+          showLgaBorders={showLgaBorders}
           selectedBoundaryState={selectedBoundaryState}
           onBoundarySelect={(id, label) => {
             setSelectedBoundaryState(id);
@@ -7862,6 +8208,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           onUpdate={updateOfficer}
           onDelete={deleteOfficer}
           onPassword={updateUserPassword}
+          onRoleChange={changeUserRole}
         />
       )}
       {cameraPanel && (

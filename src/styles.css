@@ -1147,3 +1147,130 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
   .ip-log-table th:nth-child(6),.ip-log-table td:nth-child(6){display:none}
   .ip-log-table th:nth-child(4),.ip-log-table td:nth-child(4){display:none}
 }
+
+/* ── Nigeria border sub-toggles ── */
+.map-action.border-sub-toggle {
+  font-size: 9px !important;
+  font-weight: 900 !important;
+  letter-spacing: .04em;
+  width: auto !important;
+  padding: 0 7px !important;
+  min-width: 32px;
+  border-color: #3b82f6;
+  background: #0c1f34;
+  color: #c7e5ff;
+}
+.map-action.border-sub-toggle.active {
+  border-color: #e2475a;
+  background: #1f0a0e;
+  color: #fca5a5;
+}
+.map-action.border-sub-toggle.lga-toggle.active {
+  border-color: #34d399;
+  background: #0a1f14;
+  color: #a7f3d0;
+}
+
+/* ── Nigeria boundary labels ── */
+.nigeria-state-label {
+  pointer-events: none;
+  white-space: nowrap;
+}
+.nigeria-state-label span {
+  display: inline-block;
+  background: rgba(10, 16, 26, 0.82);
+  color: #fca5a5 !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: .05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(226, 71, 90, 0.5);
+  box-shadow: 0 2px 8px rgba(0,0,0,.45);
+  transform: translate(-50%, -50%);
+  text-transform: uppercase;
+}
+.nigeria-lga-label {
+  pointer-events: none;
+  white-space: nowrap;
+}
+.nigeria-lga-label span {
+  display: inline-block;
+  background: rgba(10, 16, 26, 0.78);
+  color: #a7f3d0 !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  letter-spacing: .03em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  box-shadow: 0 1px 5px rgba(0,0,0,.4);
+  transform: translate(-50%, -50%);
+}
+.nigeria-state-tooltip,
+.nigeria-lga-tooltip {
+  background: rgba(10, 18, 30, 0.95) !important;
+  border: 1px solid #d9aa4b !important;
+  color: #fff8e8 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+}
+
+/* ── Role-change panel in officer manager ── */
+.role-change-panel {
+  background: #1a0710;
+  border: 1px solid #6f2940;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.role-change-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.role-change-header b {
+  font-size: 13px;
+  color: #f5dc9a;
+}
+.role-change-fields {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.role-change-fields label {
+  display: grid;
+  gap: 5px;
+  font-size: 11px;
+  color: #d9b7c4 !important;
+  margin-top: 0 !important;
+}
+.role-change-fields select {
+  border: 1px solid #6f2940;
+  border-radius: 6px;
+  background: #1c060e;
+  color: #f7e8ee;
+  padding: 8px 10px;
+  font-size: 12px;
+  width: 100%;
+}
+.role-change-actions {
+  display: flex;
+  gap: 8px;
+}
+.unit-action-btn.role-change-btn {
+  border-color: #c9972b;
+  background: #2a1a05;
+  color: #f5dc9a;
+}
+.unit-action-btn.role-change-btn:hover {
+  border-color: #f5dc9a;
+  background: #3f2807;
+}
+@media(max-width:600px) {
+  .role-change-fields { grid-template-columns: 1fr; }
+}

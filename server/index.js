@@ -626,6 +626,26 @@ app.put('/api/users/:id', auth, asyncRoute(async (req, res) => {
   io.emit('user:updated', updated);
   res.json(updated);
 }));
+app.put('/api/users/:id/role', auth, adminOnly, asyncRoute(async (req, res) => {
+  const target = (await store.users()).find(user => user.id === req.params.id);
+  if (!target) return res.status(404).json({ message: 'User not found' });
+  if (!canManageRank(req.user.rank, target.rank)) return res.status(403).json({ message: 'You can only change roles for accounts below your rank' });
+  const allowedRoles = ['Supervisor', 'Agent'];
+  const newRole = String(req.body.role || '').trim();
+  if (!allowedRoles.includes(newRole)) return res.status(400).json({ message: 'Role must be Supervisor or Agent' });
+  if (newRole === target.role && !req.body.ward) return res.status(400).json({ message: 'No changes to apply' });
+  const changes = {
+    name: target.name, email: target.email, role: newRole, rank: newRole, active: target.active,
+    unit: target.unit, unitType: target.unitType, command: target.command, division: target.division,
+    station: target.station, state: target.state, lga: target.lga,
+    ward: req.body.ward ? String(req.body.ward).trim() : target.ward,
+    pollingUnit: newRole === 'Supervisor' ? (target.pollingUnit || '') : (req.body.pollingUnit ? String(req.body.pollingUnit).trim() : target.pollingUnit),
+    lat: target.lat, lng: target.lng,
+  };
+  const updated = await store.updateUser(req.params.id, changes);
+  io.emit('user:updated', publicUser(updated));
+  res.json(publicUser(updated));
+}));
 app.put('/api/users/:id/password', auth, asyncRoute(async (req, res) => {
   const users = await store.users();
   const current = users.find(user => user.id === req.user.id);
