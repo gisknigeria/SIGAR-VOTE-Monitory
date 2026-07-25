@@ -833,6 +833,10 @@ function MapView({
   isAdmin,
   onLayerToggle,
   onLayerOpacity,
+  showBoundaryLayer,
+  selectedBoundaryState,
+  onBoundarySelect,
+  onBoundaryClear,
 }) {
   const el = useRef(null);
   const leaflet = useRef(null);
@@ -845,9 +849,6 @@ function MapView({
   const lgaOverlay = useRef(null);
   const hoverBoundaryLayer = useRef(null);
   const [layerPanelOpen, setLayerPanelOpen] = useState(false);
-  const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
-  const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
-  const [selectedBoundaryLabel, setSelectedBoundaryLabel] = useState("");
 
   const normalizeBoundaryKey = (value) =>
     String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -900,21 +901,12 @@ function MapView({
         ),
       );
 
-  const clearBoundaryHighlight = () => {
-    setSelectedBoundaryState("");
-    setSelectedBoundaryLabel("");
-    lgaOverlay.current?.remove();
-    lgaOverlay.current = null;
-    hoverBoundaryLayer.current = null;
-  };
-
   const handleBoundaryClick = (feature) => {
     const label = getBoundaryLabel(feature);
     const stateKey = getStateKey(feature);
     const lgaKey = getLgaKey(feature);
     const selectedKey = stateKey || lgaKey || label;
-    setSelectedBoundaryState(selectedKey);
-    setSelectedBoundaryLabel(label);
+    onBoundarySelect?.(selectedKey, label);
   };
 
   useEffect(() => {
@@ -4515,10 +4507,18 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [emergencyAlerts, setEmergencyAlerts] = useState([]);
   const [activeEmergency, setActiveEmergency] = useState(null);
   const [mapLayers, setMapLayers] = useState([]);
+  const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
+  const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
+  const [selectedBoundaryLabel, setSelectedBoundaryLabel] = useState("");
   const [drawMode, setDrawMode] = useState("");
   const [areas, setAreas] = useState(() =>
     JSON.parse(localStorage.getItem("command-areas") || "[]"),
   );
+
+  const clearBoundarySelection = () => {
+    setSelectedBoundaryState("");
+    setSelectedBoundaryLabel("");
+  };
   const [measurePoints, setMeasurePoints] = useState([]);
   const [routePoints, setRoutePoints] = useState([]);
   const [routeResult, setRouteResult] = useState(null);
@@ -7353,6 +7353,13 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           isAdmin={canAdmin}
           onLayerToggle={toggleMapLayer}
           onLayerOpacity={updateLayerOpacity}
+          showBoundaryLayer={showBoundaryLayer}
+          selectedBoundaryState={selectedBoundaryState}
+          onBoundarySelect={(id, label) => {
+            setSelectedBoundaryState(id);
+            setSelectedBoundaryLabel(label);
+          }}
+          onBoundaryClear={clearBoundarySelection}
         />}
         {!isAgent && <button
           className="my-location-target"
