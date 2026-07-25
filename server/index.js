@@ -260,12 +260,17 @@ const store = {
       saveJson();
       return user;
     }
+    const keyMap = {
+      unitType: 'unit_type',
+      pollingUnit: 'polling_unit',
+    };
     const columns = [];
     const values = [id];
     let idx = 2;
     for (const [key, value] of Object.entries(changes)) {
       if (key === 'id' || key === 'password') continue;
-      columns.push(`${key}=$${idx}`);
+      const column = keyMap[key] || key;
+      columns.push(`${column}=$${idx}`);
       values.push(value);
       idx += 1;
     }
