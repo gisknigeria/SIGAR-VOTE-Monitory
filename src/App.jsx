@@ -1869,15 +1869,49 @@ function OfficerManager({
     role: defaultRole,
   };
   const [form, setForm] = useState(emptyForm);
-  const locationOptions = useMemo(() => getRegistrationLocationOptions(form.state), [form.state]);
+  const locationOptions = useMemo(
+    () => getRegistrationLocationOptions(form.state, form.lga, form.ward),
+    [form.state, form.lga, form.ward],
+  );
+
   const handleStateChange = (value) => {
     const nextOptions = getRegistrationLocationOptions(value);
+    const nextLga = nextOptions.lgas[0] || "";
+    const nextWard = nextOptions.wards[0] || "";
+    const nextPollingOptions = getRegistrationLocationOptions(value, nextLga, nextWard).pollingUnits;
     setForm((prev) => ({
       ...prev,
       state: value,
-      lga: nextOptions.lgas.includes(prev.lga) ? prev.lga : nextOptions.lgas[0] || "",
-      ward: nextOptions.wards.includes(prev.ward) ? prev.ward : nextOptions.wards[0] || "",
-      pollingUnit: nextOptions.pollingUnits.includes(prev.pollingUnit) ? prev.pollingUnit : nextOptions.pollingUnits[0] || "",
+      lga: nextLga,
+      ward: nextWard,
+      pollingUnit: nextPollingOptions[0] || "",
+    }));
+  };
+
+  const handleLgaChange = (value) => {
+    const nextOptions = getRegistrationLocationOptions(form.state, value);
+    const nextWard = nextOptions.wards.includes(form.ward)
+      ? form.ward
+      : nextOptions.wards[0] || "";
+    const nextPollingOptions = getRegistrationLocationOptions(form.state, value, nextWard).pollingUnits;
+    setForm((prev) => ({
+      ...prev,
+      lga: value,
+      ward: nextWard,
+      pollingUnit: nextPollingOptions.includes(prev.pollingUnit)
+        ? prev.pollingUnit
+        : nextPollingOptions[0] || "",
+    }));
+  };
+
+  const handleWardChange = (value) => {
+    const nextOptions = getRegistrationLocationOptions(form.state, form.lga, value);
+    setForm((prev) => ({
+      ...prev,
+      ward: value,
+      pollingUnit: nextOptions.pollingUnits.includes(prev.pollingUnit)
+        ? prev.pollingUnit
+        : nextOptions.pollingUnits[0] || "",
     }));
   };
   const [error, setError] = useState("");
@@ -2035,7 +2069,7 @@ function OfficerManager({
                 <select
                   required
                   value={form.lga}
-                  onChange={(e) => setForm({ ...form, lga: e.target.value })}
+                  onChange={(e) => handleLgaChange(e.target.value)}
                 >
                   {locationOptions.lgas.map((lga) => (
                     <option key={lga}>{lga}</option>
@@ -2044,7 +2078,7 @@ function OfficerManager({
               </label>
               <label>
                 Ward / supervisor zone
-                <select required value={form.ward} onChange={(e) => setForm({ ...form, ward: e.target.value })}>
+                <select required value={form.ward} onChange={(e) => handleWardChange(e.target.value)}>
                   {locationOptions.wards.map((ward) => <option key={ward}>{ward}</option>)}
                 </select>
               </label>

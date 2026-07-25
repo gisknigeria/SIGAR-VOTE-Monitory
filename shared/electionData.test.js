@@ -12,8 +12,8 @@ test('registration location data includes Nigeria states and real polling-unit o
 
   const abiaOptions = getRegistrationLocationOptions('Abia');
   assert.ok(abiaOptions.lgas.includes('ABA NORTH'));
-  assert.ok(abiaOptions.wards.includes('ABA RIVER'));
-  assert.ok(abiaOptions.pollingUnits.some((unit) => unit.includes('PRIMARY SCHOOL')));
+  assert.ok(abiaOptions.wards.includes('EZIAMA'));
+  assert.ok(abiaOptions.pollingUnits.some((unit) => unit.includes('RAILWAY QUARTERS')));
   assert.equal(abiaOptions.lgas.every((lga) => lga !== 'Afijio'), true);
   assert.equal(abiaOptions.wards.every((ward) => ward !== 'Ward 01'), true);
 });

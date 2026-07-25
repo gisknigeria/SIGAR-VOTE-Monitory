@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const sourcePath = 'c:/Users/User/Downloads/Nigeria_Polling_Units.txt';
+const sourcePath = 'c:/Users/User/Downloads/Nigeria_Polling_Units.csv';
 const outputPath = path.join(__dirname, '..', 'shared', 'nigeriaPollingData.js');
 
 function parseCsvLine(line) {
@@ -49,6 +49,7 @@ const aliases = new Map([
   ['EKITI', 'Ekiti'],
   ['ENUGU', 'Enugu'],
   ['FEDERAL CAPITAL TERRITORY (FCT)', 'FCT'],
+  ['FCT', 'FCT'],
   ['GOMBE', 'Gombe'],
   ['IMO', 'Imo'],
   ['JIGAWA', 'Jigawa'],
@@ -73,22 +74,44 @@ const aliases = new Map([
   ['ZAMFARA', 'Zamfara'],
 ]);
 
+function normalizeStateName(value) {
+  const raw = String(value || '').trim();
+  const upper = raw.toUpperCase();
+  if (aliases.has(upper)) {
+    return aliases.get(upper);
+  }
+  return raw.replace(/\s+/g, ' ').trim();
+}
+
 const text = fs.readFileSync(sourcePath, 'utf8');
-const lines = text.trim().split(/\r?\n/).slice(1);
-const rows = lines
+const lines = text.trim().split(/\r?\n/).filter(Boolean);
+const [headerLine, ...dataLines] = lines;
+const headers = parseCsvLine(headerLine).map((header) => header.trim().toLowerCase());
+
+const getColumnIndex = (matchers) => {
+  const index = headers.findIndex((header) => matchers.some((matcher) => header.includes(matcher)));
+  return index >= 0 ? index : -1;
+};
+
+const stateIndex = getColumnIndex(['state / fct', 'state']);
+const lgaIndex = getColumnIndex(['local government area', 'lga']);
+const wardIndex = getColumnIndex(['registration area / ward', 'ward']);
+const unitIndex = getColumnIndex(['polling unit name / location', 'polling unit name', 'polling unit']);
+
+const rows = dataLines
   .map(parseCsvLine)
-  .filter((columns) => columns.length >= 10)
+  .filter((columns) => columns.length >= Math.max(stateIndex + 1, lgaIndex + 1, wardIndex + 1, unitIndex + 1))
   .map((columns) => ({
-    state: String(columns[2] || '').trim(),
-    lga: String(columns[4] || '').trim(),
-    ward: String(columns[6] || '').trim(),
-    unitName: String(columns[8] || '').trim(),
+    state: String(columns[stateIndex] || '').trim(),
+    lga: String(columns[lgaIndex] || '').trim(),
+    ward: String(columns[wardIndex] || '').trim(),
+    unitName: String(columns[unitIndex] || '').trim(),
   }))
   .filter((row) => row.state && row.lga && row.ward && row.unitName);
 
 const data = {};
 for (const row of rows) {
-  const state = aliases.get(row.state.toUpperCase()) || row.state.replace(/\s+/g, ' ').trim();
+  const state = normalizeStateName(row.state);
   const lga = row.lga.replace(/\s+/g, ' ').trim();
   const ward = row.ward.replace(/\s+/g, ' ').trim();
   const unitName = row.unitName.replace(/\s+/g, ' ').trim();
@@ -109,8 +132,8 @@ const linesOut = [];
 linesOut.push('export const NIGERIA_REGISTRATION_LOCATION_DATA = {');
 for (const [state, value] of sortedEntries) {
   const lgas = Array.from(value.lgas).sort((a, b) => a.localeCompare(b));
-  const wards = Array.from(value.wards).sort((a, b) => a.localeCompare(b)).slice(0, 24);
-  const pollingUnits = Array.from(value.pollingUnits).sort((a, b) => a.localeCompare(b)).slice(0, 24);
+  const wards = Array.from(value.wards).sort((a, b) => a.localeCompare(b));
+  const pollingUnits = Array.from(value.pollingUnits).sort((a, b) => a.localeCompare(b)).slice(0, 80);
   linesOut.push(`  ${JSON.stringify(state)}: {`);
   linesOut.push(`    lgas: ${JSON.stringify(lgas)},`);
   linesOut.push(`    wards: ${JSON.stringify(wards)},`);
