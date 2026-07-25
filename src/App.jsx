@@ -4131,39 +4131,6 @@ function AnalyticsPanel({
           </div>
         </div>
 
-        {/* ── Tool result banner ── */}
-        <div className="ap-result-banner">
-          <div className="ap-result-text">
-            <FaChartBar size={14} style={{color:"#38bdf8",flexShrink:0}} />
-            <span>{result}</span>
-          </div>
-          <button className="ap-clear-btn" onClick={() => { onClear(); setResult("Analysis overlays cleared"); }}>
-            Clear overlays
-          </button>
-        </div>
-
-        {/* ── Analytics Tools ── */}
-        <div className="ap-section-head">
-          <FaTools size={13} />
-          <b>Analytics Tools</b>
-          <span>Click a tool to run analysis on the map</span>
-        </div>
-        <div className="ap-tools-grid">
-          {ANALYTIC_TOOLS.map((tool) => (
-            <button key={tool} className="ap-tool-btn" onClick={() => run(tool)}>
-              <b>{tool}</b>
-              <small>{ANALYTIC_HELP[tool]}</small>
-            </button>
-          ))}
-        </div>
-
-        {/* ── CSV Import ── */}
-        <label className="ap-csv-drop">
-          <span className="ap-csv-title">Import CSV Data</span>
-          <small>Browse or drag a point spreadsheet (Lat/Lon projection) to plot on the map</small>
-          <input type="file" accept=".csv,text/csv" onChange={(e) => onCsv(e.target.files?.[0], setResult)} />
-        </label>
-
         {/* ── Polling unit summaries ── */}
         {pollingUnitSummaries.length > 0 && (
           <div className="ap-card ap-polls-card">
@@ -6644,7 +6611,27 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                         <span>Incident &amp; SOS source IPs</span>
                       </button>
                     )}
-                   
+                    {canAdmin && (
+                      <>
+                        <div className="tools-analytics-heading">
+                          <FaChartBar size={11} /> Analytics Tools
+                        </div>
+                        {ANALYTIC_TOOLS.map((tool) => (
+                          <button key={tool} onClick={async () => {
+                            await runAnalyticTool(tool);
+                            setOperationsOpen(false);
+                          }}>
+                            <b>{tool}</b>
+                            <span className="tool-desc">{ANALYTIC_HELP[tool]}</span>
+                          </button>
+                        ))}
+                        <label className="csv-drop-inline">
+                          <b><FaSearch /> Import CSV</b>
+                          <span className="tool-desc">Plot point spreadsheet on map (Lat/Lon)</span>
+                          <input type="file" accept=".csv,text/csv" onChange={(e) => { importCsvPoints(e.target.files?.[0]); setOperationsOpen(false); }} />
+                        </label>
+                      </>
+                    )}
                   </div>
                 )}
                 {canAdmin && (
