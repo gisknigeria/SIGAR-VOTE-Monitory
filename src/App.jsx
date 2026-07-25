@@ -3950,7 +3950,7 @@ function AnalyticsPanel({
   const anythingToday = incidents.filter((i) => isToday(i.createdAt)).length;
   const run = async (tool) => setResult(await onTool(tool));
   return (
-    <section className={`analytics-panel ${full ? "analytics-full" : ""}`}>
+    <section className={full ? "results-center" : "analytics-panel"}>
       <div className={full ? "results-center-head" : "camera-head"}>
         <div>
           <span className="eyebrow">ANALYTIC TOOLS</span>
