@@ -761,6 +761,19 @@ body{font-size:14px}
 .analytics-kpi.warn{border-color:#6c4c16;background:linear-gradient(135deg,#2e220d,#101b29)}
 .analytics-kpi.info{border-color:#16415f;background:linear-gradient(135deg,#0f2740,#101b29)}
 .analytics-kpi.accent{border-color:#1d4b58;background:linear-gradient(135deg,#0f3040,#101a25)}
+.analytics-today{display:flex;gap:8px;margin-top:10px}
+.analytics-today-card{flex:1;display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:10px;border:1px solid #25485b;background:linear-gradient(135deg,#081821,#0b2330);text-align:center}
+.analytics-today-card strong{font-size:18px;color:#fff}
+.analytics-today-card span{font-size:11px;color:#9fb6c8}
+.analytics-today-card.sos{border-color:#6b1c1c;background:linear-gradient(135deg,#2b0f12,#0b1418)}
+.analytics-today-card.incidents{border-color:#6b4a16;background:linear-gradient(135deg,#2b1f0d,#071217)}
+.analytics-today-card.anything{border-color:#16515f;background:linear-gradient(135deg,#07282f,#07141a)}
+
+/* Full-width analytics layout */
+.analytics-full{position:fixed;z-index:1400;left:18px;right:18px;top:72px;bottom:18px;max-height:none;overflow:auto;background:linear-gradient(180deg,#071826 0%,#04101a 100%);border-radius:12px;padding:22px;border:1px solid #193645;box-shadow:0 30px 120px #000a}
+.analytics-full .analytics-hero{padding:18px}
+.analytics-full .analytics-grid{grid-template-columns:repeat(3,1fr)}
+.analytics-full .analytics-chart-card .analytics-svg{height:200px}
 .analytics-chart-card{padding:10px;border:1px solid #233e55;border-radius:10px;background:#09131f}
 .analytics-chart-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .analytics-chart-head b{font-size:11px}.analytics-chart-head span{font-size:10px;color:#7f95aa}

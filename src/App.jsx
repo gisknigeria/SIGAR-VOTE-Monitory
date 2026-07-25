@@ -3866,6 +3866,7 @@ function AnalyticsPanel({
   onTool,
   onCsv,
   onClear,
+  full,
 }) {
   const resultReports = useMemo(
     () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
@@ -3938,9 +3939,18 @@ function AnalyticsPanel({
   const highRiskCount = incidents.filter((item) =>
     ["High", "Critical"].includes(item.severity),
   ).length;
+  const isToday = (d) => {
+    if (!d) return false;
+    const dt = new Date(d);
+    const now = new Date();
+    return dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && dt.getDate() === now.getDate();
+  };
+  const sosToday = incidents.filter((i) => (i.reportType === "SOS-Emergency" || i.reportType === "SOS") && isToday(i.createdAt)).length;
+  const incidentsToday = incidents.filter((i) => isToday(i.createdAt) && i.reportType !== POLLING_RESULT_TYPE).length;
+  const anythingToday = incidents.filter((i) => isToday(i.createdAt)).length;
   const run = async (tool) => setResult(await onTool(tool));
   return (
-    <section className="analytics-panel">
+    <section className={`analytics-panel ${full ? "analytics-full" : ""}`}>
       <div className="camera-head">
         <div>
           <span className="eyebrow">ANALYTIC TOOLS</span>
@@ -3960,10 +3970,24 @@ function AnalyticsPanel({
           </div>
           <div className="analytics-pulse">Live</div>
         </div>
-        <div className="analytics-kpis">
+          <div className="analytics-kpis">
           <div className="analytics-kpi danger">
             <strong>{incidents.length}</strong>
             <span>Incidents</span>
+          </div>
+          <div className="analytics-today">
+            <div className="analytics-today-card sos">
+              <strong>{sosToday}</strong>
+              <span>SOS Today</span>
+            </div>
+            <div className="analytics-today-card incidents">
+              <strong>{incidentsToday}</strong>
+              <span>Incidents Today</span>
+            </div>
+            <div className="analytics-today-card anything">
+              <strong>{anythingToday}</strong>
+              <span>All Reports Today</span>
+            </div>
           </div>
           <div className="analytics-kpi warn">
             <strong>{highRiskCount}</strong>
@@ -6391,31 +6415,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </form>
         {analyticsOpen && canAdmin ? (
-          <div className="sidebar-panel-view">
-            <div className="sidebar-panel-head">
-              <div>
-                <span className="eyebrow">ANALYTIC TOOLS</span>
-                <h2>Map analysis</h2>
-              </div>
-              <button
-                className="icon-btn"
-                onClick={() => setAnalyticsOpen(false)}
-              >
-                <FaTimes />
-              </button>
-            </div>
-            <AnalyticsPanel
-              incidents={incidents}
-              officers={officers}
-              mapLayers={mapLayers}
-              selected={selected}
-              onClose={() => setAnalyticsOpen(false)}
-              onTool={runAnalyticTool}
-              onCsv={importCsvPoints}
-              onClear={clearMapTools}
-              sidebar
-            />
-          </div>
+          <AnalyticsPanel
+            incidents={incidents}
+            officers={officers}
+            mapLayers={mapLayers}
+            selected={selected}
+            onClose={() => setAnalyticsOpen(false)}
+            onTool={runAnalyticTool}
+            onCsv={importCsvPoints}
+            onClear={clearMapTools}
+            full
+          />
         ) : (
           <>
             {isSupervisor && <div className="sidebar-actions supervisor-actions">
