@@ -3949,155 +3949,228 @@ function AnalyticsPanel({
   const incidentsToday = incidents.filter((i) => isToday(i.createdAt) && i.reportType !== POLLING_RESULT_TYPE).length;
   const anythingToday = incidents.filter((i) => isToday(i.createdAt)).length;
   const run = async (tool) => setResult(await onTool(tool));
+  const totalIncidents = incidents.length;
+  const resolvedCount = incidents.filter(i => i.status === "Resolved").length;
+  const openCount = incidents.filter(i => i.status === "Open" || !i.status).length;
+  const resolvedPct = totalIncidents ? Math.round((resolvedCount / totalIncidents) * 100) : 0;
+
+  // Donut chart values for severity
+  const severityColors = { Low: "#38bdf8", Medium: "#facc15", High: "#fb923c", Critical: "#ef4444" };
+  const donutR = 54;
+  const donutCx = 70;
+  const donutCy = 70;
+  const donutCirc = 2 * Math.PI * donutR;
+  let donutOffset = 0;
+  const donutSlices = severityBreakdown
+    .filter(([, c]) => c > 0)
+    .map(([level, count]) => {
+      const pct = count / Math.max(1, totalIncidents);
+      const dash = pct * donutCirc;
+      const slice = { level, count, dash, offset: donutOffset, color: severityColors[level] };
+      donutOffset += dash;
+      return slice;
+    });
+
   return (
     <section className={full ? "results-center" : "analytics-panel"}>
-      <div className={full ? "results-center-head" : "camera-head"}>
+      {/* ── Header ── */}
+      <div className="results-center-head ap-head">
         <div>
-          <span className="eyebrow">ANALYTIC TOOLS</span>
-          {full ? <h1>Map Analysis &amp; Reports</h1> : <h2>Map analysis</h2>}
-          {full && <p>Live intelligence pulse — operational pressure and incident distribution at a glance.</p>}
+          <span className="eyebrow">INTELLIGENCE DASHBOARD</span>
+          <h1>Map Analysis &amp; Reports</h1>
+          <p>Live operational pulse — incident distribution &amp; field analytics</p>
         </div>
-        <button className="icon-btn" onClick={onClose} title="Close analytics">
-          <FaTimes />
-        </button>
-      </div>
-      <div className={full ? "results-center-body" : ""}>
-      <div className="analytics-hero">
-        <div className="analytics-hero-top">
-          <div>
-            <b>Live intelligence pulse</b>
-            <span>
-              Operational pressure and incident distribution at a glance.
-            </span>
-          </div>
-          <div className="analytics-pulse">Live</div>
-        </div>
-          <div className="analytics-kpis">
-          <div className="analytics-kpi danger">
-            <strong>{incidents.length}</strong>
-            <span>Incidents</span>
-          </div>
-          <div className="analytics-today">
-            <div className="analytics-today-card sos">
-              <strong>{sosToday}</strong>
-              <span>SOS Today</span>
-            </div>
-            <div className="analytics-today-card incidents">
-              <strong>{incidentsToday}</strong>
-              <span>Incidents Today</span>
-            </div>
-            <div className="analytics-today-card anything">
-              <strong>{anythingToday}</strong>
-              <span>All Reports Today</span>
-            </div>
-          </div>
-          <div className="analytics-kpi warn">
-            <strong>{highRiskCount}</strong>
-            <span>High risk</span>
-          </div>
-          <div className="analytics-kpi info">
-            <strong>{officers.length}</strong>
-            <span>Units</span>
-          </div>
-          <div className="analytics-kpi accent">
-            <strong>{pointLayers.length}</strong>
-            <span>Point layers</span>
-          </div>
-        </div>
-        <div className="analytics-chart-card">
-          <div className="analytics-chart-head">
-            <b>Severity pressure</b>
-            <span>Current incident intensity</span>
-          </div>
-          <svg
-            viewBox="0 0 220 120"
-            className="analytics-svg"
-            role="img"
-            aria-label="Severity chart"
-          >
-            {severityBreakdown.map(([level, count], index) => {
-              const barHeight = Math.max(12, (count / maxSeverity) * 80);
-              const x = 24 + index * 48;
-              const y = 92 - barHeight;
-              const color =
-                level === "Critical"
-                  ? "#ef4444"
-                  : level === "High"
-                    ? "#fb923c"
-                    : level === "Medium"
-                      ? "#facc15"
-                      : "#38bdf8";
-              return (
-                <g key={level}>
-                  <rect
-                    x={x}
-                    y={y}
-                    width="24"
-                    height={barHeight}
-                    rx="6"
-                    fill={color}
-                  />
-                  <text
-                    x={x + 12}
-                    y="108"
-                    textAnchor="middle"
-                    className="analytics-bar-label"
-                  >
-                    {level}
-                  </text>
-                  <text
-                    x={x + 12}
-                    y={y - 6}
-                    textAnchor="middle"
-                    className="analytics-bar-value"
-                  >
-                    {count}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-        <div className="analytics-insight-list">
-          {reportTypeBreakdown.map(([type, count]) => (
-            <div className="analytics-insight" key={type}>
-              <div className="analytics-insight-label">
-                <span>
-                  <ReportTypeIcon
-                    type={type}
-                    size={13}
-                    color={REPORT_TYPE_STYLES[type]?.color || "#38bdf8"}
-                  />
-                  {type}
-                </span>
-                <strong>{count}</strong>
-              </div>
-              <div className="analytics-insight-bar">
-                <div style={{ width: `${(count / maxType) * 100}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="analytics-result">
-          <b>Current result</b>
-          <span>{result}</span>
-          <button
-            type="button"
-            className="analytics-clear"
-            onClick={() => {
-              onClear();
-              setResult("Analysis overlays cleared");
-            }}
-          >
-            Clear analysis
+        <div className="ap-head-right">
+          <div className="analytics-pulse">● Live</div>
+          <button className="icon-btn" onClick={onClose} title="Close">
+            <FaTimes />
           </button>
         </div>
+      </div>
+
+      <div className="results-center-body ap-body">
+
+        {/* ── KPI stat cards ── */}
+        <div className="ap-kpi-row">
+          <div className="ap-kpi-card ap-kpi-red">
+            <span className="ap-kpi-label">Total Incidents</span>
+            <strong className="ap-kpi-val">{totalIncidents}</strong>
+            <span className="ap-kpi-sub">{openCount} open · {resolvedCount} resolved</span>
+          </div>
+          <div className="ap-kpi-card ap-kpi-orange">
+            <span className="ap-kpi-label">High Risk</span>
+            <strong className="ap-kpi-val">{highRiskCount}</strong>
+            <span className="ap-kpi-sub">High + Critical severity</span>
+          </div>
+          <div className="ap-kpi-card ap-kpi-red2">
+            <span className="ap-kpi-label">SOS Today</span>
+            <strong className="ap-kpi-val">{sosToday}</strong>
+            <span className="ap-kpi-sub">Emergency alerts today</span>
+          </div>
+          <div className="ap-kpi-card ap-kpi-amber">
+            <span className="ap-kpi-label">Incidents Today</span>
+            <strong className="ap-kpi-val">{incidentsToday}</strong>
+            <span className="ap-kpi-sub">{anythingToday} total reports today</span>
+          </div>
+          <div className="ap-kpi-card ap-kpi-blue">
+            <span className="ap-kpi-label">Field Personnel</span>
+            <strong className="ap-kpi-val">{officers.length}</strong>
+            <span className="ap-kpi-sub">{pointLayers.length} point layers active</span>
+          </div>
+          <div className="ap-kpi-card ap-kpi-green">
+            <span className="ap-kpi-label">Resolved</span>
+            <strong className="ap-kpi-val">{resolvedPct}%</strong>
+            <span className="ap-kpi-sub">{resolvedCount} of {totalIncidents} incidents</span>
+          </div>
+        </div>
+
+        {/* ── Charts row ── */}
+        <div className="ap-charts-row">
+
+          {/* Donut — severity */}
+          <div className="ap-card ap-donut-card">
+            <div className="ap-card-head">
+              <b>Severity Breakdown</b>
+              <span>Incident intensity distribution</span>
+            </div>
+            <div className="ap-donut-wrap">
+              <svg viewBox="0 0 140 140" className="ap-donut-svg" role="img" aria-label="Severity donut chart">
+                <circle cx={donutCx} cy={donutCy} r={donutR} fill="none" stroke="#1a2f42" strokeWidth="18" />
+                {donutSlices.length === 0 && (
+                  <circle cx={donutCx} cy={donutCy} r={donutR} fill="none" stroke="#1a2f42" strokeWidth="18" />
+                )}
+                {donutSlices.map(({ level, dash, offset, color }) => (
+                  <circle
+                    key={level}
+                    cx={donutCx} cy={donutCy} r={donutR}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="18"
+                    strokeDasharray={`${dash} ${donutCirc - dash}`}
+                    strokeDashoffset={-offset + donutCirc * 0.25}
+                    strokeLinecap="butt"
+                    style={{ filter: `drop-shadow(0 0 6px ${color}88)` }}
+                  />
+                ))}
+                <text x={donutCx} y={donutCy - 6} textAnchor="middle" className="ap-donut-big">{totalIncidents}</text>
+                <text x={donutCx} y={donutCy + 12} textAnchor="middle" className="ap-donut-sub">total</text>
+              </svg>
+              <div className="ap-donut-legend">
+                {severityBreakdown.map(([level, count]) => (
+                  <div className="ap-legend-row" key={level}>
+                    <span className="ap-legend-dot" style={{ background: severityColors[level], boxShadow: `0 0 6px ${severityColors[level]}99` }} />
+                    <span className="ap-legend-label">{level}</span>
+                    <strong className="ap-legend-val">{count}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Bar chart — report types */}
+          <div className="ap-card ap-bar-card">
+            <div className="ap-card-head">
+              <b>Report Type Breakdown</b>
+              <span>Top incident categories</span>
+            </div>
+            <div className="ap-bar-list">
+              {reportTypeBreakdown.length === 0 && (
+                <div className="ap-empty">No reports yet</div>
+              )}
+              {reportTypeBreakdown.map(([type, count]) => {
+                const pct = Math.round((count / Math.max(1, totalIncidents)) * 100);
+                const col = REPORT_TYPE_STYLES[type]?.color || "#38bdf8";
+                return (
+                  <div className="ap-bar-row" key={type}>
+                    <div className="ap-bar-meta">
+                      <span className="ap-bar-icon"><ReportTypeIcon type={type} size={13} color={col} /></span>
+                      <span className="ap-bar-name">{type}</span>
+                      <strong className="ap-bar-count">{count}</strong>
+                    </div>
+                    <div className="ap-bar-track">
+                      <div className="ap-bar-fill" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${col}cc, ${col}55)`, boxShadow: `0 0 8px ${col}66` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Resolution progress */}
+          <div className="ap-card ap-progress-card">
+            <div className="ap-card-head">
+              <b>Resolution Progress</b>
+              <span>Incident closure rate</span>
+            </div>
+            <div className="ap-progress-wrap">
+              <svg viewBox="0 0 120 120" className="ap-ring-svg" role="img" aria-label="Resolution ring">
+                <circle cx="60" cy="60" r="48" fill="none" stroke="#1a2f42" strokeWidth="12" />
+                <circle cx="60" cy="60" r="48" fill="none"
+                  stroke="url(#resolveGrad)" strokeWidth="12"
+                  strokeDasharray={`${(resolvedPct / 100) * 301.6} 301.6`}
+                  strokeDashoffset="75.4"
+                  strokeLinecap="round"
+                  style={{ filter: "drop-shadow(0 0 8px #34d39988)" }}
+                />
+                <defs>
+                  <linearGradient id="resolveGrad" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#34d399" />
+                    <stop offset="100%" stopColor="#38bdf8" />
+                  </linearGradient>
+                </defs>
+                <text x="60" y="55" textAnchor="middle" className="ap-donut-big">{resolvedPct}%</text>
+                <text x="60" y="72" textAnchor="middle" className="ap-donut-sub">resolved</text>
+              </svg>
+              <div className="ap-progress-stats">
+                <div className="ap-pstat"><span>Open</span><b style={{color:"#fb923c"}}>{openCount}</b></div>
+                <div className="ap-pstat"><span>Resolved</span><b style={{color:"#34d399"}}>{resolvedCount}</b></div>
+                <div className="ap-pstat"><span>Total</span><b>{totalIncidents}</b></div>
+                <div className="ap-pstat"><span>Selected</span><b style={{color:"#facc15",fontSize:"10px"}}>{selected?.title || "None"}</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Tool result banner ── */}
+        <div className="ap-result-banner">
+          <div className="ap-result-text">
+            <FaChartBar size={14} style={{color:"#38bdf8",flexShrink:0}} />
+            <span>{result}</span>
+          </div>
+          <button className="ap-clear-btn" onClick={() => { onClear(); setResult("Analysis overlays cleared"); }}>
+            Clear overlays
+          </button>
+        </div>
+
+        {/* ── Analytics Tools ── */}
+        <div className="ap-section-head">
+          <FaTools size={13} />
+          <b>Analytics Tools</b>
+          <span>Click a tool to run analysis on the map</span>
+        </div>
+        <div className="ap-tools-grid">
+          {ANALYTIC_TOOLS.map((tool) => (
+            <button key={tool} className="ap-tool-btn" onClick={() => run(tool)}>
+              <b>{tool}</b>
+              <small>{ANALYTIC_HELP[tool]}</small>
+            </button>
+          ))}
+        </div>
+
+        {/* ── CSV Import ── */}
+        <label className="ap-csv-drop">
+          <span className="ap-csv-title">Import CSV Data</span>
+          <small>Browse or drag a point spreadsheet (Lat/Lon projection) to plot on the map</small>
+          <input type="file" accept=".csv,text/csv" onChange={(e) => onCsv(e.target.files?.[0], setResult)} />
+        </label>
+
+        {/* ── Polling unit summaries ── */}
         {pollingUnitSummaries.length > 0 && (
-          <div className="analytics-result polls-results-card">
-            <b>Polling unit vote results</b>
-            <span>
-              {pollingUnitSummaries.length} unit{pollingUnitSummaries.length === 1 ? "" : "s"} submitted results.
-            </span>
+          <div className="ap-card ap-polls-card">
+            <div className="ap-card-head">
+              <b>Polling Unit Vote Results</b>
+              <span>{pollingUnitSummaries.length} unit{pollingUnitSummaries.length === 1 ? "" : "s"} submitted</span>
+            </div>
             <div className="polling-unit-list">
               {pollingUnitSummaries.map((entry) => (
                 <div className="polling-unit-item" key={entry.unit}>
@@ -4119,30 +4192,7 @@ function AnalyticsPanel({
             </div>
           </div>
         )}
-      </div>
-      <div className="analytics-grid">
-        {ANALYTIC_TOOLS.map((tool) => (
-          <button key={tool} onClick={() => run(tool)}>
-            <b>{tool}</b>
-            <small>{ANALYTIC_HELP[tool]}</small>
-          </button>
-        ))}
-      </div>
-      <div className="analytics-summary">
-        <span>Incidents: {incidents.length}</span>
-        <span>Field personnel: {officers.length}</span>
-        <span>Point layers: {pointLayers.length}</span>
-        <span>Selected: {selected?.title || "None"}</span>
-      </div>
-      <label className="csv-drop">
-        Browse to or drag a spreadsheet here to visualize, and append map data
-        to it.<small>Only plot point CSV in Lat/Lon projection</small>
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(e) => onCsv(e.target.files?.[0], setResult)}
-        />
-      </label>
+
       </div>
     </section>
   );
