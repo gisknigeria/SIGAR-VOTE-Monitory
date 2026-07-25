@@ -252,6 +252,27 @@ const store = {
     const { rows } = await pool.query('update users set name=$2,email=$3,station=$4,password=coalesce($5,password) where id=$1 returning *', [id, changes.name, changes.email, changes.station, changes.password || null]);
     return toUser(rows[0]);
   },
+  async updateUser(id, changes) {
+    if (!pool) {
+      const user = jsonDb.users.find(item => item.id === id);
+      if (!user) return null;
+      Object.assign(user, changes);
+      saveJson();
+      return user;
+    }
+    const columns = [];
+    const values = [id];
+    let idx = 2;
+    for (const [key, value] of Object.entries(changes)) {
+      if (key === 'id' || key === 'password') continue;
+      columns.push(`${key}=$${idx}`);
+      values.push(value);
+      idx += 1;
+    }
+    if (!columns.length) return toUser((await pool.query('select * from users where id=$1', [id])).rows[0]);
+    const { rows } = await pool.query(`update users set ${columns.join(', ')} where id=$1 returning *`, values);
+    return toUser(rows[0]);
+  },
   async deleteUser(id) {
     if (!pool) {
       const before = jsonDb.users.length;
@@ -572,16 +593,35 @@ app.delete('/api/users/:id', auth, asyncRoute(async (req, res) => {
   io.emit('user:deleted', req.params.id);
   res.status(204).end();
 }));
-app.put('/api/users/:id/password', auth, asyncRoute(async (req, res) => {
+app.put('/api/users/:id', auth, asyncRoute(async (req, res) => {
   const target = (await store.users()).find(user => user.id === req.params.id);
   if (!target) return res.status(404).json({ message: 'User not found' });
-  if (req.user.id !== target.id && req.user.role !== 'Super Admin' && !canManageRank(req.user.rank, target.rank)) return res.status(403).json({ message: 'You can only change passwords for lower ranks' });
-  const password = String(req.body.password || '');
-  if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
-  await store.updateUserPassword(req.params.id, await bcrypt.hash(password, 10));
-  res.json({ ok: true });
+  if (req.user.id !== target.id && req.user.role !== 'Super Admin' && !canManageRank(req.user.rank, target.rank)) return res.status(403).json({ message: 'You can only update accounts below your rank' });
+  const changes = {
+    name: String(req.body.name || target.name).trim(),
+    email: String(req.body.email || target.email).trim().toLowerCase(),
+    role: target.role,
+    rank: target.rank,
+    active: target.active,
+    unit: String(req.body.unit || target.unit).trim(),
+    unitType: String(req.body.unitType || target.unitType).trim(),
+    command: String(req.body.command || target.command).trim(),
+    division: String(req.body.division || target.division).trim(),
+    station: String(req.body.station || target.station).trim(),
+    state: String(req.body.state || target.state).trim(),
+    lga: String(req.body.lga || target.lga).trim(),
+    ward: String(req.body.ward || target.ward).trim(),
+    pollingUnit: String(req.body.pollingUnit || target.pollingUnit).trim(),
+    lat: Number(req.body.lat ?? target.lat) || 7.3775,
+    lng: Number(req.body.lng ?? target.lng) || 3.9470,
+  };
+  const existing = (await store.users()).find(user => user.id !== target.id && user.email.toLowerCase() === changes.email.toLowerCase());
+  if (existing) return res.status(409).json({ message: 'Email is already in use' });
+  const updated = await store.updateUser(req.params.id, changes);
+  io.emit('user:updated', updated);
+  res.json(updated);
 }));
-app.put('/api/profile', auth, asyncRoute(async (req, res) => {
+app.put('/api/users/:id/password', auth, asyncRoute(async (req, res) => {
   const users = await store.users();
   const current = users.find(user => user.id === req.user.id);
   if (!current) return res.status(404).json({ message: 'Account not found' });
