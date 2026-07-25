@@ -6414,19 +6414,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </button>
           )}
         </form>
-        {analyticsOpen && canAdmin ? (
-          <AnalyticsPanel
-            incidents={incidents}
-            officers={officers}
-            mapLayers={mapLayers}
-            selected={selected}
-            onClose={() => setAnalyticsOpen(false)}
-            onTool={runAnalyticTool}
-            onCsv={importCsvPoints}
-            onClear={clearMapTools}
-            full
-          />
-        ) : (
           <>
             {isSupervisor && <div className="sidebar-actions supervisor-actions">
               <button onClick={openPollingUnitResultForm}>
@@ -7338,6 +7325,19 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         </section>
       )}
       {resultsOpen && canAdmin && <ResultsCenter incidents={incidents} onClose={() => setResultsOpen(false)} />}
+      {analyticsOpen && canAdmin && (
+        <AnalyticsPanel
+          incidents={incidents}
+          officers={officers}
+          mapLayers={mapLayers}
+          selected={selected}
+          onClose={() => setAnalyticsOpen(false)}
+          onTool={runAnalyticTool}
+          onCsv={importCsvPoints}
+          onClear={clearMapTools}
+          full
+        />
+      )}
       {activeEmergency && (
         <div className="emergency-alert-card">
           <b>Emergency from {activeEmergency.name}</b>

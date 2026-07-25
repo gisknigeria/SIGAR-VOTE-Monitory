@@ -770,10 +770,13 @@ body{font-size:14px}
 .analytics-today-card.anything{border-color:#16515f;background:linear-gradient(135deg,#07282f,#07141a)}
 
 /* Full-width analytics layout */
-.analytics-full{position:fixed;z-index:1400;left:18px;right:18px;top:72px;bottom:18px;max-height:none;overflow:auto;background:linear-gradient(180deg,#071826 0%,#04101a 100%);border-radius:12px;padding:22px;border:1px solid #193645;box-shadow:0 30px 120px #000a}
-.analytics-full .analytics-hero{padding:18px}
-.analytics-full .analytics-grid{grid-template-columns:repeat(3,1fr)}
-.analytics-full .analytics-chart-card .analytics-svg{height:200px}
+.analytics-full{position:fixed;z-index:2600;inset:0;overflow:auto;background:linear-gradient(145deg,#18050c,#2b0816 55%,#16040a);border-radius:0;padding:24px;border:0;box-shadow:none}
+.analytics-full .analytics-hero{padding:20px}
+.analytics-full .analytics-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.analytics-full .analytics-chart-card .analytics-svg{height:220px}
+.analytics-full .analytics-result,.analytics-full .polls-results-card{margin-top:0}
+.analytics-full .analytics-today{gap:12px}
+.analytics-full .analytics-summary{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .analytics-chart-card{padding:10px;border:1px solid #233e55;border-radius:10px;background:#09131f}
 .analytics-chart-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .analytics-chart-head b{font-size:11px}.analytics-chart-head span{font-size:10px;color:#7f95aa}
