@@ -79,6 +79,8 @@ import {
   NIGERIA_STATES,
   OYO_LGAS,
   POLLING_UNITS,
+  STATE_CODE_TO_NAME,
+  normalizeRegistrationState,
   UNIT_TYPES,
   WARDS,
   getRegistrationLocationOptions,
@@ -1367,12 +1369,13 @@ function MapView({
     const boundaryGeo = L.geoJSON(
       { type: "FeatureCollection", features: boundaryFeatures },
       {
+        pane: "overlayPane",
         style: () => ({
-          color: "#60a5fa",
-          weight: 2,
+          color: "#facc15",
+          weight: 3,
           dashArray: "6 4",
-          fillOpacity: 0,
-          opacity: 0.85,
+          fillOpacity: 0.04,
+          opacity: 0.95,
         }),
         onEachFeature: (feature, layerGeo) => {
           const label = getBoundaryLabel(feature);
@@ -1382,7 +1385,7 @@ function MapView({
               hoverBoundaryLayer.current = target;
               target.setStyle({
                 weight: 4,
-                color: "#38bdf8",
+                color: "#f59e0b",
                 fillOpacity: 0.18,
                 opacity: 1,
               });
@@ -1407,6 +1410,7 @@ function MapView({
     ).addTo(map);
 
     boundaryOverlay.current = boundaryGeo;
+    boundaryGeo.bringToFront();
   }, [mapLayers, showBoundaryLayer]);
 
   useEffect(() => {
@@ -1433,12 +1437,13 @@ function MapView({
     const lgaGeo = L.geoJSON(
       { type: "FeatureCollection", features: lgaFeatures },
       {
+        pane: "overlayPane",
         style: () => ({
-          color: "#fbbf24",
-          weight: 3,
-          dashArray: "4 5",
-          fillOpacity: 0.08,
-          opacity: 0.9,
+          color: "#34d399",
+          weight: 4,
+          dashArray: "3 6",
+          fillOpacity: 0.1,
+          opacity: 0.98,
         }),
         onEachFeature: (feature, layerGeo) => {
           const label = getBoundaryLabel(feature);
@@ -1447,9 +1452,9 @@ function MapView({
             mouseover: (e) => {
               const target = e.target;
               target.setStyle({
-                weight: 4,
-                color: "#f59e0b",
-                fillOpacity: 0.2,
+                weight: 5,
+                color: "#22c55e",
+                fillOpacity: 0.22,
                 opacity: 1,
               });
               if (label) target.openTooltip();
@@ -1464,6 +1469,7 @@ function MapView({
         },
       },
     ).addTo(map);
+    lgaGeo.bringToFront();
 
     lgaOverlay.current = lgaGeo;
   }, [selectedBoundaryState, showBoundaryLayer, mapLayers]);
@@ -2052,6 +2058,13 @@ function OfficerManager({
     return false;
   };
   const defaultRole = manageableRoles[manageableRoles.length - 1];
+  const stateOptions = useMemo(
+    () => NIGERIA_STATES.map((stateCode) => ({
+      code: stateCode,
+      label: STATE_CODE_TO_NAME[stateCode] || stateCode,
+    })),
+    [],
+  );
   const initialLocationOptions = getRegistrationLocationOptions(DEFAULT_REGISTRATION_STATE);
   const emptyForm = {
     id: "",
@@ -2081,13 +2094,14 @@ function OfficerManager({
   );
 
   const handleStateChange = (value) => {
-    const nextOptions = getRegistrationLocationOptions(value);
+    const nextState = normalizeRegistrationState(value);
+    const nextOptions = getRegistrationLocationOptions(nextState);
     const nextLga = nextOptions.lgas[0] || "";
     const nextWard = nextOptions.wards[0] || "";
-    const nextPollingOptions = getRegistrationLocationOptions(value, nextLga, nextWard).pollingUnits;
+    const nextPollingOptions = getRegistrationLocationOptions(nextState, nextLga, nextWard).pollingUnits;
     setForm((prev) => ({
       ...prev,
-      state: value,
+      state: nextState,
       lga: nextLga,
       ward: nextWard,
       pollingUnit: nextPollingOptions[0] || "",
@@ -2203,7 +2217,7 @@ function OfficerManager({
                       : o.role === "Super Admin"
                         ? "System Administrator"
                         : o.role} -{" "}
-                    {o.email} - {o.state || "No state"} - {o.lga || "No LGA"} - {o.unit || o.unitType}
+                    {o.email} - {o.state || "No state"} - {o.lga ? `LGA ${String(o.lga).padStart(2, "0")}` : "No LGA"} - {o.ward ? `Ward ${String(o.ward).padStart(2, "0")}` : "No ward"} - {o.pollingUnit || o.unit || o.unitType}
                   </small>
                 </div>
                 <button
@@ -2293,7 +2307,11 @@ function OfficerManager({
                   onChange={(e) => handleStateChange(e.target.value)}
                   disabled={isSupervisor}
                 >
-                  {NIGERIA_STATES.map((state) => <option key={state}>{state}</option>)}
+                  {stateOptions.map((opt) => (
+                    <option key={opt.code} value={opt.code}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>
@@ -2344,6 +2362,13 @@ function OfficerManager({
                 ))}
               </select>
             </label>
+            <div className="location-summary">
+              <strong>Selected registration location</strong>
+              <span>State: {form.state}</span>
+              <span>LGA: {form.lga ? `LGA ${String(form.lga).padStart(2, "0")}` : "None"}</span>
+              <span>Ward: {form.ward ? `Ward ${String(form.ward).padStart(2, "0")}` : "None"}</span>
+              <span>Polling unit: {form.pollingUnit || "None"}</span>
+            </div>
             <div className="two-col">
               <label>
                 Unit / team name
