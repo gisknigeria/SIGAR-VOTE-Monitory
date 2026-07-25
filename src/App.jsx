@@ -6332,398 +6332,399 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           aria-label="Close sidebar"
         ></button>
       )}
-      {!isAgent && <aside
-        className={`command-sidebar ${operationsOpen ? "open" : ""}`}
-        style={{ "--sidebar-width": `${sidebarWidth}px` }}
-      >
-        <div className="sidebar-brand">
-          <div className="brand-small">
-            <img className="sidebar-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead" />
-            <div>
-              <b>Election Monitor</b>
-              <span>Command Center • Oyo</span>
+      {!isAgent && (
+        <aside
+          className={`command-sidebar ${operationsOpen ? "open" : ""}`}
+          style={{ "--sidebar-width": `${sidebarWidth}px` }}
+        >
+          <div className="sidebar-brand">
+            <div className="brand-small">
+              <img className="sidebar-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead" />
+              <div>
+                <b>Election Monitor</b>
+                <span>Command Center • Oyo</span>
+              </div>
             </div>
-          </div>
-          <button
-            className="mobile-close"
-            onClick={() => setOperationsOpen(false)}
-          >
-            <FaTimes />
-          </button>
-        </div>
-        <div className="sidebar-user">
-          <span>
-            {session.user.name
-              .split(" ")
-              .map((x) => x[0])
-              .join("")}
-          </span>
-          <div>
-            <b>{session.user.name}</b>
-            <small>
-              {session.user.role === "Admin"
-                ? "Admin"
-                : session.user.role === "Super Admin"
-                  ? "System Administrator"
-                  : session.user.role}
-            </small>
-            {(session.user.role === "Admin" || session.user.role === "Super Admin") && (
-              <span className="role-pill">
-                {session.user.role === "Super Admin" ? "SUPER ADMIN" : "ADMIN"}
-              </span>
-            )}
-          </div>
-          <div className="sidebar-user-actions">
             <button
-              className="sidebar-user-btn"
-              onClick={() => { setProfileOpen(true); setOperationsOpen(false); }}
-              title="Profile"
-            >
-              <FaKey />
-            </button>
-            <button
-              className="sidebar-user-btn logout"
-              onClick={onLogout}
-              title="Logout"
-            >
-              <FaSignOutAlt />
-            </button>
-          </div>
-        </div>
-        <form className="sidebar-search" onSubmit={geocode}>
-          <svg
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            width="14"
-            height="14"
-            style={{ flexShrink: 0, color: "#4e6a84" }}
-          >
-            <circle cx="8.5" cy="8.5" r="5.5" />
-            <path d="M15 15l-3-3" />
-          </svg>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && (
-            <button
-              type="button"
-              className="search-clear"
-              onClick={() => setSearch("")}
+              className="mobile-close"
+              onClick={() => setOperationsOpen(false)}
             >
               <FaTimes />
             </button>
-          )}
-        </form>
-          <>
-            {isSupervisor && <div className="sidebar-actions supervisor-actions">
-              <button onClick={openPollingUnitResultForm}>
-                <ReportIcon iconKey="POI" size={15} /> Polling Result
-              </button>
-              <button onClick={openIncidentPointForm}>
-                <ReportIcon iconKey="IP" size={15} /> Report Incident
-              </button>
-              <button className={sharingGps ? "sharing" : ""} onClick={toggleGps}>
-                <FaBullseye /> {sharingGps ? "Stop GPS" : "Share GPS"}
-              </button>
-              <button className={sharingCamera ? "sharing" : ""} onClick={toggleCamera}>
-                <FaVideo /> {sharingCamera ? "Stop Camera" : "Share Camera"}
-              </button>
-              <button onClick={shareMap}><FaLocationArrow /> Share Map</button>
-              <button className={`emergency-open ${sosHolding ? "sos-holding" : ""}`} {...sosHoldProps}>SOS</button>
-              <button onClick={onLogout}><FaSignOutAlt /> Logout</button>
-            </div>}
-            {!isSupervisor && <div className="sidebar-actions compact">
+          </div>
+          <div className="sidebar-user">
+            <span>
+              {session.user.name
+                .split(" ")
+                .map((x) => x[0])
+                .join("")}
+            </span>
+            <div>
+              <b>{session.user.name}</b>
+              <small>
+                {session.user.role === "Admin"
+                  ? "Admin"
+                  : session.user.role === "Super Admin"
+                    ? "System Administrator"
+                    : session.user.role}
+              </small>
+              {(session.user.role === "Admin" || session.user.role === "Super Admin") && (
+                <span className="role-pill">
+                  {session.user.role === "Super Admin" ? "SUPER ADMIN" : "ADMIN"}
+                </span>
+              )}
+            </div>
+            <div className="sidebar-user-actions">
               <button
-                onClick={() => {
-                  setToolsOpen((value) => {
-                    const next = !value;
-                    if (next) {
-                      setSituationalOpen(false);
-                      setLiveIncidentsOpen(false);
-                    }
-                    return next;
-                  });
-                  setAnalyticsOpen(false);
-                }}
-                className={toolsOpen ? "active" : ""}
+                className="sidebar-user-btn"
+                onClick={() => { setProfileOpen(true); setOperationsOpen(false); }}
+                title="Profile"
               >
-                <FaTools /> Tools
+                <FaKey />
               </button>
-              {toolsOpen && (
-                <div className="tools-grid sidebar-tools-grid sidebar-tools-dropdown">
-                  <button
-                    className={drawMode === "measure" ? "active" : ""}
-                    onClick={() => setMapDrawTool("measure")}
-                  >
-                    <b>
-                      <FaRulerCombined /> Measure
-                    </b>
-                    
-                  </button>
-                  <button
-                    className={drawMode === "route" ? "active" : ""}
-                    onClick={() => setMapDrawTool("route")}
-                  >
-                    <b>
-                      <FaRoute /> Route
-                    </b>
-                    
-                  </button>
-                  {drawMode === "route" && <form className="route-input-tool" onSubmit={routeFromInputs}>
-                    <input
-                      value={routeStartInput}
-                      onChange={(e) => setRouteStartInput(e.target.value)}
-                      placeholder="Start place or my location"
-                    />
-                    <input
-                      value={routeEndInput}
-                      onChange={(e) => setRouteEndInput(e.target.value)}
-                      placeholder="Destination"
-                    />
-                    {routeGuide && <small>{routeGuide}</small>}
-                    <div>
-                      <button type="submit">
-                        <FaRoute /> Use Route
-                      </button>
-                      <button type="button" onClick={rerouteFromHere}>
-                        Reroute
-                      </button>
-                    </div>
-                  </form>}
-                  {canCreateCustomReportType && (
+              <button
+                className="sidebar-user-btn logout"
+                onClick={onLogout}
+                title="Logout"
+              >
+                <FaSignOutAlt />
+              </button>
+            </div>
+          </div>
+          <form className="sidebar-search" onSubmit={geocode}>
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              width="14"
+              height="14"
+              style={{ flexShrink: 0, color: "#4e6a84" }}
+            >
+              <circle cx="8.5" cy="8.5" r="5.5" />
+              <path d="M15 15l-3-3" />
+            </svg>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} />
+            {search && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setSearch("")}
+              >
+                <FaTimes />
+              </button>
+            )}
+          </form>
+            <>
+              {isSupervisor && <div className="sidebar-actions supervisor-actions">
+                <button onClick={openPollingUnitResultForm}>
+                  <ReportIcon iconKey="POI" size={15} /> Polling Result
+                </button>
+                <button onClick={openIncidentPointForm}>
+                  <ReportIcon iconKey="IP" size={15} /> Report Incident
+                </button>
+                <button className={sharingGps ? "sharing" : ""} onClick={toggleGps}>
+                  <FaBullseye /> {sharingGps ? "Stop GPS" : "Share GPS"}
+                </button>
+                <button className={sharingCamera ? "sharing" : ""} onClick={toggleCamera}>
+                  <FaVideo /> {sharingCamera ? "Stop Camera" : "Share Camera"}
+                </button>
+                <button onClick={shareMap}><FaLocationArrow /> Share Map</button>
+                <button className={`emergency-open ${sosHolding ? "sos-holding" : ""}`} {...sosHoldProps}>SOS</button>
+                <button onClick={onLogout}><FaSignOutAlt /> Logout</button>
+              </div>}
+              {!isSupervisor && <div className="sidebar-actions compact">
+                <button
+                  onClick={() => {
+                    setToolsOpen((value) => {
+                      const next = !value;
+                      if (next) {
+                        setSituationalOpen(false);
+                        setLiveIncidentsOpen(false);
+                      }
+                      return next;
+                    });
+                    setAnalyticsOpen(false);
+                  }}
+                  className={toolsOpen ? "active" : ""}
+                >
+                  <FaTools /> Tools
+                </button>
+                {toolsOpen && (
+                  <div className="tools-grid sidebar-tools-grid sidebar-tools-dropdown">
                     <button
-                      className={drawMode === "circle" ? "active" : ""}
-                      onClick={() => setMapDrawTool("circle")}
+                      className={drawMode === "measure" ? "active" : ""}
+                      onClick={() => setMapDrawTool("measure")}
                     >
                       <b>
-                        <FaCircle /> Buffer
-                      </b>
-                    
-                    </button>
-                  )}
-                  {canCreateCustomReportType && (
-                    <button
-                      className={drawMode === "freehand" ? "active" : ""}
-                      onClick={() => setMapDrawTool("freehand")}
-                    >
-                      <b>
-                        <FaDrawPolygon /> Freehand Incident
-                      </b>
-                    
-                    </button>
-                  )}
-                  {hasMapTools && (
-                    <button className="danger-tool" onClick={clearMapTools}>
-                      <b>
-                        <FaTools /> Clear Tools
+                        <FaRulerCombined /> Measure
                       </b>
                       
                     </button>
-                  )}
-                  {areas.length > 0 && (
-                    <button onClick={shareAreas}>
+                    <button
+                      className={drawMode === "route" ? "active" : ""}
+                      onClick={() => setMapDrawTool("route")}
+                    >
                       <b>
-                        <FaMapMarkedAlt /> Share Area
+                        <FaRoute /> Route
                       </b>
-                     
+                      
                     </button>
-                  )}
-                  {areas.length > 0 && (
-                    <button className="danger-tool" onClick={clearAreas}>
-                      <b>
-                        <FaTools /> Clear Areas
-                      </b>
-                     
-                    </button>
-                  )}
-                  {canAdmin && (
-                    <button onClick={() => setMapDataPanel(true)}>
-                      <b>
-                        <FaMapMarkedAlt /> Map Data
-                      </b>
-                      <span>{mapLayers.length} layers</span>
-                    </button>
-                  )}
-                  {canManagePersonnel && (
-                    <button onClick={() => setManageOfficers(true)}>
-                      <b>
-                        <FaUserCog /> Manage Users
-                      </b>
-                     
-                    </button>
-                  )}
-                  <button onClick={toggleGps}>
-                    <b>
-                      <FaBullseye /> {sharingGps ? "Stop GPS" : "Share GPS"}
-                    </b>
-                    <span>Location</span>
-                  </button>
-                  <button onClick={toggleCamera}>
-                    <b>
-                      <FaVideo /> {sharingCamera ? "Stop Camera" : "Share Camera"}
-                    </b>
-                    
-                  </button>
-                  <button onClick={() => setCameraPanel(true)}>
-                    <b>
-                      <FaVideo /> {phoneShares.length + cameras.length} feeds
-                    </b>
-                  
-                  </button>
-                  <button onClick={() => setChatPanel(true)}>
-                    <b>
-                      <FaComments /> Chat
-                    </b>
-                    
-                  </button>
-                  <button onClick={refreshApp}>
-                    <b>
-                      <FaSyncAlt /> {updateReady ? "Update Ready" : "Update App"}
-                    </b>
-                   
-                  </button>
-                  {canAdmin && (
-                    <button onClick={() => { setIpLogOpen(true); fetchIpLog(); setOperationsOpen(false); }}>
-                      <b>
-                        <FaSearch /> IP Log
-                      </b>
-                      <span>Incident &amp; SOS source IPs</span>
-                    </button>
-                  )}
-                 
-                </div>
-              )}
-              {canAdmin && (
-                <button onClick={() => setResultsOpen(true)}>
-                  <FaChartBar /> Results
-                </button>
-              )}
-              {canAdmin && (
-                <button onClick={() => setPartyManagerOpen(true)}>
-                  <FaUserCog /> Political Parties
-                </button>
-              )}
-            </div>}
-            <div className="sidebar-dropdown-section situational-section officer-summary">
-              <button
-                className={`sidebar-section-toggle sidebar-nav-dropdown situational-toggle ${situationalOpen ? "open" : ""}`}
-                aria-expanded={situationalOpen}
-                onClick={() => setSituationalOpen((value) => {
-                  const next = !value;
-                  if (next) {
-                    setLiveIncidentsOpen(false);
-                    setToolsOpen(false);
-                  }
-                  return next;
-                })}
-              >
-                <h3>Situational Rep</h3>
-                <span>{situationalOpen ? "−" : "+"}</span>
-              </button>
-              {situationalOpen && (
-                <div className="sidebar-dropdown-body">
-                  {officers.map((o) => (
-                    <div className="officer-row" key={o.id}>
-                      <i className={o.status.toLowerCase()}></i>
+                    {drawMode === "route" && <form className="route-input-tool" onSubmit={routeFromInputs}>
+                      <input
+                        value={routeStartInput}
+                        onChange={(e) => setRouteStartInput(e.target.value)}
+                        placeholder="Start place or my location"
+                      />
+                      <input
+                        value={routeEndInput}
+                        onChange={(e) => setRouteEndInput(e.target.value)}
+                        placeholder="Destination"
+                      />
+                      {routeGuide && <small>{routeGuide}</small>}
                       <div>
-                        <b>{o.rank ? `${o.rank} ${o.name}` : o.name}</b>
-                        <small>{o.unit}</small>
+                        <button type="submit">
+                          <FaRoute /> Use Route
+                        </button>
+                        <button type="button" onClick={rerouteFromHere}>
+                          Reroute
+                        </button>
                       </div>
-                      <span>{o.status}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="sidebar-dropdown-section live-section">
-              <button
-                className={`sidebar-section-toggle sidebar-nav-dropdown live-toggle ${liveIncidentsOpen ? "open" : ""}`}
-                aria-expanded={liveIncidentsOpen}
-                onClick={() => setLiveIncidentsOpen((value) => {
-                  const next = !value;
-                  if (next) {
-                    setSituationalOpen(false);
-                    setToolsOpen(false);
-                  }
-                  return next;
-                })}
-              >
-                <h2>Live Incidence <em>{incidents.length}</em></h2>
-                <span>{liveIncidentsOpen ? "−" : "+"}</span>
-              </button>
-              {liveIncidentsOpen && (
-                <div className="sidebar-dropdown-body">
-                  <div className="filters">
-                    {["All", "Critical", "High", "Open"].map((x) => (
+                    </form>}
+                    {canCreateCustomReportType && (
                       <button
-                        className={filter === x ? "active" : ""}
-                        onClick={() => setFilter(x)}
-                        key={x}
+                        className={drawMode === "circle" ? "active" : ""}
+                        onClick={() => setMapDrawTool("circle")}
                       >
-                        {x}
+                        <b>
+                          <FaCircle /> Buffer
+                        </b>
+                      
                       </button>
-                    ))}
-                  </div>
-                  <div className="incident-list">
-                    {visible.map((item) => (
+                    )}
+                    {canCreateCustomReportType && (
                       <button
-                        className={`incident-card ${selected?.id === item.id ? "selected" : ""}`}
-                        onClick={() => {
-                          setSelected(item);
-                          setOperationsOpen(false);
-                        }}
-                        key={item.id}
+                        className={drawMode === "freehand" ? "active" : ""}
+                        onClick={() => setMapDrawTool("freehand")}
                       >
-                        <span
-                          className="severity"
-                          style={{ background: reportStyle(item).color }}
-                        ></span>
+                        <b>
+                          <FaDrawPolygon /> Freehand Incident
+                        </b>
+                      
+                      </button>
+                    )}
+                    {hasMapTools && (
+                      <button className="danger-tool" onClick={clearMapTools}>
+                        <b>
+                          <FaTools /> Clear Tools
+                        </b>
+                        
+                      </button>
+                    )}
+                    {areas.length > 0 && (
+                      <button onClick={shareAreas}>
+                        <b>
+                          <FaMapMarkedAlt /> Share Area
+                        </b>
+                      
+                      </button>
+                    )}
+                    {areas.length > 0 && (
+                      <button className="danger-tool" onClick={clearAreas}>
+                        <b>
+                          <FaTools /> Clear Areas
+                        </b>
+                      
+                      </button>
+                    )}
+                    {canAdmin && (
+                      <button onClick={() => setMapDataPanel(true)}>
+                        <b>
+                          <FaMapMarkedAlt /> Map Data
+                        </b>
+                        <span>{mapLayers.length} layers</span>
+                      </button>
+                    )}
+                    {canManagePersonnel && (
+                      <button onClick={() => setManageOfficers(true)}>
+                        <b>
+                          <FaUserCog /> Manage Users
+                        </b>
+                      
+                      </button>
+                    )}
+                    <button onClick={toggleGps}>
+                      <b>
+                        <FaBullseye /> {sharingGps ? "Stop GPS" : "Share GPS"}
+                      </b>
+                      <span>Location</span>
+                    </button>
+                    <button onClick={toggleCamera}>
+                      <b>
+                        <FaVideo /> {sharingCamera ? "Stop Camera" : "Share Camera"}
+                      </b>
+                      
+                    </button>
+                    <button onClick={() => setCameraPanel(true)}>
+                      <b>
+                        <FaVideo /> {phoneShares.length + cameras.length} feeds
+                      </b>
+                    
+                    </button>
+                    <button onClick={() => setChatPanel(true)}>
+                      <b>
+                        <FaComments /> Chat
+                      </b>
+                      
+                    </button>
+                    <button onClick={refreshApp}>
+                      <b>
+                        <FaSyncAlt /> {updateReady ? "Update Ready" : "Update App"}
+                      </b>
+                     
+                    </button>
+                    {canAdmin && (
+                      <button onClick={() => { setIpLogOpen(true); fetchIpLog(); setOperationsOpen(false); }}>
+                        <b>
+                          <FaSearch /> IP Log
+                        </b>
+                        <span>Incident &amp; SOS source IPs</span>
+                      </button>
+                    )}
+                   
+                  </div>
+                )}
+                {canAdmin && (
+                  <button onClick={() => setResultsOpen(true)}>
+                    <FaChartBar /> Results
+                  </button>
+                )}
+                {canAdmin && (
+                  <button onClick={() => setPartyManagerOpen(true)}>
+                    <FaUserCog /> Political Parties
+                  </button>
+                )}
+              </div>}
+              <div className="sidebar-dropdown-section situational-section officer-summary">
+                <button
+                  className={`sidebar-section-toggle sidebar-nav-dropdown situational-toggle ${situationalOpen ? "open" : ""}`}
+                  aria-expanded={situationalOpen}
+                  onClick={() => setSituationalOpen((value) => {
+                    const next = !value;
+                    if (next) {
+                      setLiveIncidentsOpen(false);
+                      setToolsOpen(false);
+                    }
+                    return next;
+                  })}
+                >
+                  <h3>Situational Rep</h3>
+                  <span>{situationalOpen ? "−" : "+"}</span>
+                </button>
+                {situationalOpen && (
+                  <div className="sidebar-dropdown-body">
+                    {officers.map((o) => (
+                      <div className="officer-row" key={o.id}>
+                        <i className={o.status.toLowerCase()}></i>
                         <div>
-                          <div className="card-top">
-                            <b>{item.title}</b>
-                            <time>
-                              {new Date(item.createdAt).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </time>
-                          </div>
-                          <p>{item.description}</p>
-                          <div className="chips">
-                            <span
-                              className="report-type-chip"
-                              aria-label={item.reportType || "Incident"}
-                            >
-                              <ReportTypeIcon
-                                type={item.reportType}
-                                size={12}
-                                color={reportStyle(item).color}
-                              />
-                              <em>{item.reportType || "Incident"}</em>
-                            </span>
-                            <span>{item.status}</span>
-                            <span>
-                              {officers
-                                .find((x) => x.id === item.assignedTo)
-                                ?.name.split(" ")[1] || "Unassigned"}
-                            </span>
-                          </div>
+                          <b>{o.rank ? `${o.rank} ${o.name}` : o.name}</b>
+                          <small>{o.unit}</small>
                         </div>
-                      </button>
+                        <span>{o.status}</span>
+                      </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-        <button
-          className="sidebar-resizer"
-          onPointerDown={resizeSidebar}
-          aria-label="Resize sidebar"
-          title="Drag to resize sidebar"
-        ></button>
-      </aside>}
+                )}
+              </div>
+              <div className="sidebar-dropdown-section live-section">
+                <button
+                  className={`sidebar-section-toggle sidebar-nav-dropdown live-toggle ${liveIncidentsOpen ? "open" : ""}`}
+                  aria-expanded={liveIncidentsOpen}
+                  onClick={() => setLiveIncidentsOpen((value) => {
+                    const next = !value;
+                    if (next) {
+                      setSituationalOpen(false);
+                      setToolsOpen(false);
+                    }
+                    return next;
+                  })}
+                >
+                  <h2>Live Incidence <em>{incidents.length}</em></h2>
+                  <span>{liveIncidentsOpen ? "−" : "+"}</span>
+                </button>
+                {liveIncidentsOpen && (
+                  <div className="sidebar-dropdown-body">
+                    <div className="filters">
+                      {["All", "Critical", "High", "Open"].map((x) => (
+                        <button
+                          className={filter === x ? "active" : ""}
+                          onClick={() => setFilter(x)}
+                          key={x}
+                        >
+                          {x}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="incident-list">
+                      {visible.map((item) => (
+                        <button
+                          className={`incident-card ${selected?.id === item.id ? "selected" : ""}`}
+                          onClick={() => {
+                            setSelected(item);
+                            setOperationsOpen(false);
+                          }}
+                          key={item.id}
+                        >
+                          <span
+                            className="severity"
+                            style={{ background: reportStyle(item).color }}
+                          ></span>
+                          <div>
+                            <div className="card-top">
+                              <b>{item.title}</b>
+                              <time>
+                                {new Date(item.createdAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </time>
+                            </div>
+                            <p>{item.description}</p>
+                            <div className="chips">
+                              <span
+                                className="report-type-chip"
+                                aria-label={item.reportType || "Incident"}
+                              >
+                                <ReportTypeIcon
+                                  type={item.reportType}
+                                  size={12}
+                                  color={reportStyle(item).color}
+                                />
+                                <em>{item.reportType || "Incident"}</em>
+                              </span>
+                              <span>{item.status}</span>
+                              <span>
+                                {officers
+                                  .find((x) => x.id === item.assignedTo)
+                                  ?.name.split(" ")[1] || "Unassigned"}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          <button
+            className="sidebar-resizer"
+            onPointerDown={resizeSidebar}
+            aria-label="Resize sidebar"
+            title="Drag to resize sidebar"
+          ></button>
+        </aside>
+      )}
       <section className="map-wrap">
         <button
           className="mobile-menu-fab"
