@@ -3951,15 +3951,17 @@ function AnalyticsPanel({
   const run = async (tool) => setResult(await onTool(tool));
   return (
     <section className={`analytics-panel ${full ? "analytics-full" : ""}`}>
-      <div className="camera-head">
+      <div className={full ? "results-center-head" : "camera-head"}>
         <div>
           <span className="eyebrow">ANALYTIC TOOLS</span>
-          <h2>Map analysis</h2>
+          {full ? <h1>Map Analysis &amp; Reports</h1> : <h2>Map analysis</h2>}
+          {full && <p>Live intelligence pulse — operational pressure and incident distribution at a glance.</p>}
         </div>
-        <button className="icon-btn" onClick={onClose}>
+        <button className="icon-btn" onClick={onClose} title="Close analytics">
           <FaTimes />
         </button>
       </div>
+      <div className={full ? "results-center-body" : ""}>
       <div className="analytics-hero">
         <div className="analytics-hero-top">
           <div>
@@ -4141,6 +4143,7 @@ function AnalyticsPanel({
           onChange={(e) => onCsv(e.target.files?.[0], setResult)}
         />
       </label>
+      </div>
     </section>
   );
 }
