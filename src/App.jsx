@@ -2217,7 +2217,7 @@ function OfficerManager({
                       : o.role === "Super Admin"
                         ? "System Administrator"
                         : o.role} -{" "}
-                    {o.email} - {o.state || "No state"} - {o.lga ? `LGA ${String(o.lga).padStart(2, "0")}` : "No LGA"} - {o.ward ? `Ward ${String(o.ward).padStart(2, "0")}` : "No ward"} - {o.pollingUnit || o.unit || o.unitType}
+                    {o.email} - {STATE_CODE_TO_NAME[o.state] || o.state || "No state"} - {o.lga || "No LGA"} - {o.ward || "No ward"} - {o.pollingUnit || o.unit || o.unitType}
                   </small>
                 </div>
                 <button
@@ -2326,7 +2326,7 @@ function OfficerManager({
                 >
                   {locationOptions.lgas.map((lga) => (
                     <option key={lga} value={lga}>
-                      LGA {String(lga).padStart(2, "0")}
+                      {lga}
                     </option>
                   ))}
                 </select>
@@ -2341,7 +2341,7 @@ function OfficerManager({
                 >
                   {locationOptions.wards.map((ward) => (
                     <option key={ward} value={ward}>
-                      Ward {String(ward).padStart(2, "0")}
+                      {ward}
                     </option>
                   ))}
                 </select>
@@ -2364,9 +2364,9 @@ function OfficerManager({
             </label>
             <div className="location-summary">
               <strong>Selected registration location</strong>
-              <span>State: {form.state}</span>
-              <span>LGA: {form.lga ? `LGA ${String(form.lga).padStart(2, "0")}` : "None"}</span>
-              <span>Ward: {form.ward ? `Ward ${String(form.ward).padStart(2, "0")}` : "None"}</span>
+              <span>State: {STATE_CODE_TO_NAME[form.state] || form.state}</span>
+              <span>LGA: {form.lga || "None"}</span>
+              <span>Ward: {form.ward || "None"}</span>
               <span>Polling unit: {form.pollingUnit || "None"}</span>
             </div>
             <div className="two-col">
