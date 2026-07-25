@@ -22,6 +22,40 @@ export const OYO_LGAS = [
   "Saki West", "Surulere",
 ];
 
+export const NIGERIA_STATES = [
+  "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue",
+  "Borno", "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu",
+  "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi",
+  "Kogi", "Kwara", "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo",
+  "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe",
+  "Zamfara", "FCT",
+];
+
+export const DEFAULT_REGISTRATION_STATE = "Oyo";
+
+const REGISTRATION_LOCATION_DATA = {
+  Oyo: {
+    lgas: OYO_LGAS,
+    wards: Array.from({ length: 20 }, (_, index) => `Ward ${String(index + 1).padStart(2, "0")}`),
+    pollingUnits: Array.from({ length: 50 }, (_, index) => `PU ${String(index + 1).padStart(3, "0")}`),
+  },
+  FCT: {
+    lgas: ["Abaji", "AMAC", "Bwari", "Gwagwalada", "Kuje", "Kwali"],
+    wards: Array.from({ length: 12 }, (_, index) => `Ward ${String(index + 1).padStart(2, "0")}`),
+    pollingUnits: Array.from({ length: 30 }, (_, index) => `PU ${String(index + 1).padStart(3, "0")}`),
+  },
+};
+
+export const getRegistrationLocationOptions = (state) => {
+  const normalizedState = String(state || DEFAULT_REGISTRATION_STATE).trim();
+  const selected = REGISTRATION_LOCATION_DATA[normalizedState] || REGISTRATION_LOCATION_DATA[DEFAULT_REGISTRATION_STATE];
+  return {
+    lgas: selected?.lgas || [],
+    wards: selected?.wards || [],
+    pollingUnits: selected?.pollingUnits || [],
+  };
+};
+
 export const UNIT_TYPES = [
   "Command Center",
   "Response Team",

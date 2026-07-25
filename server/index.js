@@ -21,8 +21,8 @@ const adminEmail = process.env.ADMIN_EMAIL || 'admin@command.local';
 const adminPassword = process.env.ADMIN_PASSWORD || 'Password1234';
 const seed = {
   users: [
-    { id: 'u0', name: 'System Administrator', email: superAdminEmail, password: bcrypt.hashSync(superAdminPassword, 10), role: 'Super Admin', rank: 'Super Admin', active: true, unit: 'System Control', command: 'Oyo State Command', division: '', lga: '', lat: 7.3775, lng: 3.9470 },
-    { id: 'u1', name: 'Election Operations Admin', email: adminEmail, password: bcrypt.hashSync(adminPassword, 10), role: 'Admin', rank: 'Admin', active: true, unit: 'Command Center', command: 'Oyo State Command', division: '', lga: '', lat: 7.3775, lng: 3.9470 }
+    { id: 'u0', name: 'System Administrator', email: superAdminEmail, password: bcrypt.hashSync(superAdminPassword, 10), role: 'Super Admin', rank: 'Super Admin', active: true, unit: 'System Control', command: 'Oyo State Command', division: '', state: 'Oyo', lga: '', lat: 7.3775, lng: 3.9470 },
+    { id: 'u1', name: 'Election Operations Admin', email: adminEmail, password: bcrypt.hashSync(adminPassword, 10), role: 'Admin', rank: 'Admin', active: true, unit: 'Command Center', command: 'Oyo State Command', division: '', state: 'Oyo', lga: '', lat: 7.3775, lng: 3.9470 }
   ],
   incidents: [],
   cameras: [],
@@ -56,7 +56,7 @@ if (!databaseUrl) saveJson();
 const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
 const publicUser = ({ password, ...user }) => user;
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-const toUser = row => row && ({ id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, rank: row.rank || '', active: row.active, unit: row.unit, unitType: row.unit_type || 'Division', command: row.command || '', division: row.division || '', station: row.station || '', lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', lat: Number(row.lat) || 7.3775, lng: Number(row.lng) || 3.9470 });
+const toUser = row => row && ({ id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, rank: row.rank || '', active: row.active, unit: row.unit, unitType: row.unit_type || 'Division', command: row.command || '', division: row.division || '', station: row.station || '', state: row.state || '', lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', lat: Number(row.lat) || 7.3775, lng: Number(row.lng) || 3.9470 });
 const toIncident = row => row && ({ id: row.id, title: row.title, description: row.description, reportType: row.report_type || 'IP', severity: row.severity, status: row.status, lat: Number(row.lat), lng: Number(row.lng), assignedTo: row.assigned_to || '', visibleTo: row.visible_to || [], media: row.media || [], geometry: row.geometry || null, style: row.style || null, lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', resultCount: row.result_count || '', createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at, createdBy: row.created_by || '' });
 const toCamera = row => row && ({ id: row.id, name: row.name, type: row.type, url: row.url, lat: Number(row.lat), lng: Number(row.lng), status: row.status, createdAt: row.created_at?.toISOString?.() || row.created_at });
 const toMapLayer = row => row && ({ id: row.id, name: row.name, type: row.type, data: row.data, url: row.url || '', bounds: row.bounds, opacity: Number(row.opacity ?? 0.65), fillOpacity: Number(row.fill_opacity ?? 0.18), category: row.category || (row.type === 'raster' ? 'Raster' : 'Point'), operationalUse: row.operational_use || 'Reference', color: row.color || '#facc15', fillColor: row.fill_color || '#f59e0b', lineWeight: Number(row.line_weight || 2), lineStyle: row.line_style || 'solid', pointIcon: row.point_icon || 'pin', pointIconColor: row.point_icon_color || '#ffffff', pointSize: Number(row.point_size || 24), showLabels: row.show_labels ?? true, labelField: row.label_field || 'name', popupFields: row.popup_fields || '', visible: row.visible ?? true, zIndex: Number(row.z_index || 0), createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at });
@@ -79,6 +79,7 @@ async function initPostgres() {
       command text default '',
       division text default '',
       station text default '',
+      state text default '',
       lga text default '',
       ward text default '',
       polling_unit text default '',
@@ -170,6 +171,7 @@ async function initPostgres() {
   await pool.query("alter table users add column if not exists command text default ''");
   await pool.query("alter table users add column if not exists division text default ''");
   await pool.query("alter table users add column if not exists station text default ''");
+  await pool.query("alter table users add column if not exists state text default ''");
   await pool.query("alter table users add column if not exists lga text default ''");
   await pool.query("alter table users add column if not exists ward text default ''");
   await pool.query("alter table users add column if not exists polling_unit text default ''");
@@ -231,7 +233,7 @@ const store = {
   },
   async createUser(user) {
     if (!pool) { jsonDb.users.push(user); saveJson(); return user; }
-    const { rows } = await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,ward,polling_unit,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning *', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.lga, user.ward || '', user.pollingUnit || '', user.lat, user.lng]);
+    const { rows } = await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,state,lga,ward,polling_unit,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning *', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.state || '', user.lga, user.ward || '', user.pollingUnit || '', user.lat, user.lng]);
     return toUser(rows[0]);
   },
   async updateUserPassword(id, password) {
@@ -550,6 +552,7 @@ app.post('/api/users', auth, asyncRoute(async (req, res) => {
     command: String(req.body.command || '').trim(),
     division: String(req.body.division || '').trim(),
     station: String(req.body.station || '').trim(),
+    state: String(req.body.state || '').trim(),
     lga: String(req.body.lga || '').trim(),
     ward: String(req.body.ward || '').trim(),
     pollingUnit: String(req.body.pollingUnit || '').trim(),

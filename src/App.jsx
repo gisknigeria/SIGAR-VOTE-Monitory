@@ -75,10 +75,12 @@ import {
   MdAdjust,
 } from "react-icons/md";
 import {
+  NIGERIA_STATES,
   OYO_LGAS,
   POLLING_UNITS,
   UNIT_TYPES,
   WARDS,
+  getRegistrationLocationOptions,
 } from "../shared/electionData.js";
 
 const API = "/api";
@@ -1856,6 +1858,7 @@ function OfficerManager({
     command: "Oyo State Election Operations",
     division: "",
     station: "",
+    state: "Oyo",
     lga: OYO_LGAS[0],
     ward: WARDS[0],
     pollingUnit: POLLING_UNITS[0],
@@ -1864,6 +1867,17 @@ function OfficerManager({
     role: defaultRole,
   };
   const [form, setForm] = useState(emptyForm);
+  const locationOptions = useMemo(() => getRegistrationLocationOptions(form.state), [form.state]);
+  const handleStateChange = (value) => {
+    const nextOptions = getRegistrationLocationOptions(value);
+    setForm((prev) => ({
+      ...prev,
+      state: value,
+      lga: nextOptions.lgas.includes(prev.lga) ? prev.lga : nextOptions.lgas[0] || "",
+      ward: nextOptions.wards.includes(prev.ward) ? prev.ward : nextOptions.wards[0] || "",
+      pollingUnit: nextOptions.pollingUnits.includes(prev.pollingUnit) ? prev.pollingUnit : nextOptions.pollingUnits[0] || "",
+    }));
+  };
   const [error, setError] = useState("");
   const [managerTab, setManagerTab] = useState("create");
   const submit = async (e) => {
@@ -1936,7 +1950,7 @@ function OfficerManager({
                       : o.role === "Super Admin"
                         ? "System Administrator"
                         : o.role} -{" "}
-                    {o.email} - {o.lga || "No LGA"} - {o.unit || o.unitType}
+                    {o.email} - {o.state || "No state"} - {o.lga || "No LGA"} - {o.unit || o.unitType}
                   </small>
                 </div>
                 <button
@@ -2007,33 +2021,39 @@ function OfficerManager({
                 </select>
               </label>
               <label>
+                State
+                <select required value={form.state} onChange={(e) => handleStateChange(e.target.value)}>
+                  {NIGERIA_STATES.map((state) => <option key={state}>{state}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="two-col">
+              <label>
                 LGA
                 <select
                   required
                   value={form.lga}
                   onChange={(e) => setForm({ ...form, lga: e.target.value })}
                 >
-                  {OYO_LGAS.map((lga) => (
+                  {locationOptions.lgas.map((lga) => (
                     <option key={lga}>{lga}</option>
                   ))}
                 </select>
               </label>
-            </div>
-            <div className="two-col">
               <label>
                 Ward / supervisor zone
                 <select required value={form.ward} onChange={(e) => setForm({ ...form, ward: e.target.value })}>
-                  {WARDS.map((ward) => <option key={ward}>{ward}</option>)}
-                </select>
-              </label>
-              <label>
-                Polling unit {form.role === "Supervisor" ? "(optional)" : "assignment"}
-                <select required={form.role === "Agent"} value={form.pollingUnit} onChange={(e) => setForm({ ...form, pollingUnit: e.target.value })}>
-                  <option value="">All units in ward</option>
-                  {POLLING_UNITS.map((unit) => <option key={unit}>{unit}</option>)}
+                  {locationOptions.wards.map((ward) => <option key={ward}>{ward}</option>)}
                 </select>
               </label>
             </div>
+            <label>
+              Polling unit {form.role === "Supervisor" ? "(optional)" : "assignment"}
+              <select required={form.role === "Agent"} value={form.pollingUnit} onChange={(e) => setForm({ ...form, pollingUnit: e.target.value })}>
+                <option value="">All units in ward</option>
+                {locationOptions.pollingUnits.map((unit) => <option key={unit}>{unit}</option>)}
+              </select>
+            </label>
             <div className="two-col">
               <label>
                 Unit / team name
