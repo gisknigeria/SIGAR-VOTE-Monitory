@@ -75,6 +75,7 @@ import {
   MdAdjust,
 } from "react-icons/md";
 import {
+  DEFAULT_REGISTRATION_STATE,
   NIGERIA_STATES,
   OYO_LGAS,
   POLLING_UNITS,
@@ -1848,6 +1849,7 @@ function OfficerManager({
     ? ["Admin", "Response Team", "Supervisor", "Agent"]
     : ["Response Team", "Supervisor", "Agent"];
   const defaultRole = manageableRoles[manageableRoles.length - 1];
+  const initialLocationOptions = getRegistrationLocationOptions(DEFAULT_REGISTRATION_STATE);
   const emptyForm = {
     name: "",
     email: "",
@@ -1858,10 +1860,10 @@ function OfficerManager({
     command: "Oyo State Election Operations",
     division: "",
     station: "",
-    state: "Oyo",
-    lga: OYO_LGAS[0],
-    ward: WARDS[0],
-    pollingUnit: POLLING_UNITS[0],
+    state: DEFAULT_REGISTRATION_STATE,
+    lga: initialLocationOptions.lgas[0] || "",
+    ward: initialLocationOptions.wards[0] || "",
+    pollingUnit: initialLocationOptions.pollingUnits[0] || "",
     lat: "7.3775",
     lng: "3.9470",
     role: defaultRole,
