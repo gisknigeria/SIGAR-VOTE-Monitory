@@ -1395,7 +1395,8 @@ function MapView({
           geometry: {
             type: "MultiPolygon",
             coordinates: groupedFeatures
-              .map((item) => item.geometry?.type?.includes("Polygon") ? [item.geometry.coordinates] : [])
+              .filter((item) => item.geometry?.type?.includes("Polygon"))
+              .map((item) => item.geometry.coordinates)
               .filter(Boolean),
           },
         }));
