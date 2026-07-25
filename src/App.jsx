@@ -816,6 +816,7 @@ function MapView({
   officers,
   cameras,
   mapLayers,
+  nigeriaBoundaryData,
   emergencyAlerts,
   analysisLayers,
   selected,
@@ -7697,6 +7698,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           officers={officers}
           cameras={mapCameras}
           mapLayers={mapLayers}
+          nigeriaBoundaryData={nigeriaBoundaryData}
           emergencyAlerts={showSosIncidents ? emergencyAlerts : []}
           analysisLayers={analysisLayers}
           selected={selected}
