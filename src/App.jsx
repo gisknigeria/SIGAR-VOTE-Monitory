@@ -133,6 +133,51 @@ const CategoryIcon = ({ cat, ...props }) => {
   const Ic = CATEGORY_ICON_COMPONENTS[cat] || MdFilterHdr;
   return <Ic {...props} />;
 };
+const normalizeGeoJsonGeometry = (geometry) => {
+  if (!geometry || typeof geometry !== "object") return null;
+  if (geometry.type === "GeometryCollection" && Array.isArray(geometry.geometries)) {
+    const geometries = geometry.geometries
+      .map((item) => normalizeGeoJsonGeometry(item))
+      .filter(Boolean);
+    return geometries.length ? { ...geometry, geometries } : null;
+  }
+  const sanitizeCoords = (value) => {
+    if (!Array.isArray(value)) return null;
+    if (value.length === 0) return [];
+    const first = value[0];
+    if (Array.isArray(first)) {
+      const normalized = value
+        .map((item) => sanitizeCoords(item))
+        .filter((item) => item !== null && (Array.isArray(item) ? item.length > 0 : true));
+      return normalized.length ? normalized : null;
+    }
+    const lng = Number(value[0]);
+    const lat = Number(value[1]);
+    if (Number.isFinite(lng) && Number.isFinite(lat)) return [lng, lat];
+    return null;
+  };
+  const coordinates = sanitizeCoords(geometry.coordinates);
+  return coordinates === null ? null : { ...geometry, coordinates };
+};
+const normalizeGeoJsonData = (data) => {
+  if (!data || typeof data !== "object") return data;
+  if (data.type === "FeatureCollection" && Array.isArray(data.features)) {
+    const features = data.features
+      .map((feature) => {
+        if (!feature || typeof feature !== "object") return null;
+        const normalizedGeometry = normalizeGeoJsonGeometry(feature.geometry);
+        if (!normalizedGeometry) return null;
+        return { ...feature, geometry: normalizedGeometry };
+      })
+      .filter(Boolean);
+    return { ...data, features };
+  }
+  if (data.type === "Feature" && data.geometry) {
+    const normalizedGeometry = normalizeGeoJsonGeometry(data.geometry);
+    return normalizedGeometry ? { ...data, geometry: normalizedGeometry } : null;
+  }
+  return data;
+};
 const CATEGORY_COLORS = {
   Point: "#fb923c",
   Line: "#facc15",
@@ -904,17 +949,17 @@ function MapView({
           layerItem.type === "geojson" &&
           layerItem.data?.features,
       )
-      .flatMap((layerItem) =>
-        layerItem.data.features.filter((feature) => {
+      .flatMap((layerItem) => {
+        const safeLayerData = normalizeGeoJsonData(layerItem.data);
+        return (safeLayerData?.features || []).filter((feature) => {
           if (!feature.geometry?.type?.includes("Polygon")) return false;
           const p = feature.properties || {};
-          // Exclude features picked up by dedicated state/LGA overlays
           const isStateFeature = p.STATE_NAME || p.admin1Name || p.NAME_1 || p.State || (p.state && !p.ADM2_EN && !p.lga_name && !p.LGA);
           const isLgaFeature = p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
           if (isStateFeature || isLgaFeature) return false;
           return true;
-        }),
-      );
+        });
+      });
 
   const handleBoundaryClick = (feature) => {
     const label = getBoundaryLabel(feature);
@@ -1292,7 +1337,9 @@ function MapView({
               .filter(Boolean);
             const renderValue = (value) =>
               value == null || value === "" ? "" : String(value).slice(0, 90);
-            custom = L.geoJSON(layerItem.data, {
+            const safeLayerData = normalizeGeoJsonData(layerItem.data);
+            if (!safeLayerData) return;
+            custom = L.geoJSON(safeLayerData, {
               style: (feature) => {
                 const geometryType = feature.geometry?.type || "";
                 const polygon =
@@ -1373,12 +1420,13 @@ function MapView({
     if (!showStateBorders) return;
 
     const boundarySources = [
-      ...(nigeriaBoundaryData ? [{ type: "geojson", data: nigeriaBoundaryData, builtIn: true }] : []),
+      ...(nigeriaBoundaryData ? [{ type: "geojson", data: normalizeGeoJsonData(nigeriaBoundaryData), builtIn: true }] : []),
       ...mapLayers.filter((l) => l.visible !== false && l.type === "geojson" && l.data?.features),
     ];
 
     const stateFeatures = boundarySources.flatMap((source) => {
-      const features = source.data?.features || [];
+      const safeSourceData = normalizeGeoJsonData(source.data);
+      const features = safeSourceData?.features || [];
       if (source.builtIn) {
         const groups = new Map();
         features.forEach((feature) => {
@@ -1482,12 +1530,13 @@ function MapView({
     if (!showLgaBorders) return;
 
     const boundarySources = [
-      ...(nigeriaBoundaryData ? [{ type: "geojson", data: nigeriaBoundaryData, builtIn: true }] : []),
+      ...(nigeriaBoundaryData ? [{ type: "geojson", data: normalizeGeoJsonData(nigeriaBoundaryData), builtIn: true }] : []),
       ...mapLayers.filter((l) => l.visible !== false && l.type === "geojson" && l.data?.features),
     ];
 
     const lgaFeatures = boundarySources.flatMap((source) => {
-      const features = source.data?.features || [];
+      const safeSourceData = normalizeGeoJsonData(source.data);
+      const features = safeSourceData?.features || [];
       if (source.builtIn) {
         return features.filter((feature) => {
           const p = feature.properties || {};
