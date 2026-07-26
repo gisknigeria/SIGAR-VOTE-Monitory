@@ -759,7 +759,7 @@ function Login({ onLogin }) {
       </section>
       <form className="login-card" onSubmit={submit}>
         <img className="login-card-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead" />
-        <div className="eyebrow">SECURE COMMAND ACCESS</div>
+        <div className="eyebrow">SECURE  ACCESS</div>
         <h2>Welcome back</h2>
         <p className="muted">Sign in with your authorized election operations credentials.</p>
         <label>
