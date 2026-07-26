@@ -7506,45 +7506,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 <FaChartBar />
               </button>
             )}
-            <button
-              className={`map-action border-toggle ${(showStateBorders || showLgaBorders) ? "active" : ""}`}
-              onClick={() => {
-                const anyOn = showStateBorders || showLgaBorders;
-                setShowStateBorders(!anyOn);
-                setShowLgaBorders(!anyOn);
-                setShowBoundaryLayer(!anyOn);
-              }}
-              title={(showStateBorders || showLgaBorders) ? "Hide all borders" : "Show all borders"}
-            >
-              <FaMapMarkedAlt />
-            </button>
-            {(showStateBorders || showLgaBorders) && (
-              <>
-                <button
-                  className={`map-action border-sub-toggle ${showStateBorders ? "active" : ""}`}
-                  onClick={() => setShowStateBorders(v => !v)}
-                  title={showStateBorders ? "Hide state borders" : "Show state borders"}
-                >
-                  ST
-                </button>
-                <button
-                  className={`map-action border-sub-toggle lga-toggle ${showLgaBorders ? "active" : ""}`}
-                  onClick={() => setShowLgaBorders(v => !v)}
-                  title={showLgaBorders ? "Hide LGA borders" : "Show LGA borders"}
-                >
-                  LGA
-                </button>
-              </>
-            )}
-            {selectedBoundaryLabel && showBoundaryLayer && (
-              <button
-                className="map-action border-clear"
-                onClick={clearBoundarySelection}
-                title="Clear selected state/LGA"
-              >
-                <FaTimes />
-              </button>
-            )}
+           
+           
+           
             {canAdmin && (
               <button
                 className="map-action camera-count"
