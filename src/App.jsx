@@ -133,51 +133,6 @@ const CategoryIcon = ({ cat, ...props }) => {
   const Ic = CATEGORY_ICON_COMPONENTS[cat] || MdFilterHdr;
   return <Ic {...props} />;
 };
-const normalizeGeoJsonGeometry = (geometry) => {
-  if (!geometry || typeof geometry !== "object") return null;
-  if (geometry.type === "GeometryCollection" && Array.isArray(geometry.geometries)) {
-    const geometries = geometry.geometries
-      .map((item) => normalizeGeoJsonGeometry(item))
-      .filter(Boolean);
-    return geometries.length ? { ...geometry, geometries } : null;
-  }
-  const sanitizeCoords = (value) => {
-    if (!Array.isArray(value)) return null;
-    if (value.length === 0) return [];
-    const first = value[0];
-    if (Array.isArray(first)) {
-      const normalized = value
-        .map((item) => sanitizeCoords(item))
-        .filter((item) => item !== null && (Array.isArray(item) ? item.length > 0 : true));
-      return normalized.length ? normalized : null;
-    }
-    const lng = Number(value[0]);
-    const lat = Number(value[1]);
-    if (Number.isFinite(lng) && Number.isFinite(lat)) return [lng, lat];
-    return null;
-  };
-  const coordinates = sanitizeCoords(geometry.coordinates);
-  return coordinates === null ? null : { ...geometry, coordinates };
-};
-const normalizeGeoJsonData = (data) => {
-  if (!data || typeof data !== "object") return data;
-  if (data.type === "FeatureCollection" && Array.isArray(data.features)) {
-    const features = data.features
-      .map((feature) => {
-        if (!feature || typeof feature !== "object") return null;
-        const normalizedGeometry = normalizeGeoJsonGeometry(feature.geometry);
-        if (!normalizedGeometry) return null;
-        return { ...feature, geometry: normalizedGeometry };
-      })
-      .filter(Boolean);
-    return { ...data, features };
-  }
-  if (data.type === "Feature" && data.geometry) {
-    const normalizedGeometry = normalizeGeoJsonGeometry(data.geometry);
-    return normalizedGeometry ? { ...data, geometry: normalizedGeometry } : null;
-  }
-  return data;
-};
 const CATEGORY_COLORS = {
   Point: "#fb923c",
   Line: "#facc15",
@@ -861,7 +816,6 @@ function MapView({
   officers,
   cameras,
   mapLayers,
-  nigeriaBoundaryData,
   emergencyAlerts,
   analysisLayers,
   selected,
@@ -949,17 +903,17 @@ function MapView({
           layerItem.type === "geojson" &&
           layerItem.data?.features,
       )
-      .flatMap((layerItem) => {
-        const safeLayerData = normalizeGeoJsonData(layerItem.data);
-        return (safeLayerData?.features || []).filter((feature) => {
+      .flatMap((layerItem) =>
+        layerItem.data.features.filter((feature) => {
           if (!feature.geometry?.type?.includes("Polygon")) return false;
           const p = feature.properties || {};
+          // Exclude features picked up by dedicated state/LGA overlays
           const isStateFeature = p.STATE_NAME || p.admin1Name || p.NAME_1 || p.State || (p.state && !p.ADM2_EN && !p.lga_name && !p.LGA);
           const isLgaFeature = p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
           if (isStateFeature || isLgaFeature) return false;
           return true;
-        });
-      });
+        }),
+      );
 
   const handleBoundaryClick = (feature) => {
     const label = getBoundaryLabel(feature);
@@ -1337,9 +1291,7 @@ function MapView({
               .filter(Boolean);
             const renderValue = (value) =>
               value == null || value === "" ? "" : String(value).slice(0, 90);
-            const safeLayerData = normalizeGeoJsonData(layerItem.data);
-            if (!safeLayerData) return;
-            custom = L.geoJSON(safeLayerData, {
+            custom = L.geoJSON(layerItem.data, {
               style: (feature) => {
                 const geometryType = feature.geometry?.type || "";
                 const polygon =
@@ -1409,55 +1361,25 @@ function MapView({
       });
   }, [mapLayers]);
 
-  // Nigeria state and LGA boundary overlays (built-in and uploaded layers)
+  // Nigeria state and LGA boundary overlays (built-in, independent of uploaded layers)
   useEffect(() => {
     const map = leaflet.current;
     if (!map) return;
+    // Clean up state overlay and labels
     nigeriaStateOverlay.current?.remove();
     nigeriaStateOverlay.current = null;
-    nigeriaStateLabels.current.forEach((l) => l.remove());
+    nigeriaStateLabels.current.forEach(l => l.remove());
     nigeriaStateLabels.current = [];
     if (!showStateBorders) return;
-
-    const boundarySources = [
-      ...(nigeriaBoundaryData ? [{ type: "geojson", data: normalizeGeoJsonData(nigeriaBoundaryData), builtIn: true }] : []),
-      ...mapLayers.filter((l) => l.visible !== false && l.type === "geojson" && l.data?.features),
-    ];
-
-    const stateFeatures = boundarySources.flatMap((source) => {
-      const safeSourceData = normalizeGeoJsonData(source.data);
-      const features = safeSourceData?.features || [];
-      if (source.builtIn) {
-        const groups = new Map();
-        features.forEach((feature) => {
-          const p = feature.properties || {};
-          const stateName = p.statename || p.STATE_NAME || p.admin1Name || p.NAME_1 || p.State || p.state || p.name || p.NAME || "";
-          if (!stateName || !feature.geometry?.type?.includes("Polygon")) return;
-          const existing = groups.get(stateName) || [];
-          existing.push(feature);
-          groups.set(stateName, existing);
-        });
-        return Array.from(groups.entries()).map(([name, groupedFeatures]) => ({
-          type: "Feature",
-          properties: { name },
-          geometry: {
-            type: "MultiPolygon",
-            coordinates: groupedFeatures
-              .filter((item) => item.geometry?.type?.includes("Polygon"))
-              .map((item) => item.geometry.coordinates)
-              .filter(Boolean),
-          },
-        }));
-      }
-
-      return features.filter((feature) => {
-        const p = feature.properties || {};
+    // State features: have STATE_NAME / admin1Name / NAME_1 / state properties, no LGA-specific ones
+    const stateFeatures = mapLayers
+      .filter(l => l.visible !== false && l.type === "geojson" && l.data?.features)
+      .flatMap(l => l.data.features.filter(f => {
+        const p = f.properties || {};
         const hasState = p.STATE_NAME || p.admin1Name || p.NAME_1 || p.State || (p.state && !p.ADM2_EN && !p.lga_name && !p.LGA);
-        const isPolygon = feature.geometry?.type?.includes("Polygon");
+        const isPolygon = f.geometry?.type?.includes("Polygon");
         return hasState && isPolygon;
-      });
-    });
-
+      }));
     if (!stateFeatures.length) return;
     const stateLayer = L.geoJSON(
       { type: "FeatureCollection", features: stateFeatures },
@@ -1473,17 +1395,17 @@ function MapView({
         }),
         onEachFeature: (feature, layerGeo) => {
           const name =
-            feature.properties?.name ||
             feature.properties?.STATE_NAME ||
             feature.properties?.admin1Name ||
             feature.properties?.NAME_1 ||
             feature.properties?.State ||
             feature.properties?.state ||
-            feature.properties?.statename ||
+            feature.properties?.name ||
             feature.properties?.NAME ||
             "";
           if (name) {
             layerGeo.bindTooltip(name, { permanent: false, sticky: true, className: "nigeria-state-tooltip" });
+            // Permanent label at centroid
             try {
               const center = layerGeo.getBounds().getCenter();
               const label = L.marker(center, {
@@ -1517,42 +1439,25 @@ function MapView({
     ).addTo(map);
     nigeriaStateOverlay.current = stateLayer;
     stateLayer.bringToFront();
-  }, [showStateBorders, nigeriaBoundaryData, mapLayers, onBoundarySelect]);
+  }, [showStateBorders, mapLayers, onBoundarySelect]);
 
-  // Nigeria LGA boundary overlay (built-in and uploaded layers)
+  // Nigeria LGA boundary overlay (from uploaded geojson layers only)
   useEffect(() => {
     const map = leaflet.current;
     if (!map) return;
     nigeriaLgaOverlay.current?.remove();
     nigeriaLgaOverlay.current = null;
-    nigeriaLgaLabels.current.forEach((l) => l.remove());
+    nigeriaLgaLabels.current.forEach(l => l.remove());
     nigeriaLgaLabels.current = [];
     if (!showLgaBorders) return;
-
-    const boundarySources = [
-      ...(nigeriaBoundaryData ? [{ type: "geojson", data: normalizeGeoJsonData(nigeriaBoundaryData), builtIn: true }] : []),
-      ...mapLayers.filter((l) => l.visible !== false && l.type === "geojson" && l.data?.features),
-    ];
-
-    const lgaFeatures = boundarySources.flatMap((source) => {
-      const safeSourceData = normalizeGeoJsonData(source.data);
-      const features = safeSourceData?.features || [];
-      if (source.builtIn) {
-        return features.filter((feature) => {
-          const p = feature.properties || {};
-          const hasLga = p.lganame || p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
-          const isPolygon = feature.geometry?.type?.includes("Polygon");
-          return hasLga && isPolygon;
-        });
-      }
-      return features.filter((feature) => {
-        const p = feature.properties || {};
+    const lgaFeatures = mapLayers
+      .filter(l => l.visible !== false && l.type === "geojson" && l.data?.features)
+      .flatMap(l => l.data.features.filter(f => {
+        const p = f.properties || {};
         const hasLga = p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
-        const isPolygon = feature.geometry?.type?.includes("Polygon");
+        const isPolygon = f.geometry?.type?.includes("Polygon");
         return hasLga && isPolygon;
-      });
-    });
-
+      }));
     if (!lgaFeatures.length) return;
     const lgaLayer = L.geoJSON(
       { type: "FeatureCollection", features: lgaFeatures },
@@ -1568,7 +1473,6 @@ function MapView({
         }),
         onEachFeature: (feature, layerGeo) => {
           const name =
-            feature.properties?.lganame ||
             feature.properties?.ADM2_EN ||
             feature.properties?.lga_name ||
             feature.properties?.LGA ||
@@ -1611,7 +1515,7 @@ function MapView({
     ).addTo(map);
     nigeriaLgaOverlay.current = lgaLayer;
     lgaLayer.bringToFront();
-  }, [showLgaBorders, nigeriaBoundaryData, mapLayers, onBoundarySelect]);
+  }, [showLgaBorders, mapLayers, onBoundarySelect]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -4870,7 +4774,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [emergencyAlerts, setEmergencyAlerts] = useState([]);
   const [activeEmergency, setActiveEmergency] = useState(null);
   const [mapLayers, setMapLayers] = useState([]);
-  const [nigeriaBoundaryData, setNigeriaBoundaryData] = useState(null);
   const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
   const [showStateBorders, setShowStateBorders] = useState(true);
   const [showLgaBorders, setShowLgaBorders] = useState(true);
@@ -4923,24 +4826,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   );
   const mapRef = useRef(null);
   const socketRef = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/nigeria-boundaries.geojson")
-      .then((response) => {
-        if (!response.ok) throw new Error(`Boundary data failed: ${response.status}`);
-        return response.json();
-      })
-      .then((data) => {
-        if (!cancelled) setNigeriaBoundaryData(data);
-      })
-      .catch((error) => {
-        console.warn("Unable to load Nigeria boundary data", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
   const gpsWatchRef = useRef(null);
   const gpsBestRef = useRef(null);
   const sosHoldTimerRef = useRef(null);
@@ -7748,7 +7633,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           officers={officers}
           cameras={mapCameras}
           mapLayers={mapLayers}
-          nigeriaBoundaryData={nigeriaBoundaryData}
           emergencyAlerts={showSosIncidents ? emergencyAlerts : []}
           analysisLayers={analysisLayers}
           selected={selected}
