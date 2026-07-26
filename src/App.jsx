@@ -5997,8 +5997,19 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     let lastBroadcast = 0;
     let warmUpCount = 0;
 
+    // Unlock the gate after 8 seconds regardless — prevents permanent lockout
+    const gateUnlockTimer = setTimeout(() => {
+      if (isAgent) setGpsRequiredBlocked(false);
+    }, 8000);
+
     const onPosition = (position) => {
       const { latitude, longitude, accuracy, speed, heading } = position.coords;
+
+      // Unblock the agent gate as soon as any valid coords arrive
+      if (isAgent) {
+        setGpsRequiredBlocked(false);
+        clearTimeout(gateUnlockTimer);
+      }
 
       const fixAge = Date.now() - Number(position.timestamp || Date.now());
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy)) return;
@@ -6066,7 +6077,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         ...old,
         [session.user.id]: { ...point, offline: false },
       }));
-      if (isAgent) setGpsRequiredBlocked(false);
 
       const accuracyLabel = best.accuracy <= ACCURACY_GOOD
         ? `±${Math.round(best.accuracy)} m (good)`
@@ -6078,11 +6088,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     const onError = (error) => {
       // PERMISSION_DENIED — hard stop
       if (error.code === 1) {
+        clearTimeout(gateUnlockTimer);
         if (gpsWatchRef.current != null)
           navigator.geolocation.clearWatch(gpsWatchRef.current);
         gpsWatchRef.current = null;
         setSharingGps(false);
-        setNotice("Location permission was denied");
+        setNotice("Location permission was denied — please enable location in your browser settings and try again");
         if (isAgent) setGpsRequiredBlocked(true);
         return;
       }
@@ -8091,7 +8102,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           </div>
         </div>
       )}
-      {gpsRequiredBlocked && isAgent && <div className="modal-backdrop gps-required-gate"><div className="modal"><span className="eyebrow">LOCATION REQUIRED</span><h2>Allow Location</h2><p>Location must be on before you can use the app.</p><button className="primary wide" onClick={toggleGps}><LuLocateFixed /> Allow Location</button></div></div>}
+      {gpsRequiredBlocked && isAgent && <div className="modal-backdrop gps-required-gate"><div className="modal"><span className="eyebrow">LOCATION REQUIRED</span><h2>Allow Location</h2><p>Your location needs to be shared before you can use the app. Tap the button below and allow location access when prompted.</p><button className="primary wide" onClick={toggleGps}><LuLocateFixed /> Allow Location</button><button className="ghost wide" style={{marginTop:10}} onClick={() => setGpsRequiredBlocked(false)}>Skip for now</button></div></div>}
       {partyManagerOpen && canAdmin && <PartyManager parties={parties} onClose={() => setPartyManagerOpen(false)} onSave={saveParties} />}
       {emergencyOpen && (
         <EmergencyPanel
