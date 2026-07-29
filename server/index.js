@@ -642,7 +642,9 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Nigeria election').slice(0, 180);
-  const query = `${q} (INEC OR ballot OR polling OR vote OR "political party" OR APC OR PDP OR LP OR NNPP OR SDP)`;
+  // Keep the query broad: requiring every keyword at once produces empty
+  // results because most articles mention only one location or party.
+  const query = `(${q} OR Nigeria OR Oyo OR INEC OR election OR ballot OR polling OR vote OR APC OR PDP OR LP OR NNPP OR SDP)`;
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=50&sort=HybridRel`;
   let data;
   try {

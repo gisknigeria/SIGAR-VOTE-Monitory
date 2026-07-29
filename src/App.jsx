@@ -4699,7 +4699,7 @@ function ResultsCenter({ incidents, onClose }) {
   useEffect(() => {
     if (view !== "news" || news.length) return;
     setNewsLoading(true);
-    request("/api/news?q=Nigeria election Oyo INEC political party", null).then(data => setNews(data.articles || [])).catch(() => setNews([])).finally(() => setNewsLoading(false));
+    request("/api/news?q=Nigeria election", null).then(data => setNews(data.articles || [])).catch(() => setNews([])).finally(() => setNewsLoading(false));
   }, [view, news.length]);
   const reports = useMemo(
     () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
