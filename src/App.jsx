@@ -4700,7 +4700,7 @@ function ResultsCenter({ incidents, onClose, authToken }) {
   useEffect(() => {
     if (view !== "news" || news.length) return;
     setNewsLoading(true);
-    request("/news?q=Nigeria election", authToken).then(data => setNews(data.articles || [])).catch(error => { setNews([]); setNewsError(error.message || "News service unavailable"); }).finally(() => setNewsLoading(false));
+    request("/news?q=Oyo election", authToken).then(data => setNews(data.articles || [])).catch(error => { setNews([]); setNewsError(error.message || "News service unavailable"); }).finally(() => setNewsLoading(false));
   }, [view, news.length]);
   const reports = useMemo(
     () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),

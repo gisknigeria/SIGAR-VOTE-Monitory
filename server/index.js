@@ -641,7 +641,7 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
-  const q = String(req.query.q || 'Nigeria election').slice(0, 180);
+  const q = String(req.query.q || 'Oyo election').slice(0, 180);
   if (process.env.GNEWS_API_KEY) {
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(q)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
