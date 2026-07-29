@@ -644,7 +644,7 @@ app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Ele
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Oyo State election').slice(0, 180);
   if (process.env.GNEWS_API_KEY) {
-    const gnewsQuery = /oyo|ibadan/i.test(q) ? '(Oyo OR Ibadan OR "Oyo State" OR "INEC Oyo") election' : q;
+    const gnewsQuery = /oyo|ibadan/i.test(q) ? '(Oyo OR Ibadan OR "Oyo State" OR "INEC Oyo")' : q;
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(gnewsQuery)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
       const payload = await gnews.json();
