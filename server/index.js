@@ -647,6 +647,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     if (gnews?.ok) {
       const payload = await gnews.json();
       const articles = (payload.articles || []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: item.publishedAt || '', language: 'en' })).filter(item => item.title && item.url);
+      console.log(`[news] provider=gnews query=${JSON.stringify(q)} articles=${articles.length}`);
       return res.json({ articles, query: q, provider: 'gnews', fetchedAt: new Date().toISOString() });
     }
   }
@@ -668,7 +669,8 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   }
   const seen = new Set();
   const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: item.seendate || item.pubdate || '', language: item.language || '' })).filter(item => item.title && item.url && !seen.has(item.url) && seen.add(item.url));
-  res.json({ articles, query: q, fetchedAt: new Date().toISOString() });
+  console.log(`[news] provider=${data === undefined ? 'none' : 'gdelt/rss'} query=${JSON.stringify(q)} articles=${articles.length}`);
+  res.json({ articles, query: q, provider: 'gdelt/rss', fetchedAt: new Date().toISOString() });
 }));
 app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ message: 'AI news summaries are not configured.' });
