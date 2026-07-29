@@ -704,7 +704,7 @@ function LayerControlPanel({ layers, isAdmin, onToggle, onOpacity, onClose }) {
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -4695,11 +4695,12 @@ function ResultsCenter({ incidents, onClose, authToken }) {
   const [focusParty, setFocusParty] = useState("");
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState("");
   const [newsSummary, setNewsSummary] = useState("");
   useEffect(() => {
     if (view !== "news" || news.length) return;
     setNewsLoading(true);
-    request("/api/news?q=Nigeria election", authToken).then(data => setNews(data.articles || [])).catch(() => setNews([])).finally(() => setNewsLoading(false));
+    request("/api/news?q=Nigeria election", authToken).then(data => setNews(data.articles || [])).catch(error => { setNews([]); setNewsError(error.message || "News service unavailable"); }).finally(() => setNewsLoading(false));
   }, [view, news.length]);
   const reports = useMemo(
     () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
@@ -8232,7 +8233,7 @@ export default function App() {
       return null;
     }
   });
-  const login = (value, rememberMe = false) => {
+  const login = (value, rememberMe = true) => {
     const sessionValue = JSON.stringify(value);
     if (rememberMe) {
       localStorage.setItem("command-session", sessionValue);
