@@ -648,7 +648,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(gnewsQuery)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
       const payload = await gnews.json();
-      const articles = (payload.articles || []).map(item => ({ title: sanitizeString(item.title || ''), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: item.publishedAt || '', language: 'en' })).filter(item => item.title && item.url && /oyo|ibadan|inec/i.test(`${item.title} ${item.description}`)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      const articles = (payload.articles || []).map(item => ({ title: sanitizeString(item.title || ''), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: item.publishedAt || '', language: 'en' })).filter(item => { const text = `${item.title} ${item.description}`; return item.title && item.url && /oyo state|ibadan|nigeria|nigerian|inec/i.test(text) && !/oyo[- ]?parent|oyo hotels?|hospitality|hotel|prism|ipo/i.test(text); }).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
       console.log(`[news] provider=gnews query=${JSON.stringify(q)} total=${payload.totalArticles || 0} articles=${articles.length}`);
       if (articles.length) return res.json({ articles, query: q, provider: 'gnews', fetchedAt: new Date().toISOString() });
     }
@@ -670,7 +670,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     data = { articles: xmls.flatMap(parseRss) };
   }
   const seen = new Set();
-  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: item.seendate || item.pubdate || '', language: item.language || '' })).filter(item => item.title && item.url && /oyo|ibadan|inec/i.test(item.title) && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: item.seendate || item.pubdate || '', language: item.language || '' })).filter(item => { const text = item.title; return item.title && item.url && /oyo state|ibadan|nigeria|nigerian|inec/i.test(text) && !/oyo[- ]?parent|oyo hotels?|hospitality|hotel|prism|ipo/i.test(text) && !seen.has(item.url) && seen.add(item.url); }).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
   console.log(`[news] provider=${data === undefined ? 'none' : 'gdelt/rss'} query=${JSON.stringify(q)} articles=${articles.length}`);
   res.json({ articles, query: q, provider: 'gdelt/rss', fetchedAt: new Date().toISOString() });
 }));
