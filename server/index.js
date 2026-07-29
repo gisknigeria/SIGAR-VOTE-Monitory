@@ -5,20 +5,34 @@ import bcrypt from 'bcryptjs';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
 import { canManageRank, normalizeCommand, ranksBelow } from '../shared/electionData.js';
+import { credentialFingerprint, createId, createRateLimitState, normalizeText, sanitizeString, validateContentLength, validateCoordinates, validateEmail, validateExternalUrl, validateMediaPayload, validatePassword } from './security.js';
 
 const { Pool } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataFile = process.env.DATA_FILE || join(__dirname, 'data.json');
-const secret = process.env.JWT_SECRET || 'demo-only-change-me';
+const secret = process.env.JWT_SECRET || randomBytes(32).toString('hex');
+if (!process.env.JWT_SECRET) {
+  console.warn('JWT_SECRET is not set. Using a generated ephemeral secret for this process.');
+}
 const databaseUrl = process.env.DATABASE_URL;
 const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@command.local';
-const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Password1234';
+const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || randomBytes(24).toString('hex');
 const adminEmail = process.env.ADMIN_EMAIL || 'admin@command.local';
-const adminPassword = process.env.ADMIN_PASSWORD || 'Password1234';
+const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(24).toString('hex');
+if (!process.env.SUPER_ADMIN_PASSWORD || !process.env.ADMIN_PASSWORD) {
+  console.warn('SUPER_ADMIN_PASSWORD and ADMIN_PASSWORD were not set. Generated secure random passwords for the seeded admin accounts.');
+}
+if (process.env.NODE_ENV === 'production') {
+  const missing = ['JWT_SECRET', 'SUPER_ADMIN_PASSWORD', 'ADMIN_PASSWORD', 'CORS_ORIGIN'].filter(name => !process.env[name]);
+  if (missing.length) throw new Error(`Missing required production configuration: ${missing.join(', ')}`);
+  if (Buffer.byteLength(process.env.JWT_SECRET, 'utf8') < 32) throw new Error('JWT_SECRET must contain at least 32 bytes');
+  if (!validatePassword(process.env.SUPER_ADMIN_PASSWORD) || !validatePassword(process.env.ADMIN_PASSWORD)) throw new Error('Seed administrator passwords do not meet the password policy');
+}
 const seed = {
   users: [
     { id: 'u0', name: 'System Administrator', email: superAdminEmail, password: bcrypt.hashSync(superAdminPassword, 10), role: 'Super Admin', rank: 'Super Admin', active: true, unit: 'System Control', command: 'Oyo State Command', division: '', state: 'Oyo', lga: '', lat: 7.3775, lng: 3.9470 },
@@ -53,7 +67,14 @@ jsonDb.incidents = jsonDb.incidents.filter(incident => !['i1', 'i2', 'i3'].inclu
 const saveJson = () => writeFileSync(dataFile, JSON.stringify(jsonDb, null, 2));
 if (!databaseUrl) saveJson();
 
-const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
+const pool = databaseUrl ? new Pool({
+  connectionString: databaseUrl,
+  ssl: process.env.DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: true },
+  max: Math.max(1, Math.min(Number(process.env.DATABASE_POOL_SIZE) || 10, 20)),
+  connectionTimeoutMillis: 10_000,
+  idleTimeoutMillis: 30_000,
+  statement_timeout: 15_000,
+}) : null;
 const publicUser = ({ password, ...user }) => user;
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const toUser = row => row && ({ id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, rank: row.rank || '', active: row.active, unit: row.unit, unitType: row.unit_type || 'Division', command: row.command || '', division: row.division || '', station: row.station || '', state: row.state || '', lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', lat: Number(row.lat) || 7.3775, lng: Number(row.lng) || 3.9470 });
@@ -441,15 +462,23 @@ await initPostgres();
 
 const app = express();
 const server = createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://127.0.0.1:5173').split(',').map(value => value.trim()).filter(Boolean);
+const isAllowedOrigin = (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin));
+const io = new Server(server, {
+  cors: { origin: isAllowedOrigin, credentials: true },
+  maxHttpBufferSize: 1_000_000,
+  perMessageDeflate: false,
+});
 const activeCameraShares = new Map();
+const loginLimiter = createRateLimitState();
+const generalLimiter = createRateLimitState();
+const socketLimiter = createRateLimitState();
 
 // In-memory IP log — stores last 500 entries (incident + SOS submissions)
 const ipLog = [];
 const MAX_IP_LOG = 500;
 const getClientIp = req =>
-  (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
-  req.headers['x-real-ip'] ||
+  req.ip ||
   req.socket?.remoteAddress ||
   'unknown';
 const logIp = (type, user, incidentId, ip) => {
@@ -457,9 +486,75 @@ const logIp = (type, user, incidentId, ip) => {
   if (ipLog.length > MAX_IP_LOG) ipLog.length = MAX_IP_LOG;
 };
 
-app.use(cors());
-app.use(express.json({ limit: '20mb' }));
-const auth = (req, res, next) => { try { req.user = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), secret); next(); } catch { res.status(401).json({ message: 'Session expired. Please sign in again.' }); } };
+app.disable('x-powered-by');
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
+app.use(cors({ origin: isAllowedOrigin, credentials: true, allowedHeaders: ['Content-Type', 'Authorization'], methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], maxAge: 600 }));
+// Keep the parser limit aligned with the attachment policy.  This prevents
+// oversized JSON from consuming memory before endpoint-level validation runs.
+app.use(express.json({ limit: '12mb' }));
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+app.use((req, res, next) => {
+  const bodySize = Number(req.headers['content-length'] || 0);
+  if (bodySize > 12 * 1024 * 1024) return res.status(413).json({ message: 'Request body is too large.' });
+  if (!validateContentLength(bodySize)) return res.status(413).json({ message: 'Request body is too large.' });
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  // These capabilities are core application features; scope them to this
+  // origin rather than disabling them or allowing cross-origin use.
+  res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(self), microphone=(self)');
+  if (req.secure || process.env.NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org ws: wss:; font-src 'self' data:; media-src 'self' data: https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests");
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Cache-Control', req.path.startsWith('/api') ? 'no-store' : 'no-cache');
+  next();
+});
+const tokenOptions = { algorithms: ['HS256'], issuer: 'election-monitor-api', audience: 'election-monitor-web' };
+const issueToken = user => jwt.sign(
+  { sub: user.id, fp: credentialFingerprint(user.password) },
+  secret,
+  { algorithm: 'HS256', issuer: tokenOptions.issuer, audience: tokenOptions.audience, expiresIn: '2h', jwtid: createId('jwt') },
+);
+const sessionCookie = token => `__Host-session=${encodeURIComponent(token)}; Path=/; Max-Age=7200; HttpOnly; SameSite=Strict${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
+const clearSessionCookie = '__Host-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict';
+const cookieValue = (req, name) => String(req.headers.cookie || '').split(';').map(v => v.trim()).find(v => v.startsWith(`${name}=`))?.slice(name.length + 1);
+const authenticateToken = async token => {
+  const claims = jwt.verify(token, secret, tokenOptions);
+  const user = (await store.users()).find(candidate => candidate.id === claims.sub);
+  if (!user || !user.active || claims.fp !== credentialFingerprint(user.password)) throw new Error('Invalid session');
+  return publicUser(user);
+};
+const auth = asyncRoute(async (req, res, next) => {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : cookieValue(req, '__Host-session');
+  if (!token) return res.status(401).json({ message: 'Authentication required.' });
+  try {
+    req.user = await authenticateToken(token);
+    next();
+  } catch {
+    res.status(401).json({ message: 'Session expired. Please sign in again.' });
+  }
+});
+const rateLimit = (req, res, next) => {
+  const key = req.ip || 'global';
+  const result = generalLimiter.hit(key, 120, 60_000);
+  res.setHeader('RateLimit-Remaining', String(result.remaining));
+  if (!result.allowed) {
+    res.setHeader('Retry-After', String(Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000))));
+    return res.status(429).json({ message: 'Too many requests. Please try again shortly.' });
+  }
+  next();
+};
+const loginRateLimit = (req, res, next) => {
+  const key = `${req.ip || 'global'}:${String(req.body?.email || '').trim().toLowerCase()}`;
+  const result = loginLimiter.hit(key, 5, 15 * 60_000);
+  if (!result.allowed) {
+    res.setHeader('Retry-After', String(Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000))));
+    return res.status(429).json({ message: 'Too many login attempts. Please try again later.' });
+  }
+  next();
+};
 const isAdminRole = user => ['Admin', 'Super Admin'].includes(user?.role);
 const adminOnly = (req, res, next) => isAdminRole(req.user) ? next() : res.status(403).json({ message: 'Admin access required' });
 const superAdminOnly = (req, res, next) => req.user.role === 'Super Admin' ? next() : res.status(403).json({ message: 'System administrator access required' });
@@ -542,35 +637,60 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
   }
 };
 
-app.get('/api/health', (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API', database: pool ? 'neon-postgres' : 'json-file' }));
-app.get('/api/admin/ip-log', auth, adminOnly, (req, res) => {
+app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
+app.get('/api/admin/ip-log', auth, adminOnly, rateLimit, (req, res) => {
   const { userId, type, limit = 200 } = req.query;
   let results = ipLog;
   if (userId) results = results.filter(entry => entry.userId === userId);
   if (type) results = results.filter(entry => entry.type === type);
   res.json(results.slice(0, Number(limit)));
 });
-app.post('/api/auth/login', asyncRoute(async (req, res) => {
-  const user = await store.userByEmail(String(req.body.email || ''));
-  if (!user || !(await bcrypt.compare(req.body.password || '', user.password))) return res.status(401).json({ message: 'Invalid email or password' });
+app.post('/api/auth/login', loginRateLimit, asyncRoute(async (req, res) => {
+  const email = sanitizeString(req.body.email || '').toLowerCase();
+  const password = String(req.body.password || '');
+  if (!validateEmail(email) || !password || password.length > 1024) return res.status(400).json({ message: 'A valid email and password are required.' });
+  const user = await store.userByEmail(email);
+  if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: 'Invalid email or password' });
+  if (!user.active) return res.status(403).json({ message: 'This account is disabled.' });
   const safe = publicUser(user);
-  res.json({ token: jwt.sign(safe, secret, { expiresIn: '8h' }), user: safe });
+  const token = issueToken(user);
+  res.setHeader('Set-Cookie', sessionCookie(token));
+  res.json({ token, user: safe });
 }));
-app.get('/api/users', auth, asyncRoute(async (req, res) => res.json(visibleUsersFor(req.user, await store.users()).map(publicUser))));
-app.get('/api/report-viewers', auth, asyncRoute(async (req, res) => res.json(visibleUsersFor(req.user, await store.users()).map(publicUser))));
-app.post('/api/users', auth, asyncRoute(async (req, res) => {
+app.post('/api/auth/logout', (req, res) => { res.setHeader('Set-Cookie', clearSessionCookie); res.status(204).end(); });
+app.put('/api/profile', auth, rateLimit, asyncRoute(async (req, res) => {
+  const current = await store.userByEmail(req.user.email);
+  if (!current) return res.status(404).json({ message: 'Account not found' });
+  const password = String(req.body.password || '');
+  const nextName = sanitizeString(req.body.name || current.name).trim();
+  const nextEmail = sanitizeString(req.body.email || current.email).trim().toLowerCase();
+  const nextStation = sanitizeString(req.body.station || current.station || '').trim();
+  if (!validateEmail(nextEmail)) return res.status(400).json({ message: 'A valid email is required.' });
+  if (password && !validatePassword(password)) return res.status(400).json({ message: 'Password must be at least 12 characters and include upper, lower, number, and special characters.' });
+  if (password && !(await bcrypt.compare(String(req.body.currentPassword || ''), current.password))) return res.status(403).json({ message: 'Current password is incorrect.' });
+  const existing = (await store.users()).find(user => user.id !== current.id && user.email.toLowerCase() === nextEmail);
+  if (existing) return res.status(409).json({ message: 'Email is already in use' });
+  const updated = await store.updateUserProfile(current.id, { name: nextName, email: nextEmail, station: nextStation, password: password ? await bcrypt.hash(password, 10) : null });
+  const safe = publicUser(updated); const token = issueToken(updated);
+  res.setHeader('Set-Cookie', sessionCookie(token));
+  res.json({ user: safe, token });
+}));
+app.get('/api/users', auth, rateLimit, asyncRoute(async (req, res) => res.json(visibleUsersFor(req.user, await store.users()).map(publicUser))));
+app.get('/api/report-viewers', auth, rateLimit, asyncRoute(async (req, res) => res.json(visibleUsersFor(req.user, await store.users()).map(publicUser))));
+app.post('/api/users', auth, rateLimit, asyncRoute(async (req, res) => {
   if (!canManageUsers(req.user)) return res.status(403).json({ message: 'You do not have lower ranks to manage' });
   const email = String(req.body.email || '').trim().toLowerCase();
   const role = req.body.role || 'Agent';
   const rank = String(req.body.rank || '').trim();
-  if (!req.body.name || !email || !req.body.password) return res.status(400).json({ message: 'Name, email and password are required' });
+  if (!req.body.name || !validateEmail(email) || !req.body.password) return res.status(400).json({ message: 'Name, a valid email and password are required' });
   if (!rank) return res.status(400).json({ message: 'Rank is required' });
   if (!canCreateUser(req.user, rank, role)) return res.status(403).json({ message: 'You can only create accounts below your rank' });
+  if (!validatePassword(String(req.body.password || ''))) return res.status(400).json({ message: 'Password must be at least 12 characters and include upper, lower, number, and special characters.' });
   if ((await store.users()).some(user => user.email.toLowerCase() === email)) return res.status(409).json({ message: 'An account with that email already exists' });
   const user = {
-    id: `u${Date.now()}`,
-    name: String(req.body.name).trim(), email,
-    password: await bcrypt.hash(req.body.password, 10),
+    id: createId('u'),
+    name: sanitizeString(req.body.name).trim(), email,
+    password: await bcrypt.hash(String(req.body.password), 10),
     role, rank: role,
     active: true,
     unit: req.body.unit || 'Field Unit',
@@ -589,7 +709,7 @@ app.post('/api/users', auth, asyncRoute(async (req, res) => {
   io.emit('user:created', publicUser(created));
   res.status(201).json(publicUser(created));
 }));
-app.delete('/api/users/:id', auth, asyncRoute(async (req, res) => {
+app.delete('/api/users/:id', auth, rateLimit, asyncRoute(async (req, res) => {
   if (req.params.id === req.user.id) return res.status(400).json({ message: 'You cannot delete your own account' });
   const target = (await store.users()).find(user => user.id === req.params.id);
   if (!canDeleteUser(req.user, target)) return res.status(403).json({ message: 'You are not allowed to delete this account' });
@@ -598,9 +718,10 @@ app.delete('/api/users/:id', auth, asyncRoute(async (req, res) => {
   io.emit('user:deleted', req.params.id);
   res.status(204).end();
 }));
-app.put('/api/users/:id', auth, asyncRoute(async (req, res) => {
+app.put('/api/users/:id', auth, rateLimit, asyncRoute(async (req, res) => {
   const target = (await store.users()).find(user => user.id === req.params.id);
   if (!target) return res.status(404).json({ message: 'User not found' });
+  if (req.user.id === target.id) return res.status(400).json({ message: 'Use the profile endpoint to update your own account' });
   if (req.user.id !== target.id && req.user.role !== 'Super Admin' && !canManageRank(req.user.rank, target.rank)) return res.status(403).json({ message: 'You can only update accounts below your rank' });
   const changes = {
     name: String(req.body.name || target.name).trim(),
@@ -623,10 +744,10 @@ app.put('/api/users/:id', auth, asyncRoute(async (req, res) => {
   const existing = (await store.users()).find(user => user.id !== target.id && user.email.toLowerCase() === changes.email.toLowerCase());
   if (existing) return res.status(409).json({ message: 'Email is already in use' });
   const updated = await store.updateUser(req.params.id, changes);
-  io.emit('user:updated', updated);
-  res.json(updated);
+  io.emit('user:updated', publicUser(updated));
+  res.json(publicUser(updated));
 }));
-app.put('/api/users/:id/role', auth, adminOnly, asyncRoute(async (req, res) => {
+app.put('/api/users/:id/role', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   const target = (await store.users()).find(user => user.id === req.params.id);
   if (!target) return res.status(404).json({ message: 'User not found' });
   if (!canManageRank(req.user.rank, target.rank)) return res.status(403).json({ message: 'You can only change roles for accounts below your rank' });
@@ -646,48 +767,51 @@ app.put('/api/users/:id/role', auth, adminOnly, asyncRoute(async (req, res) => {
   io.emit('user:updated', publicUser(updated));
   res.json(publicUser(updated));
 }));
-app.put('/api/users/:id/password', auth, asyncRoute(async (req, res) => {
+app.put('/api/users/:id/password', auth, rateLimit, asyncRoute(async (req, res) => {
   const users = await store.users();
-  const current = users.find(user => user.id === req.user.id);
-  if (!current) return res.status(404).json({ message: 'Account not found' });
-  const email = String(req.body.email || current.email).trim().toLowerCase();
-  if (users.some(user => user.id !== current.id && user.email.toLowerCase() === email)) return res.status(409).json({ message: 'Email is already in use' });
+  const target = users.find(user => user.id === req.params.id);
+  if (!target) return res.status(404).json({ message: 'Account not found' });
+  if (target.id === req.user.id) return res.status(400).json({ message: 'Use the profile endpoint to change your own password' });
+  if (!canDeleteUser(req.user, target)) return res.status(403).json({ message: 'You cannot reset this account password' });
   const password = String(req.body.password || '');
-  if (password && password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
-  const updated = await store.updateUserProfile(current.id, { name: String(req.body.name || current.name).trim(), email, station: String(req.body.station || current.station || '').trim(), password: password ? await bcrypt.hash(password, 10) : null });
-  const safe = publicUser(updated); const token = jwt.sign(safe, secret, { expiresIn: '8h' });
-  res.json({ user: safe, token });
+  if (!validatePassword(password)) return res.status(400).json({ message: 'Password must be at least 12 characters and include upper, lower, number, and special characters.' });
+  await store.updateUserPassword(target.id, await bcrypt.hash(password, 12));
+  res.status(204).end();
 }));
-app.get('/api/parties', auth, asyncRoute(async (_, res) => res.json(await store.parties())));
-app.put('/api/parties', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/parties', auth, rateLimit, asyncRoute(async (_, res) => res.json(await store.parties())));
+app.put('/api/parties', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   const parties = [...new Set((Array.isArray(req.body.parties) ? req.body.parties : []).map(value => String(value).trim()).filter(Boolean))].slice(0, 100);
   const saved = await store.setParties(parties);
   io.emit('parties:updated', saved);
   res.json(saved);
 }));
-app.post('/api/results', auth, asyncRoute(async (req, res) => {
+app.post('/api/results', auth, rateLimit, asyncRoute(async (req, res) => {
   const parties = await store.parties();
   const rawEntries = (Array.isArray(req.body.results) ? req.body.results : []).map(item => ({ party: String(item.party || '').trim(), votes: Number(item.votes) })).filter(item => parties.includes(item.party) && Number.isInteger(item.votes) && item.votes >= 0);
   const entries = [...rawEntries.reduce((map, item) => map.set(item.party, { party: item.party, votes: (map.get(item.party)?.votes || 0) + item.votes }), new Map()).values()];
   if (!entries.length) return res.status(400).json({ message: 'Select at least one uploaded party and enter its vote count' });
   const media = Array.isArray(req.body.media) ? req.body.media.slice(0, 3) : [];
+  const mediaValidation = validateMediaPayload(media);
+  if (!mediaValidation.valid) return res.status(400).json({ message: mediaValidation.errors[0] || 'Invalid media payload' });
   if (!media.some(item => item?.type === 'image')) return res.status(400).json({ message: 'A photograph of the signed result is required' });
   const lat = Number(req.body.lat); const lng = Number(req.body.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(400).json({ message: 'Current location is required' });
   const pollingUnit = String(req.user.pollingUnit || req.body.pollingUnit || '').trim();
   if (!pollingUnit) return res.status(400).json({ message: 'The reporting account must have a polling unit' });
   const createdAt = new Date().toISOString();
-  const result = { id: `r${Date.now()}`, title: `Polling Unit Result - ${pollingUnit}`, description: `Submitted by ${req.user.name} at ${createdAt}`, reportType: 'Polling Unit Result', severity: 'Low', status: 'Submitted', lat, lng, assignedTo: '', visibleTo: [], media, geometry: null, style: { source: 'result', icon: 'POI', color: '#d9aa4b', fillColor: '#d9aa4b' }, lga: req.user.lga || req.body.lga || '', ward: req.user.ward || req.body.ward || '', pollingUnit, resultCount: JSON.stringify(entries), createdAt, createdBy: req.user.id };
+  const result = { id: createId('r'), title: `Polling Unit Result - ${sanitizeString(pollingUnit)}`, description: `Submitted by ${sanitizeString(req.user.name)} at ${createdAt}`, reportType: 'Polling Unit Result', severity: 'Low', status: 'Submitted', lat, lng, assignedTo: '', visibleTo: [], media, geometry: null, style: { source: 'result', icon: 'POI', color: '#d9aa4b', fillColor: '#d9aa4b' }, lga: req.user.lga || req.body.lga || '', ward: req.user.ward || req.body.ward || '', pollingUnit, resultCount: JSON.stringify(entries), createdAt, createdBy: req.user.id };
   const created = await store.createIncident(result);
   logIp('result', req.user, created.id, getClientIp(req));
   io.emit('incident:created', created);
   res.status(201).json(created);
 }));
-app.get('/api/incidents', auth, asyncRoute(async (req, res) => res.json((await store.incidents()).filter(incident => canAccessIncident(req.user, incident)))));
-app.post('/api/incidents', auth, asyncRoute(async (req, res) => {
+app.get('/api/incidents', auth, rateLimit, asyncRoute(async (req, res) => res.json((await store.incidents()).filter(incident => canAccessIncident(req.user, incident)))));
+app.post('/api/incidents', auth, rateLimit, asyncRoute(async (req, res) => {
   const media = Array.isArray(req.body.media) ? req.body.media.slice(0, 6) : [];
+  const mediaValidation = validateMediaPayload(media);
+  if (!mediaValidation.valid) return res.status(400).json({ message: mediaValidation.errors[0] || 'Invalid media payload' });
   const mediaBytes = media.reduce((total, item) => total + Buffer.byteLength(String(item?.data || ''), 'utf8'), 0);
-  if (mediaBytes > 14 * 1024 * 1024) return res.status(413).json({ message: 'Incident attachments are too large. Keep the total under 10MB.' });
+  if (mediaBytes > 10 * 1024 * 1024) return res.status(413).json({ message: 'Incident attachments are too large. Keep the total under 10MB.' });
   const allowedTypes = new Set(['SOS-Emergency', 'Vote Buying', 'Thuggery and Violence', 'Voter Intimidation', 'Collusion', 'Compromised Privacy', 'Over-voting', 'Late Opening', 'Material Shortages', 'Missing Registers', 'Lack of Crowd Control', 'BVAS Failure', 'Network Connectivity', 'Battery Depletion']);
   if (['Agent', 'Supervisor'].includes(req.user.role) && !allowedTypes.has(req.body.reportType)) return res.status(403).json({ message: 'This role cannot create that report type' });
   const lga = String(req.user.lga || req.body.lga || '').trim();
@@ -698,22 +822,50 @@ app.post('/api/incidents', auth, asyncRoute(async (req, res) => {
     ...(isSosIncident(req.body) ? sosVisibleTo({ ...req.user, userId: req.user.id, ...req.body }) : []),
     req.body.assignedTo
   ].filter(Boolean))];
-  const incident = { ...req.body, lga, ward, pollingUnit, visibleTo, media, id: `i${Date.now()}`, createdAt: new Date().toISOString(), createdBy: req.user.id };
+  const incident = {
+    title: normalizeText(req.body.title || 'Incident'),
+    description: normalizeText(req.body.description || ''),
+    reportType: normalizeText(req.body.reportType || 'IP'),
+    severity: ['Low', 'Medium', 'High', 'Critical'].includes(req.body.severity) ? req.body.severity : 'High',
+    status: ['Open', 'In Progress', 'Resolved', 'Submitted'].includes(req.body.status) ? req.body.status : 'Open',
+    lat: Number(req.body.lat), lng: Number(req.body.lng), assignedTo: visibleTo.includes(req.body.assignedTo) ? req.body.assignedTo : '',
+    lga, ward, pollingUnit, visibleTo, media,
+    id: createId('i'), createdAt: new Date().toISOString(), createdBy: req.user.id,
+  };
+  if (!validateCoordinates(incident.lat, incident.lng)) return res.status(400).json({ message: 'Valid incident coordinates are required' });
   const created = await store.createIncident(incident);
   logIp('incident', req.user, created.id, getClientIp(req));
   io.emit('incident:created', created);
   res.status(201).json(created);
 }));
-app.put('/api/incidents/:id', auth, asyncRoute(async (req, res) => {
+app.put('/api/incidents/:id', auth, rateLimit, asyncRoute(async (req, res) => {
   const current = (await store.incidents()).find(item => item.id === req.params.id);
   if (!current || !canAccessIncident(req.user, current)) return res.status(404).json({ message: 'Incident not found' });
-  const incident = await store.updateIncident(req.params.id, req.body);
+  const mayManage = isAdminRole(req.user) || current.createdBy === req.user.id || current.assignedTo === req.user.id;
+  if (!mayManage) return res.status(403).json({ message: 'You may view this incident but cannot modify it' });
+  const allowedKeys = isAdminRole(req.user)
+    ? ['title', 'description', 'severity', 'status', 'assignedTo', 'visibleTo', 'geometry', 'style']
+    : ['description', 'status'];
+  const patch = {};
+  for (const key of allowedKeys) {
+    if (req.body[key] !== undefined) patch[key] = req.body[key];
+  }
+  if (patch.title !== undefined) patch.title = normalizeText(patch.title);
+  if (patch.description !== undefined) patch.description = normalizeText(patch.description);
+  if (patch.status !== undefined && !['Open', 'In Progress', 'Resolved', 'Submitted'].includes(patch.status)) return res.status(400).json({ message: 'Invalid incident status' });
+  if (patch.severity !== undefined && !['Low', 'Medium', 'High', 'Critical'].includes(patch.severity)) return res.status(400).json({ message: 'Invalid incident severity' });
+  if (patch.visibleTo !== undefined) {
+    const knownUserIds = new Set((await store.users()).map(user => user.id));
+    patch.visibleTo = [...new Set((Array.isArray(patch.visibleTo) ? patch.visibleTo : []).filter(id => knownUserIds.has(id)))];
+  }
+  if (!Object.keys(patch).length) return res.status(400).json({ message: 'No permitted incident changes supplied' });
+  const incident = await store.updateIncident(req.params.id, patch);
   if (!incident) return res.status(404).json({ message: 'Incident not found' });
   io.emit('incident:updated', incident);
   res.json(incident);
 }));
-app.delete('/api/incidents/:id', auth, adminOnly, asyncRoute(async (req, res) => { await store.deleteIncident(req.params.id); io.emit('incident:deleted', req.params.id); res.status(204).end(); }));
-app.post('/api/incidents/:id/chat', auth, asyncRoute(async (req, res) => {
+app.delete('/api/incidents/:id', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => { await store.deleteIncident(req.params.id); io.emit('incident:deleted', req.params.id); res.status(204).end(); }));
+app.post('/api/incidents/:id/chat', auth, rateLimit, asyncRoute(async (req, res) => {
   const incident = (await store.incidents()).find(item => item.id === req.params.id);
   if (!incident) return res.status(404).json({ message: 'Incident not found' });
   if (!canAccessIncident(req.user, incident)) return res.status(403).json({ message: 'Only assigned viewers and command can open this incident chat' });
@@ -721,24 +873,27 @@ app.post('/api/incidents/:id/chat', auth, asyncRoute(async (req, res) => {
   io.emit('chat:room', room);
   res.json(room);
 }));
-app.get('/api/cameras', auth, asyncRoute(async (_, res) => res.json(await store.cameras())));
-app.post('/api/cameras', auth, adminOnly, asyncRoute(async (req, res) => {
+app.get('/api/cameras', auth, rateLimit, asyncRoute(async (_, res) => res.json(await store.cameras())));
+app.post('/api/cameras', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   if (!req.body.name || !req.body.url) return res.status(400).json({ message: 'Camera name and stream URL are required' });
-  const camera = { id: `cam-${Date.now()}`, name: req.body.name, type: req.body.type || 'CCTV', url: req.body.url, lat: Number(req.body.lat) || 7.3775, lng: Number(req.body.lng) || 3.9470, status: 'Online', createdAt: new Date().toISOString() };
+  if (!validateExternalUrl(req.body.url, ['https:'])) return res.status(400).json({ message: 'Camera URL must be an HTTPS URL without embedded credentials' });
+  const lat = Number(req.body.lat ?? 7.3775); const lng = Number(req.body.lng ?? 3.9470);
+  if (!validateCoordinates(lat, lng)) return res.status(400).json({ message: 'Invalid camera coordinates' });
+  const camera = { id: createId('cam'), name: normalizeText(req.body.name), type: normalizeText(req.body.type || 'CCTV'), url: String(req.body.url), lat, lng, status: 'Online', createdAt: new Date().toISOString() };
   const created = await store.createCamera(camera);
   io.emit('camera:created', created);
   res.status(201).json(created);
 }));
-app.delete('/api/cameras/:id', auth, adminOnly, asyncRoute(async (req, res) => { await store.deleteCamera(req.params.id); io.emit('camera:deleted', req.params.id); res.status(204).end(); }));
-app.get('/api/map-layers', auth, asyncRoute(async (_, res) => res.json(await store.mapLayers())));
-app.post('/api/map-layers', auth, superAdminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/cameras/:id', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => { await store.deleteCamera(req.params.id); io.emit('camera:deleted', req.params.id); res.status(204).end(); }));
+app.get('/api/map-layers', auth, rateLimit, asyncRoute(async (_, res) => res.json(await store.mapLayers())));
+app.post('/api/map-layers', auth, superAdminOnly, rateLimit, asyncRoute(async (req, res) => {
   if (!req.body.name || !req.body.type) return res.status(400).json({ message: 'Layer name and type are required' });
-  const layer = { id: `layer-${Date.now()}`, name: String(req.body.name).trim(), type: req.body.type, data: req.body.data || null, url: req.body.url || '', bounds: req.body.bounds || null, opacity: Number(req.body.opacity) || 0.65, fillOpacity: Number(req.body.fillOpacity ?? 0.18), category: req.body.category || (req.body.type === 'raster' ? 'Raster' : 'Point'), operationalUse: req.body.operationalUse || 'Reference', color: req.body.color || '#facc15', fillColor: req.body.fillColor || req.body.color || '#f59e0b', lineWeight: Number(req.body.lineWeight) || 2, lineStyle: req.body.lineStyle || 'solid', pointIcon: req.body.pointIcon || 'pin', pointIconColor: req.body.pointIconColor || '#ffffff', pointSize: Number(req.body.pointSize) || 24, showLabels: req.body.showLabels ?? true, labelField: req.body.labelField || 'name', popupFields: req.body.popupFields || '', visible: req.body.visible ?? true, zIndex: Number(req.body.zIndex) || 0, createdAt: new Date().toISOString() };
+  const layer = { id: createId('layer'), name: sanitizeString(req.body.name).trim(), type: req.body.type, data: req.body.data || null, url: sanitizeString(req.body.url || ''), bounds: req.body.bounds || null, opacity: Number(req.body.opacity) || 0.65, fillOpacity: Number(req.body.fillOpacity ?? 0.18), category: sanitizeString(req.body.category || (req.body.type === 'raster' ? 'Raster' : 'Point')).trim() || 'Point', operationalUse: sanitizeString(req.body.operationalUse || 'Reference').trim() || 'Reference', color: sanitizeString(req.body.color || '#facc15'), fillColor: sanitizeString(req.body.fillColor || req.body.color || '#f59e0b'), lineWeight: Number(req.body.lineWeight) || 2, lineStyle: sanitizeString(req.body.lineStyle || 'solid'), pointIcon: sanitizeString(req.body.pointIcon || 'pin'), pointIconColor: sanitizeString(req.body.pointIconColor || '#ffffff'), pointSize: Number(req.body.pointSize) || 24, showLabels: req.body.showLabels ?? true, labelField: sanitizeString(req.body.labelField || 'name'), popupFields: sanitizeString(req.body.popupFields || ''), visible: req.body.visible ?? true, zIndex: Number(req.body.zIndex) || 0, createdAt: new Date().toISOString() };
   const created = await store.createMapLayer(layer);
   io.emit('map-layer:created', created);
   res.status(201).json(created);
 }));
-app.put('/api/map-layers/:id', auth, asyncRoute(async (req, res) => {
+app.put('/api/map-layers/:id', auth, rateLimit, asyncRoute(async (req, res) => {
   const allowedKeys = isAdminRole(req.user) ? ['visible', 'opacity', 'fillOpacity', 'color', 'fillColor', 'lineWeight', 'lineStyle', 'pointIcon', 'pointIconColor', 'pointSize', 'showLabels', 'labelField', 'popupFields', 'category', 'operationalUse', 'name', 'zIndex'] : ['visible'];
   const changes = {};
   for (const key of allowedKeys) {
@@ -751,11 +906,11 @@ app.put('/api/map-layers/:id', auth, asyncRoute(async (req, res) => {
   io.emit('map-layer:updated', updated);
   res.json(updated);
 }));
-app.delete('/api/map-layers/:id', auth, superAdminOnly, asyncRoute(async (req, res) => { await store.deleteMapLayer(req.params.id); io.emit('map-layer:deleted', req.params.id); res.status(204).end(); }));
-app.get('/api/chat/rooms', auth, asyncRoute(async (req, res) => res.json(await store.chatRooms(req.user))));
-app.post('/api/chat/rooms', auth, asyncRoute(async (req, res) => {
+app.delete('/api/map-layers/:id', auth, superAdminOnly, rateLimit, asyncRoute(async (req, res) => { await store.deleteMapLayer(req.params.id); io.emit('map-layer:deleted', req.params.id); res.status(204).end(); }));
+app.get('/api/chat/rooms', auth, rateLimit, asyncRoute(async (req, res) => res.json(await store.chatRooms(req.user))));
+app.post('/api/chat/rooms', auth, rateLimit, asyncRoute(async (req, res) => {
   if (!canManageUsers(req.user)) return res.status(403).json({ message: 'You do not have lower ranks to manage' });
-  const name = String(req.body.name || '').trim();
+  const name = sanitizeString(req.body.name || '').trim();
   if (!name) return res.status(400).json({ message: 'Room name is required' });
   const allowedUsers = visibleUsersFor(req.user, await store.users());
   const allowedIds = new Set(allowedUsers.map(user => user.id));
@@ -764,7 +919,7 @@ app.post('/api/chat/rooms', auth, asyncRoute(async (req, res) => {
   io.emit('chat:room', room);
   res.status(201).json(room);
 }));
-app.post('/api/chat/rooms/:id/members', auth, asyncRoute(async (req, res) => {
+app.post('/api/chat/rooms/:id/members', auth, rateLimit, asyncRoute(async (req, res) => {
   if (!canManageUsers(req.user)) return res.status(403).json({ message: 'You do not have lower ranks to manage' });
   const room = await store.chatRoom(req.params.id);
   if (!room) return res.status(404).json({ message: 'Chat room not found' });
@@ -774,7 +929,7 @@ app.post('/api/chat/rooms/:id/members', auth, asyncRoute(async (req, res) => {
   io.emit('chat:room', updated);
   res.json(updated);
 }));
-app.delete('/api/chat/rooms/:id', auth, asyncRoute(async (req, res) => {
+app.delete('/api/chat/rooms/:id', auth, rateLimit, asyncRoute(async (req, res) => {
   if (!canManageUsers(req.user)) return res.status(403).json({ message: 'You do not have lower ranks to manage' });
   const room = await store.chatRoom(req.params.id);
   if (!room) return res.status(404).json({ message: 'Chat room not found' });
@@ -783,58 +938,87 @@ app.delete('/api/chat/rooms/:id', auth, asyncRoute(async (req, res) => {
   io.emit('chat:deleted', req.params.id);
   res.status(204).end();
 }));
-app.get('/api/chat/rooms/:id/messages', auth, asyncRoute(async (req, res) => {
+app.get('/api/chat/rooms/:id/messages', auth, rateLimit, asyncRoute(async (req, res) => {
   const room = await store.chatRoom(req.params.id);
   if (!canAccessRoom(req.user, room)) return res.status(403).json({ message: 'You cannot view this chat' });
   res.json(await store.chatMessages(req.params.id));
 }));
-app.post('/api/chat/rooms/:id/messages', auth, asyncRoute(async (req, res) => {
+app.post('/api/chat/rooms/:id/messages', auth, rateLimit, asyncRoute(async (req, res) => {
   const room = await store.chatRoom(req.params.id);
   if (!canAccessRoom(req.user, room)) return res.status(403).json({ message: 'You cannot send to this chat' });
-  const body = String(req.body.body || '').trim();
+  const body = normalizeText(req.body.body || '').trim();
   if (!body) return res.status(400).json({ message: 'Message cannot be empty' });
-  const message = await store.createChatMessage({ id: `msg-${Date.now()}`, roomId: req.params.id, senderId: req.user.id, body, createdAt: new Date().toISOString() });
+  const message = await store.createChatMessage({ id: createId('msg'), roomId: req.params.id, senderId: req.user.id, body, createdAt: new Date().toISOString() });
   io.emit('chat:message', { roomId: req.params.id, message });
   res.status(201).json(message);
 }));
-app.post('/api/gps/ping', auth, (req, res) => {
-  const point = { ...req.body, userId: req.user.id, timestamp: new Date().toISOString() };
+app.post('/api/gps/ping', auth, rateLimit, (req, res) => {
+  const lat = Number(req.body.lat); const lng = Number(req.body.lng);
+  if (!validateCoordinates(lat, lng)) return res.status(400).json({ message: 'Invalid GPS coordinates' });
+  const point = { lat, lng, accuracy: Math.max(0, Math.min(Number(req.body.accuracy) || 0, 100_000)), userId: req.user.id, timestamp: new Date().toISOString() };
   io.emit('gps:broadcast', point);
   res.json({ received: true });
 });
 io.use((socket, next) => {
-  try {
-    socket.data.authUser = jwt.verify(socket.handshake.auth?.token || '', secret);
-    next();
-  } catch {
-    next(new Error('Unauthorized realtime connection'));
-  }
+  authenticateToken(socket.handshake.auth?.token || '')
+    .then(user => { socket.data.authUser = user; next(); })
+    .catch(() => next(new Error('Unauthorized realtime connection')));
 });
 io.on('connection', socket => {
   socket.data.user = { ...socket.data.authUser, userId: socket.data.authUser.id };
   socket.on('gps:update', point => {
-    const safePoint = { ...point, userId: socket.data.authUser.id, lat: Number(point.lat), lng: Number(point.lng), timestamp: point.timestamp || new Date().toISOString() };
+    if (!socketLimiter.hit(`gps:${socket.data.authUser.id}`, 30, 60_000).allowed) return;
+    const lat = Number(point?.lat); const lng = Number(point?.lng);
+    if (!validateCoordinates(lat, lng)) return;
+    const safePoint = { userId: socket.data.authUser.id, lat, lng, accuracy: Math.max(0, Math.min(Number(point?.accuracy) || 0, 100_000)), timestamp: new Date().toISOString() };
     socket.data.user = { ...(socket.data.user || {}), userId: safePoint.userId, lat: safePoint.lat, lng: safePoint.lng };
     io.emit('gps:broadcast', safePoint);
   });
   socket.on('gps:stop', () => io.emit('gps:offline', { userId: socket.data.authUser.id, timestamp: new Date().toISOString() }));
   socket.on('emergency:send', alert => {
-    const ip = (socket.handshake.headers['x-forwarded-for'] || '').split(',')[0].trim() || socket.handshake.address || 'unknown';
+    if (!socketLimiter.hit(`emergency:${socket.data.authUser.id}`, 5, 60_000).allowed) return socket.emit('operation:error', { message: 'Too many emergency alerts. Please try again shortly.' });
+    const ip = socket.handshake.address || 'unknown';
     const user = socket.data.authUser;
-    const alertId = alert.id || `em-${Date.now()}`;
+    const lat = Number(alert?.lat); const lng = Number(alert?.lng);
+    if (!validateCoordinates(lat, lng)) return socket.emit('operation:error', { message: 'Invalid emergency location' });
+    const alertId = createId('em');
     logIp('SOS', { id: user.id, name: user.name, role: user.role }, alertId, ip);
-    emitEmergencyAlert(socket, { ...alert, id: alertId, ...(socket.data.user || {}), userId: user.id, name: user.name, role: user.role });
+    emitEmergencyAlert(socket, { ...(socket.data.user || {}), id: alertId, type: normalizeText(alert?.type || 'Emergency'), text: normalizeText(alert?.text || ''), lat, lng, userId: user.id, name: user.name, role: user.role });
   });
-  socket.on('camera:register', user => { const safeUser = { ...user, userId: socket.data.authUser.id, name: socket.data.authUser.name, role: socket.data.authUser.role }; socket.data.cameraUser = { userId: safeUser.userId, name: safeUser.name, role: safeUser.role }; socket.data.user = { ...(socket.data.user || {}), ...safeUser, lat: Number(safeUser.lat), lng: Number(safeUser.lng) }; socket.join(`camera:user:${safeUser.userId}`); if (isAdminRole(safeUser)) socket.emit('camera:shares:list', [...activeCameraShares.values()]); });
-  socket.on('camera:share:start', payload => { const safePayload = { ...payload, userId: socket.data.authUser.id, name: socket.data.authUser.name }; activeCameraShares.set(safePayload.userId, safePayload); socket.broadcast.emit('camera:share:start', safePayload); });
+  socket.on('camera:register', user => {
+    const lat = Number(user?.lat); const lng = Number(user?.lng);
+    const safeUser = { ...socket.data.authUser, userId: socket.data.authUser.id };
+    if (validateCoordinates(lat, lng)) Object.assign(safeUser, { lat, lng });
+    socket.data.cameraUser = { userId: safeUser.userId, name: safeUser.name, role: safeUser.role };
+    socket.data.user = { ...(socket.data.user || {}), ...safeUser };
+    socket.join(`camera:user:${safeUser.userId}`);
+    if (isAdminRole(safeUser)) socket.emit('camera:shares:list', [...activeCameraShares.values()]);
+  });
+  socket.on('camera:share:start', payload => {
+    if (!['Agent', 'Supervisor', 'Response Team'].includes(socket.data.authUser.role)) return;
+    const safePayload = { userId: socket.data.authUser.id, name: socket.data.authUser.name, role: socket.data.authUser.role, mode: normalizeText(payload?.mode || '') };
+    activeCameraShares.set(safePayload.userId, safePayload);
+    for (const client of io.sockets.sockets.values()) if (isAdminRole(client.data.authUser)) client.emit('camera:share:start', safePayload);
+  });
   socket.on('camera:share:stop', () => { const userId = socket.data.authUser.id; activeCameraShares.delete(userId); socket.broadcast.emit('camera:share:stop', { userId }); });
-  socket.on('camera:view:request', ({ officerId }) => io.to(`camera:user:${officerId}`).emit('camera:viewer:request', { viewerSocketId: socket.id }));
-  socket.on('camera:signal', ({ target, data }) => io.to(target).emit('camera:signal', { from: socket.id, fromUserId: socket.data.cameraUser?.userId, fromName: socket.data.cameraUser?.name, data }));
+  socket.on('camera:view:request', ({ officerId } = {}) => {
+    if (!isAdminRole(socket.data.authUser) || !activeCameraShares.has(officerId)) return;
+    io.to(`camera:user:${officerId}`).emit('camera:viewer:request', { viewerSocketId: socket.id });
+  });
+  socket.on('camera:signal', ({ target, data } = {}) => {
+    if (!socketLimiter.hit(`signal:${socket.data.authUser.id}`, 120, 60_000).allowed) return;
+    const peer = io.sockets.sockets.get(target);
+    if (!peer || JSON.stringify(data || {}).length > 100_000) return;
+    const senderIsAdmin = isAdminRole(socket.data.authUser);
+    const peerIsAdmin = isAdminRole(peer.data.authUser);
+    if (senderIsAdmin === peerIsAdmin) return;
+    io.to(target).emit('camera:signal', { from: socket.id, fromUserId: socket.data.authUser.id, fromName: socket.data.authUser.name, data });
+  });
   socket.on('disconnect', () => { const user = socket.data.cameraUser; if (['Agent', 'Supervisor', 'Response Team'].includes(user?.role) && activeCameraShares.has(user.userId)) { activeCameraShares.delete(user.userId); socket.broadcast.emit('camera:share:stop', { userId: user.userId }); } });
 });
 
 app.use((err, _, res, __) => {
-  console.error(err);
+  console.error(process.env.NODE_ENV === 'production' ? (err?.message || 'Unhandled request error') : err);
   res.status(500).json({ message: 'Server error. Please check logs.' });
 });
 

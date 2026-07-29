@@ -486,14 +486,18 @@ const playEmergencyRing = (alert = {}) => {
 async function request(path, token, options = {}) {
   const response = await fetch(`${API}${path}`, {
     ...options,
+    cache: "no-store",
+    credentials: "same-origin",
     headers: {
+      Accept: "application/json",
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });
-  const body = response.status === 204 ? null : await response.json();
-  if (!response.ok) throw new Error(body?.message || "Request failed");
+  const contentType = response.headers.get("content-type") || "";
+  const body = response.status === 204 ? null : contentType.includes("application/json") ? await response.json() : await response.text();
+  if (!response.ok) throw new Error((typeof body === "object" && body && body.message) || body || "Request failed");
   return body;
 }
 
@@ -700,7 +704,7 @@ function LayerControlPanel({ layers, isAdmin, onToggle, onOpacity, onClose }) {
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -4687,6 +4691,8 @@ function AnalyticsPanel({
 }
 
 function ResultsCenter({ incidents, onClose }) {
+  const [view, setView] = useState("breakdown");
+  const [focusParty, setFocusParty] = useState("");
   const reports = useMemo(
     () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
     [incidents],
@@ -4704,6 +4710,42 @@ function ResultsCenter({ incidents, onClose }) {
       rows: rows.sort((a, b) => `${a.lga}${a.ward}${a.pollingUnit}`.localeCompare(`${b.lga}${b.ward}${b.pollingUnit}`)),
     };
   }, [reports]);
+  const top6 = useMemo(() => summary.partyNames.slice().sort((a,b) => summary.totals[b]-summary.totals[a]).slice(0,6), [summary]);
+  const winLoss = useMemo(() => {
+    const groups = (key) => {
+      const map = new Map();
+      for (const row of summary.rows) { const id = key(row); if (!map.has(id)) map.set(id, { label: id, rows: [] }); map.get(id).rows.push(row); }
+      return [...map.values()].map(group => { const votes = Object.fromEntries(top6.map(p => [p, group.rows.reduce((n,r) => n + Number(r.results.find(x => x.party === p)?.votes || 0), 0)])); const max = Math.max(0, ...Object.values(votes)); return { ...group, votes, winner: max ? top6.find(p => votes[p] === max) : null }; });
+    };
+    return { wards: groups(r => `${r.lga || "Unknown LGA"} / ${r.ward || "Unknown Ward"}`), lgas: groups(r => r.lga || "Unknown LGA") };
+  }, [summary, top6]);
+  const forecast = useMemo(() => {
+    const total = Object.values(summary.totals).reduce((a, b) => a + b, 0);
+    const ranked = summary.partyNames.slice().sort((a,b) => summary.totals[b] - summary.totals[a]);
+    const leader = ranked[0] || null;
+    const second = ranked[1] ? summary.totals[ranked[1]] : 0;
+    const margin = leader ? summary.totals[leader] - second : 0;
+    const coverage = new Set(summary.rows.map(r => `${r.lga}|${r.ward}|${r.pollingUnit}`)).size;
+    return { leader, margin, total, coverage, confidence: total && leader ? Math.min(99, Math.round((summary.totals[leader] / total) * 100 + Math.min(20, coverage / 10))) : 0 };
+  }, [summary]);
+  const partyAnalysis = useMemo(() => {
+    if (!focusParty) return null;
+    const wards = winLoss.wards.filter(g => g.winner === focusParty).length;
+    const lgas = winLoss.lgas.filter(g => g.winner === focusParty).length;
+    const incidentsForParty = incidents.filter(i => String(i.description || "").toLowerCase().includes(focusParty.toLowerCase())).length;
+    return { votes: summary.totals[focusParty] || 0, wards, lgas, incidents: incidentsForParty };
+  }, [focusParty, incidents, summary, winLoss]);
+  const actions = useMemo(() => {
+    const critical = incidents.filter(i => i.severity === "Critical" || i.reportType === "SOS-Emergency").length;
+    const open = incidents.filter(i => !["Resolved", "Submitted"].includes(i.status)).length;
+    const actions = [];
+    if (critical) actions.push(`Prioritize ${critical} critical/SOS item${critical === 1 ? "" : "s"} for response verification.`);
+    if (open > critical) actions.push(`Review ${open - critical} other open incident${open - critical === 1 ? "" : "s"} before the next reporting cycle.`);
+    if (forecast.coverage < 10) actions.push("Increase polling-unit reporting coverage before treating the forecast as reliable.");
+    if (forecast.margin === 0 && forecast.leader) actions.push("Treat the race as too close to call; validate submitted totals and missing units.");
+    if (!actions.length) actions.push("Continue verification and monitor new submissions; no exceptional operational signal detected.");
+    return actions;
+  }, [incidents, forecast]);
   return (
     <div className="results-center">
       <header className="results-center-head">
@@ -4714,7 +4756,14 @@ function ResultsCenter({ incidents, onClose }) {
         </div>
         <button className="icon-btn" onClick={onClose} title="Close results"><FaTimes /></button>
       </header>
+      <div className="rc-tab-bar"><button className={view === "breakdown" ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Polling Unit Breakdown</button><button className={view === "winloss" ? "rc-tab active" : "rc-tab"} onClick={() => setView("winloss")}>Win / Loss Analysis</button></div>
       <main className="results-center-body">
+        <section className="result-total-strip"><article className="result-total-card grand"><span>Current projection</span><strong>{forecast.leader || "—"}</strong><small>{forecast.confidence}% indicative confidence; not a final result</small></article><article className="result-total-card"><span>Vote margin</span><strong>{forecast.margin.toLocaleString()}</strong><small>Against second place</small></article><article className="result-total-card"><span>Units covered</span><strong>{forecast.coverage.toLocaleString()}</strong><small>Unique submitted units</small></article></section>
+        <section className="result-table-card" style={{ marginBottom: 16 }}><div className="result-table-title"><div><h2>Party performance & operational outlook</h2><p>Neutral analysis based only on submitted results and operational reports.</p></div><select value={focusParty} onChange={e => setFocusParty(e.target.value)}><option value="">Select a party</option>{summary.partyNames.map(p => <option key={p} value={p}>{p}</option>)}</select></div>{partyAnalysis && <p>{focusParty}: <b>{partyAnalysis.votes.toLocaleString()}</b> votes, leading in <b>{partyAnalysis.wards}</b> wards and <b>{partyAnalysis.lgas}</b> LGAs. Related incident mentions: <b>{partyAnalysis.incidents}</b>.</p>}<ul>{actions.map(action => <li key={action}>{action}</li>)}</ul></section>
+        {view === "winloss" && <section className="result-table-card"><div className="result-table-title"><div><h2>Win / Loss Analysis</h2><p>Leading party by ward and LGA from submitted polling-unit results.</p></div><b>Top {top6.length} parties</b></div><div className="wl-sub-tabs"><button className="wl-sub-tab active">By Ward</button><button className="wl-sub-tab" onClick={() => setView("winloss-lga")}>By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>Ward</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.wards.map(g => <tr key={g.label}><td>{g.label}</td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}{!winLoss.wards.length && <tr><td colSpan={top6.length + 2} className="result-empty">No ward-level data available yet.</td></tr>}</tbody></table></div></section>}
+        {view === "winloss-lga" && <section className="result-table-card"><div className="result-table-title"><div><h2>LGA Win / Loss Analysis</h2><p>Leading party in each Local Government Area.</p></div></div><div className="wl-sub-tabs"><button className="wl-sub-tab" onClick={() => setView("winloss")}>By Ward</button><button className="wl-sub-tab active">By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>LGA</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.lgas.map(g => <tr key={g.label}><td><b>{g.label}</b></td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}</tbody></table></div></section>}
+        {view !== "breakdown" && <div className="result-table-card" style={{marginTop: 16}}><p className="muted">Select a party in the table to compare its wins and losses. Results update automatically as new submissions arrive.</p></div>}
+        {view !== "breakdown" ? null : <>
         <section className="result-total-strip">
           <article className="result-total-card grand"><span>Polling-unit submissions</span><strong>{reports.length}</strong><small>Multiple updates per unit are allowed</small></article>{summary.partyNames.map(party => <article className="result-total-card" key={party}><span>{party}</span><strong>{summary.totals[party].toLocaleString()}</strong><small>Total uploaded votes</small></article>)}
         </section>
@@ -4732,6 +4781,7 @@ function ResultsCenter({ incidents, onClose }) {
             </table>
           </div>
         </section>
+        </>}
       </main>
     </div>
   );
@@ -8177,7 +8227,7 @@ export default function App() {
       return null;
     }
   });
-  const login = (value, rememberMe = true) => {
+  const login = (value, rememberMe = false) => {
     const sessionValue = JSON.stringify(value);
     if (rememberMe) {
       localStorage.setItem("command-session", sessionValue);
@@ -8189,6 +8239,7 @@ export default function App() {
     setSession(value);
   };
   const logout = () => {
+    fetch(`${API}/api/auth/logout`, { method: "POST", credentials: "same-origin" }).catch(() => {});
     localStorage.removeItem("command-session");
     sessionStorage.removeItem("command-session");
     setSession(null);
