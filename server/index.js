@@ -642,6 +642,14 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Nigeria election').slice(0, 180);
+  if (process.env.GNEWS_API_KEY) {
+    const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(q)}&lang=en&country=ng&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
+    if (gnews?.ok) {
+      const payload = await gnews.json();
+      const articles = (payload.articles || []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: item.publishedAt || '', language: 'en' })).filter(item => item.title && item.url);
+      return res.json({ articles, query: q, provider: 'gnews', fetchedAt: new Date().toISOString() });
+    }
+  }
   // Keep the query broad: requiring every keyword at once produces empty
   // results because most articles mention only one location or party.
   const query = `(${q} OR Nigeria OR Oyo OR INEC OR election OR ballot OR polling OR vote OR APC OR PDP OR LP OR NNPP OR SDP)`;
