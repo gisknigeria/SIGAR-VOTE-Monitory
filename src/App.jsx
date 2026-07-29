@@ -7250,11 +7250,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     )}
                   </div>
                 )}
-                {canAdmin && (
-                  <button onClick={() => setResultsOpen(true)}>
-                    <FaChartBar /> Results
-                  </button>
-                )}
+                <button onClick={() => setResultsOpen(true)}>
+                  <FaChartBar /> Results & Forecast
+                </button>
                 {canAdmin && (
                   <button onClick={() => setPartyManagerOpen(true)}>
                     <FaUserCog /> Political Parties
@@ -7546,15 +7544,13 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             >
               <FaVideo />
             </button>
-            {canAdmin && (
-              <button
-                className="map-action result-center-open"
-                onClick={() => setResultsOpen(true)}
-                title="Election results"
-              >
-                Results
-              </button>
-            )}
+            <button
+              className="map-action result-center-open"
+              onClick={() => setResultsOpen(true)}
+              title="Election results and forecast"
+            >
+              Results & Forecast
+            </button>
             {canAdmin && (
               <button
                 className="map-action report-action"
@@ -7999,7 +7995,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </section>
       )}
-      {resultsOpen && canAdmin && <ResultsCenter incidents={incidents} onClose={() => setResultsOpen(false)} />}
+      {resultsOpen && <ResultsCenter incidents={incidents} onClose={() => setResultsOpen(false)} />}
       {analyticsOpen && canAdmin && (
         <AnalyticsPanel
           incidents={incidents}
