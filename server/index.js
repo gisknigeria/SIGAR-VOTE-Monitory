@@ -642,6 +642,7 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 };
 
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
+app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => res.json({ configured: Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY), provider: process.env.GEMINI_API_KEY ? 'gemini' : (process.env.OPENAI_API_KEY ? 'openai' : 'none'), model: process.env.GEMINI_API_KEY ? (process.env.GEMINI_MODEL || 'gemini-2.0-flash') : (process.env.OPENAI_MODEL || null), fallbackModel: process.env.GEMINI_API_KEY ? (process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite') : (process.env.OPENAI_FALLBACK_MODEL || null) }));
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Oyo State election').slice(0, 180);
   if (process.env.GNEWS_API_KEY) {
