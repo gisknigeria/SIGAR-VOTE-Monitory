@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import pg from 'pg';
 import { canManageRank, normalizeCommand, ranksBelow } from '../shared/electionData.js';
 import { credentialFingerprint, createId, createRateLimitState, normalizeText, sanitizeString, validateContentLength, validateCoordinates, validateEmail, validateExternalUrl, validateMediaPayload, validatePassword } from './security.js';
+import { analyzeContextLocally, summarizeNewsLocally } from './ai.js';
 
 const { Pool } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -641,7 +642,7 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
-  const q = String(req.query.q || 'Oyo election').slice(0, 180);
+  const q = String(req.query.q || 'Oyo State election').slice(0, 180);
   if (process.env.GNEWS_API_KEY) {
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(q)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
@@ -661,49 +662,121 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     if (response.ok) data = await response.json();
   } catch { /* fall through to RSS */ }
   if (!data) {
-    const queries = [q, 'Nigeria election INEC', 'Oyo election political party', 'Nigeria vote counting results', 'election violence Nigeria'];
+    const queries = [q, 'Oyo State election INEC', 'Ibadan election', 'Oyo political party', 'Oyo election violence'];
     const feeds = queries.map(term => `https://news.google.com/rss/search?q=${encodeURIComponent(term)}&hl=en-NG&gl=NG&ceid=NG:en`).concat(['https://punchng.com/feed/', 'https://www.premiumtimesng.com/feed', 'https://guardian.ng/feed/']);
     const xmls = await Promise.all(feeds.map(feed => fetch(feed, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).then(r => r.ok ? r.text() : '').catch(() => '')));
     const parseRss = xml => [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => { const block = m[1]; const read = tag => (block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim(); return { title: read('title'), url: read('link') || read('guid'), domain: 'News feed', pubdate: read('pubDate') }; });
     data = { articles: xmls.flatMap(parseRss) };
   }
   const seen = new Set();
-  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: item.seendate || item.pubdate || '', language: item.language || '' })).filter(item => item.title && item.url && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: item.seendate || item.pubdate || '', language: item.language || '' })).filter(item => item.title && item.url && /oyo|ibadan|inec/i.test(item.title) && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
   console.log(`[news] provider=${data === undefined ? 'none' : 'gdelt/rss'} query=${JSON.stringify(q)} articles=${articles.length}`);
   res.json({ articles, query: q, provider: 'gdelt/rss', fetchedAt: new Date().toISOString() });
 }));
 app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
-  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ message: 'AI news summaries are not configured.' });
-  const articles = Array.isArray(req.body?.articles) ? req.body.articles.slice(0, 30).map(item => `${item.title} (${item.source})`).join('\n') : '';
-  if (!articles) return res.status(400).json({ message: 'News articles are required.' });
-  const prompt = `Summarize these election news headlines neutrally. Identify the hottest themes, confirmed facts versus uncertainty, and operational implications. Do not persuade voters or recommend partisan messaging.\n${articles}`;
-  const call = async model => { const r = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: prompt, max_output_tokens: 600 }) }); const b = await r.json().catch(() => ({})); if (!r.ok) { const e = new Error(b?.error?.message || 'AI request failed'); e.status = r.status; throw e; } return b.output_text || ''; };
-  try { let model = openAiPrimaryModel; let summary; try { summary = await call(model); } catch (e) { if (![400, 404, 429].includes(e.status)) throw e; model = openAiFallbackModel; summary = await call(model); } res.json({ summary, model }); } catch { res.status(503).json({ message: 'AI news summary unavailable.' }); }
+  const articles = Array.isArray(req.body?.articles) ? req.body.articles.slice(0, 30) : [];
+  if (!articles.length) return res.status(400).json({ message: 'News articles are required.' });
+
+  if (process.env.GEMINI_API_KEY) {
+    const prompt = `Summarize these election headlines neutrally and identify hot themes and operational implications.\n${articles.map((item) => `${item.title} (${item.source})`).join('\n')}`;
+    const call = async (model) => {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      const b = await r.json();
+      if (!r.ok) throw new Error('Gemini failed');
+      return b.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+    };
+    try {
+      let model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+      let summary;
+      try { summary = await call(model); } catch { model = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3-flash'; summary = await call(model); }
+      return res.json({ summary, model, provider: 'gemini' });
+    } catch {
+      return res.status(503).json({ message: 'Gemini news summary unavailable.' });
+    }
+  }
+
+  if (process.env.OPENAI_API_KEY) {
+    const prompt = `Summarize these election news headlines neutrally. Identify the hottest themes, confirmed facts versus uncertainty, and operational implications. Do not persuade voters or recommend partisan messaging.\n${articles.map((item) => `${item.title} (${item.source})`).join('\n')}`;
+    const call = async (model) => {
+      const r = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, input: prompt, max_output_tokens: 600 }),
+      });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) { const e = new Error(b?.error?.message || 'AI request failed'); e.status = r.status; throw e; }
+      return b.output_text || '';
+    };
+    try {
+      let model = openAiPrimaryModel;
+      let summary;
+      try { summary = await call(model); } catch (e) { if (![400, 404, 429].includes(e.status)) throw e; model = openAiFallbackModel; summary = await call(model); }
+      return res.json({ summary, model, provider: 'openai' });
+    } catch {
+      return res.status(503).json({ message: 'AI news summary unavailable.' });
+    }
+  }
+
+  return res.json({ summary: summarizeNewsLocally(articles), provider: 'local', model: 'local-fallback' });
 }));
 app.post('/api/analysis/ai', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
-  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ message: 'AI analysis is not configured; statistical analysis remains available.' });
-  const context = sanitizeString(JSON.stringify(req.body?.context || {}), '').slice(0, 12000);
-  if (!context) return res.status(400).json({ message: 'Analysis context is required.' });
-  const prompt = `Provide a neutral operational election-monitoring analysis from this structured data. Do not persuade voters, target demographic groups, or recommend partisan messaging. Summarize uncertainty, data quality, incident/SOS priorities, and verification actions.\n\nDATA:\n${context}`;
-  const callModel = async model => {
-    const response = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: prompt, max_output_tokens: 700 }) });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) { const error = new Error(body?.error?.message || 'OpenAI request failed'); error.status = response.status; throw error; }
-    return body.output_text || body.output?.flatMap(item => item.content || []).map(item => item.text || '').join('') || '';
-  };
-  try {
-    let usedModel = openAiPrimaryModel;
-    let analysis;
-    try { analysis = await callModel(usedModel); } catch (error) {
-      if (usedModel === openAiFallbackModel || ![400, 404, 429].includes(error.status)) throw error;
-      usedModel = openAiFallbackModel;
-      analysis = await callModel(usedModel);
+  const context = req.body?.context || {};
+  if (process.env.GEMINI_API_KEY) {
+    const prompt = `Provide a neutral operational election-monitoring analysis from this data. Discuss uncertainty, data quality, incident priorities and verification actions.\n${JSON.stringify(context)}`;
+    const call = async (model) => {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      const b = await r.json();
+      if (!r.ok) throw new Error('Gemini failed');
+      return b.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+    };
+    try {
+      let model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+      let analysis;
+      try { analysis = await call(model); } catch { model = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3-flash'; analysis = await call(model); }
+      return res.json({ analysis, model, provider: 'gemini' });
+    } catch {
+      return res.status(503).json({ message: 'Gemini analysis unavailable.' });
     }
-    res.json({ analysis, model: usedModel, fallbackUsed: usedModel !== openAiPrimaryModel });
-  } catch (error) {
-    console.error('AI analysis unavailable:', error.message);
-    res.status(503).json({ message: 'AI analysis is temporarily unavailable; statistical analysis remains available.' });
   }
+
+  if (process.env.OPENAI_API_KEY) {
+    const sanitizedContext = sanitizeString(JSON.stringify(context), '').slice(0, 12000);
+    if (!sanitizedContext) return res.status(400).json({ message: 'Analysis context is required.' });
+    const prompt = `Provide a neutral operational election-monitoring analysis from this structured data. Do not persuade voters, target demographic groups, or recommend partisan messaging. Summarize uncertainty, data quality, incident/SOS priorities, and verification actions.\n\nDATA:\n${sanitizedContext}`;
+    const callModel = async (model) => {
+      const response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, input: prompt, max_output_tokens: 700 }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) { const error = new Error(body?.error?.message || 'OpenAI request failed'); error.status = response.status; throw error; }
+      return body.output_text || body.output?.flatMap((item) => item.content || []).map((item) => item.text || '').join('') || '';
+    };
+    try {
+      let usedModel = openAiPrimaryModel;
+      let analysis;
+      try { analysis = await callModel(usedModel); } catch (error) {
+        if (usedModel === openAiFallbackModel || ![400, 404, 429].includes(error.status)) throw error;
+        usedModel = openAiFallbackModel;
+        analysis = await callModel(usedModel);
+      }
+      return res.json({ analysis, model: usedModel, fallbackUsed: usedModel !== openAiPrimaryModel, provider: 'openai' });
+    } catch (error) {
+      console.error('AI analysis unavailable:', error.message);
+      return res.status(503).json({ message: 'AI analysis is temporarily unavailable; statistical analysis remains available.' });
+    }
+  }
+
+  return res.json({ analysis: analyzeContextLocally(context), provider: 'local', model: 'local-fallback' });
 }));
 app.get('/api/admin/ip-log', auth, adminOnly, rateLimit, (req, res) => {
   const { userId, type, limit = 200 } = req.query;
