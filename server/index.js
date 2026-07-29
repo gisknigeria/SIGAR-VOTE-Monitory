@@ -644,12 +644,27 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Nigeria election').slice(0, 180);
   const query = `${q} (INEC OR ballot OR polling OR vote OR "political party" OR APC OR PDP OR LP OR NNPP OR SDP)`;
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=50&sort=HybridRel`;
-  const response = await fetch(url, { headers: { 'User-Agent': 'Election-Monitor/1.0 news aggregation' } });
-  if (!response.ok) return res.status(502).json({ message: 'News provider unavailable.' });
-  const data = await response.json();
+  let data;
+  try {
+    const response = await fetch(url, { headers: { 'User-Agent': 'Election-Monitor/1.0 news aggregation' } });
+    if (response.ok) data = await response.json();
+  } catch { /* fall through to RSS */ }
+  if (!data) {
+    const rss = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-NG&gl=NG&ceid=NG:en`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
+    const xml = rss?.ok ? await rss.text() : '';
+    data = { articles: [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => { const block = m[1]; const read = tag => (block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim(); return { title: read('title'), url: read('link'), domain: 'Google News', pubdate: read('pubDate') }; }) };
+  }
   const seen = new Set();
   const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: item.seendate || item.pubdate || '', language: item.language || '' })).filter(item => item.title && item.url && !seen.has(item.url) && seen.add(item.url));
   res.json({ articles, query: q, fetchedAt: new Date().toISOString() });
+}));
+app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
+  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ message: 'AI news summaries are not configured.' });
+  const articles = Array.isArray(req.body?.articles) ? req.body.articles.slice(0, 30).map(item => `${item.title} (${item.source})`).join('\n') : '';
+  if (!articles) return res.status(400).json({ message: 'News articles are required.' });
+  const prompt = `Summarize these election news headlines neutrally. Identify the hottest themes, confirmed facts versus uncertainty, and operational implications. Do not persuade voters or recommend partisan messaging.\n${articles}`;
+  const call = async model => { const r = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: prompt, max_output_tokens: 600 }) }); const b = await r.json().catch(() => ({})); if (!r.ok) { const e = new Error(b?.error?.message || 'AI request failed'); e.status = r.status; throw e; } return b.output_text || ''; };
+  try { let model = openAiPrimaryModel; let summary; try { summary = await call(model); } catch (e) { if (![400, 404, 429].includes(e.status)) throw e; model = openAiFallbackModel; summary = await call(model); } res.json({ summary, model }); } catch { res.status(503).json({ message: 'AI news summary unavailable.' }); }
 }));
 app.post('/api/analysis/ai', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ message: 'AI analysis is not configured; statistical analysis remains available.' });
