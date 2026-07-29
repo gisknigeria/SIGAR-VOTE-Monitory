@@ -473,6 +473,8 @@ const activeCameraShares = new Map();
 const loginLimiter = createRateLimitState();
 const generalLimiter = createRateLimitState();
 const socketLimiter = createRateLimitState();
+const openAiPrimaryModel = process.env.OPENAI_MODEL || 'gpt-5.6-terra';
+const openAiFallbackModel = process.env.OPENAI_FALLBACK_MODEL || 'gpt-5.6-luna';
 
 // In-memory IP log — stores last 500 entries (incident + SOS submissions)
 const ipLog = [];
@@ -638,6 +640,42 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 };
 
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
+app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
+  const q = String(req.query.q || 'Nigeria election').slice(0, 180);
+  const query = `${q} (INEC OR ballot OR polling OR vote OR "political party" OR APC OR PDP OR LP OR NNPP OR SDP)`;
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=50&sort=HybridRel`;
+  const response = await fetch(url, { headers: { 'User-Agent': 'Election-Monitor/1.0 news aggregation' } });
+  if (!response.ok) return res.status(502).json({ message: 'News provider unavailable.' });
+  const data = await response.json();
+  const seen = new Set();
+  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: sanitizeString(item.title || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: item.seendate || item.pubdate || '', language: item.language || '' })).filter(item => item.title && item.url && !seen.has(item.url) && seen.add(item.url));
+  res.json({ articles, query: q, fetchedAt: new Date().toISOString() });
+}));
+app.post('/api/analysis/ai', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
+  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ message: 'AI analysis is not configured; statistical analysis remains available.' });
+  const context = sanitizeString(JSON.stringify(req.body?.context || {}), '').slice(0, 12000);
+  if (!context) return res.status(400).json({ message: 'Analysis context is required.' });
+  const prompt = `Provide a neutral operational election-monitoring analysis from this structured data. Do not persuade voters, target demographic groups, or recommend partisan messaging. Summarize uncertainty, data quality, incident/SOS priorities, and verification actions.\n\nDATA:\n${context}`;
+  const callModel = async model => {
+    const response = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: prompt, max_output_tokens: 700 }) });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { const error = new Error(body?.error?.message || 'OpenAI request failed'); error.status = response.status; throw error; }
+    return body.output_text || body.output?.flatMap(item => item.content || []).map(item => item.text || '').join('') || '';
+  };
+  try {
+    let usedModel = openAiPrimaryModel;
+    let analysis;
+    try { analysis = await callModel(usedModel); } catch (error) {
+      if (usedModel === openAiFallbackModel || ![400, 404, 429].includes(error.status)) throw error;
+      usedModel = openAiFallbackModel;
+      analysis = await callModel(usedModel);
+    }
+    res.json({ analysis, model: usedModel, fallbackUsed: usedModel !== openAiPrimaryModel });
+  } catch (error) {
+    console.error('AI analysis unavailable:', error.message);
+    res.status(503).json({ message: 'AI analysis is temporarily unavailable; statistical analysis remains available.' });
+  }
+}));
 app.get('/api/admin/ip-log', auth, adminOnly, rateLimit, (req, res) => {
   const { userId, type, limit = 200 } = req.query;
   let results = ipLog;
