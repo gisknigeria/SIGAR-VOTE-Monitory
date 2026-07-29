@@ -28,7 +28,7 @@ if (!process.env.SUPER_ADMIN_PASSWORD || !process.env.ADMIN_PASSWORD) {
   console.warn('SUPER_ADMIN_PASSWORD and ADMIN_PASSWORD were not set. Generated secure random passwords for the seeded admin accounts.');
 }
 if (process.env.NODE_ENV === 'production') {
-  const missing = ['JWT_SECRET', 'SUPER_ADMIN_PASSWORD', 'ADMIN_PASSWORD', 'CORS_ORIGIN'].filter(name => !process.env[name]);
+  const missing = ['JWT_SECRET', 'SUPER_ADMIN_PASSWORD', 'ADMIN_PASSWORD'].filter(name => !process.env[name]);
   if (missing.length) throw new Error(`Missing required production configuration: ${missing.join(', ')}`);
   if (Buffer.byteLength(process.env.JWT_SECRET, 'utf8') < 32) throw new Error('JWT_SECRET must contain at least 32 bytes');
   if (!validatePassword(process.env.SUPER_ADMIN_PASSWORD) || !validatePassword(process.env.ADMIN_PASSWORD)) throw new Error('Seed administrator passwords do not meet the password policy');
@@ -462,7 +462,7 @@ await initPostgres();
 
 const app = express();
 const server = createServer(app);
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://127.0.0.1:5173').split(',').map(value => value.trim()).filter(Boolean);
+const allowedOrigins = (process.env.CORS_ORIGIN || process.env.RENDER_EXTERNAL_URL || 'http://127.0.0.1:5173').split(',').map(value => value.trim()).filter(Boolean);
 const isAllowedOrigin = (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin));
 const io = new Server(server, {
   cors: { origin: isAllowedOrigin, credentials: true },
