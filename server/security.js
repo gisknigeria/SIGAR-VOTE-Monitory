@@ -7,7 +7,7 @@ const MAX_REQUEST_BODY_BYTES = 20 * 1024 * 1024;
 export function sanitizeString(value, fallback = '') {
   if (value === null || value === undefined) return fallback;
   const normalized = String(value).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
-  return normalized.replace(/\s+/g, '').trim().slice(0, MAX_TEXT_LENGTH);
+  return normalized.replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT_LENGTH);
 }
 
 export function validatePassword(password) {

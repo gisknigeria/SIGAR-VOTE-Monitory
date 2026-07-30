@@ -728,6 +728,7 @@ app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => {
 });
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Oyo State election').slice(0, 180);
+  const providerArticles = [];
   if (process.env.GNEWS_API_KEY) {
     const gnewsQuery = /oyo|ibadan/i.test(q)
       ? '("Oyo State" OR Ibadan OR Ogbomoso OR Iseyin OR "Governor Makinde" OR "INEC Oyo" OR "Oyo APC" OR "Oyo PDP")'
@@ -737,7 +738,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
       const payload = await gnews.json();
       const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title, item.url), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: normalizeNewsDate(item.publishedAt), language: 'en' })).filter(item => item.title && item.url && isOyoStateNews(`${item.title} ${item.description}`)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
       console.log(`[news] provider=gnews query=${JSON.stringify(q)} total=${payload.totalArticles || 0} articles=${articles.length}`);
-      if (articles.length) return res.json({ articles, query: q, provider: 'gnews', fetchedAt: new Date().toISOString() });
+      providerArticles.push(...articles);
     }
   }
   // Keep the query broad: requiring every keyword at once produces empty
@@ -772,11 +773,24 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     '"Oyo State" upcoming election'
   ];
   const feeds = queries.map(term => `https://news.google.com/rss/search?q=${encodeURIComponent(term)}&hl=en-NG&gl=NG&ceid=NG:en`).concat(['https://punchng.com/feed/', 'https://www.premiumtimesng.com/feed', 'https://guardian.ng/feed/']);
-  const xmls = await Promise.all(feeds.map(feed => fetch(feed, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).then(r => r.ok ? r.text() : '').catch(() => '')));
-  const parseRss = xml => [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => { const block = m[1]; const read = tag => (block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim(); return { title: read('title'), url: read('link') || read('guid'), domain: 'News feed', pubdate: read('pubDate') }; });
-  data = { articles: [...(Array.isArray(data?.articles) ? data.articles : []), ...xmls.flatMap(parseRss)] };
+  const xmls = await Promise.all(feeds.map((feed, index) => fetch(feed, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).then(async r => ({ xml: r.ok ? await r.text() : '', searchContext: index < queries.length ? queries[index] : '' })).catch(() => ({ xml: '', searchContext: '' }))));
+  const parseRss = ({ xml, searchContext }) => [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => { const block = m[1]; const read = tag => (block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim(); return { title: read('title'), url: read('link') || read('guid'), domain: 'News feed', pubdate: read('pubDate'), searchContext }; });
+  data = { articles: [...providerArticles, ...(Array.isArray(data?.articles) ? data.articles : []), ...xmls.flatMap(parseRss)] };
   const seen = new Set();
-  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title, item.url), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: normalizeNewsDate(item.seendate || item.pubdate), language: item.language || '' })).filter(item => item.title && item.url && isOyoStateNews(item.title) && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  const articles = (Array.isArray(data.articles) ? data.articles : [])
+    .map(item => ({
+      title: normalizeNewsTitle(item.title, item.url),
+      description: sanitizeString(item.description || ''),
+      url: validateExternalUrl(item.url, ['https:']) ? item.url : '',
+      source: sanitizeString(item.source || item.domain || ''),
+      publishedAt: normalizeNewsDate(item.publishedAt || item.seendate || item.pubdate),
+      language: item.language || '',
+      searchContext: item.searchContext || ''
+    }))
+    .filter(item => item.title && item.url && isOyoStateNews(`${item.title} ${item.description} ${item.searchContext}`) && !seen.has(item.url) && seen.add(item.url))
+    .sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0))
+    .slice(0, 200)
+    .map(({ searchContext: _searchContext, ...item }) => item);
   console.log(`[news] provider=${data === undefined ? 'none' : 'gdelt/rss'} query=${JSON.stringify(q)} articles=${articles.length}`);
   res.json({ articles, query: q, provider: 'gdelt/rss', fetchedAt: new Date().toISOString() });
 }));
