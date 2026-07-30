@@ -842,6 +842,7 @@ function MapView({
   showBoundaryLayer,
   showStateBorders,
   showLgaBorders,
+  partyMapAnalysis,
   selectedBoundaryState,
   onBoundarySelect,
   onBoundaryClear,
@@ -861,17 +862,39 @@ function MapView({
   const nigeriaLgaLabels = useRef([]);
   const hoverBoundaryLayer = useRef(null);
   const [layerPanelOpen, setLayerPanelOpen] = useState(false);
+  const [oyoBoundaries, setOyoBoundaries] = useState({ state: null, lgas: null });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API}/boundaries/oyo`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error("Boundary service unavailable")))
+      .then(data => setOyoBoundaries({ state: data.state || null, lgas: data.lgas || null }))
+      .catch(error => {
+        if (error.name !== "AbortError") console.warn("Oyo boundaries could not be loaded:", error.message);
+      });
+    return () => controller.abort();
+  }, []);
 
   const normalizeBoundaryKey = (value) =>
     String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const normalizeLgaMatch = (value) =>
+    String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  const escapeMapText = (value) =>
+    String(value || "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+  const partyLgaResults = useMemo(
+    () => Object.fromEntries(Object.entries(partyMapAnalysis?.byLga || {}).map(([name, result]) => [normalizeLgaMatch(name), result])),
+    [partyMapAnalysis],
+  );
 
   const getStateKey = (feature) =>
     normalizeBoundaryKey(
       feature.properties?.STATE_NAME ||
+        feature.properties?.ADM1_EN ||
         feature.properties?.state ||
         feature.properties?.STATE ||
         feature.properties?.state_name ||
         feature.properties?.admin1Name ||
+        feature.properties?.NAME_1 ||
         feature.properties?.name ||
         feature.properties?.NAME ||
         "",
@@ -1375,31 +1398,36 @@ function MapView({
     nigeriaStateLabels.current.forEach(l => l.remove());
     nigeriaStateLabels.current = [];
     if (!showStateBorders) return;
-    // State features: have STATE_NAME / admin1Name / NAME_1 / state properties, no LGA-specific ones
-    const stateFeatures = mapLayers
+    // Oyo State outline only; LGA polygons are rendered separately.
+    const uploadedStateFeatures = mapLayers
       .filter(l => l.visible !== false && l.type === "geojson" && l.data?.features)
       .flatMap(l => l.data.features.filter(f => {
         const p = f.properties || {};
-        const hasState = p.STATE_NAME || p.admin1Name || p.NAME_1 || p.State || (p.state && !p.ADM2_EN && !p.lga_name && !p.LGA);
+        const stateName = p.STATE_NAME || p.ADM1_EN || p.admin1Name || p.NAME_1 || p.State || p.state || "";
+        const hasLga = p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
         const isPolygon = f.geometry?.type?.includes("Polygon");
-        return hasState && isPolygon;
+        return stateName && !hasLga && normalizeBoundaryKey(stateName).includes("oyo") && isPolygon;
       }));
+    const stateFeatures = uploadedStateFeatures.length
+      ? uploadedStateFeatures
+      : (oyoBoundaries.state?.features || []);
     if (!stateFeatures.length) return;
     const stateLayer = L.geoJSON(
       { type: "FeatureCollection", features: stateFeatures },
       {
         pane: "overlayPane",
         style: () => ({
-          color: "#e2475a",
-          weight: 2.5,
+          color: "#ffd166",
+          weight: 6,
           dashArray: "",
-          fillOpacity: 0.04,
-          fillColor: "#e2475a",
-          opacity: 0.9,
+          fillOpacity: 0.08,
+          fillColor: "#f59e0b",
+          opacity: 1,
         }),
         onEachFeature: (feature, layerGeo) => {
           const name =
             feature.properties?.STATE_NAME ||
+            feature.properties?.ADM1_EN ||
             feature.properties?.admin1Name ||
             feature.properties?.NAME_1 ||
             feature.properties?.State ||
@@ -1428,7 +1456,7 @@ function MapView({
           }
           layerGeo.on({
             mouseover: (e) => {
-              e.target.setStyle({ weight: 4, color: "#ff3d55", fillOpacity: 0.12, opacity: 1 });
+              e.target.setStyle({ weight: 8, color: "#fff2a8", fillOpacity: 0.16, opacity: 1 });
               if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
             },
             mouseout: (e) => stateLayer.resetStyle(e.target),
@@ -1443,9 +1471,9 @@ function MapView({
     ).addTo(map);
     nigeriaStateOverlay.current = stateLayer;
     stateLayer.bringToFront();
-  }, [showStateBorders, mapLayers, onBoundarySelect]);
+  }, [showStateBorders, mapLayers, onBoundarySelect, oyoBoundaries.state]);
 
-  // Nigeria LGA boundary overlay (from uploaded geojson layers only)
+  // Oyo State LGA boundary overlay (from uploaded GeoJSON layers).
   useEffect(() => {
     const map = leaflet.current;
     if (!map) return;
@@ -1454,27 +1482,45 @@ function MapView({
     nigeriaLgaLabels.current.forEach(l => l.remove());
     nigeriaLgaLabels.current = [];
     if (!showLgaBorders) return;
-    const lgaFeatures = mapLayers
+    const uploadedLgaFeatures = mapLayers
       .filter(l => l.visible !== false && l.type === "geojson" && l.data?.features)
       .flatMap(l => l.data.features.filter(f => {
         const p = f.properties || {};
         const hasLga = p.ADM2_EN || p.lga_name || p.LGA || p.lga || p.LTNAME;
+        const stateName = p.STATE_NAME || p.ADM1_EN || p.admin1Name || p.NAME_1 || p.State || p.state || "";
+        const belongsToOyo = stateName
+          ? normalizeBoundaryKey(stateName).includes("oyo")
+          : normalizeBoundaryKey(l.name).includes("oyo");
         const isPolygon = f.geometry?.type?.includes("Polygon");
-        return hasLga && isPolygon;
+        return hasLga && belongsToOyo && isPolygon;
       }));
+    const lgaFeatures = uploadedLgaFeatures.length
+      ? uploadedLgaFeatures
+      : (oyoBoundaries.lgas?.features || []);
     if (!lgaFeatures.length) return;
     const lgaLayer = L.geoJSON(
       { type: "FeatureCollection", features: lgaFeatures },
       {
         pane: "overlayPane",
-        style: () => ({
-          color: "#34d399",
-          weight: 1.5,
-          dashArray: "4 5",
-          fillOpacity: 0.03,
-          fillColor: "#34d399",
-          opacity: 0.85,
-        }),
+        style: (feature) => {
+          const name = feature.properties?.ADM2_EN || feature.properties?.lga_name || feature.properties?.LGA || feature.properties?.lga || feature.properties?.LTNAME || feature.properties?.name || "";
+          const status = partyLgaResults[normalizeLgaMatch(name)]?.status || (partyMapAnalysis?.party ? "no-data" : "");
+          const colors = {
+            winning: { line: "#16a34a", fill: "#22c55e" },
+            losing: { line: "#dc2626", fill: "#ef4444" },
+            tied: { line: "#ca8a04", fill: "#facc15" },
+            "no-data": { line: "#ca8a04", fill: "#facc15" },
+          };
+          const selectedColor = colors[status];
+          return {
+            color: selectedColor?.line || "#22d3ee",
+            weight: selectedColor ? 3.5 : 2.75,
+            dashArray: selectedColor ? "" : "7 5",
+            fillOpacity: selectedColor ? 0.42 : 0.025,
+            fillColor: selectedColor?.fill || "#22d3ee",
+            opacity: 1,
+          };
+        },
         onEachFeature: (feature, layerGeo) => {
           const name =
             feature.properties?.ADM2_EN ||
@@ -1485,7 +1531,14 @@ function MapView({
             feature.properties?.name ||
             "";
           if (name) {
-            layerGeo.bindTooltip(name, { permanent: false, sticky: true, className: "nigeria-lga-tooltip" });
+            const performance = partyLgaResults[normalizeLgaMatch(name)];
+            const status = performance?.status || (partyMapAnalysis?.party ? "no-data" : "");
+            const statusLabel = status === "winning" ? "Winning" : status === "losing" ? "Losing" : status === "tied" ? "Tied" : status === "no-data" ? "No submitted result" : "";
+            const margin = performance?.margin ? ` · margin ${Number(performance.margin).toLocaleString()}` : "";
+            const tooltip = partyMapAnalysis?.party
+              ? `<strong>${escapeMapText(name)}</strong><br>${escapeMapText(partyMapAnalysis.party)}: ${escapeMapText(statusLabel)}${escapeMapText(margin)}`
+              : escapeMapText(name);
+            layerGeo.bindTooltip(tooltip, { permanent: false, sticky: true, className: "nigeria-lga-tooltip" });
             try {
               const center = layerGeo.getBounds().getCenter();
               const label = L.marker(center, {
@@ -1504,7 +1557,7 @@ function MapView({
           }
           layerGeo.on({
             mouseover: (e) => {
-              e.target.setStyle({ weight: 3, color: "#22c55e", fillOpacity: 0.14, opacity: 1 });
+              e.target.setStyle({ weight: 4, color: "#a5f3fc", fillOpacity: 0.14, opacity: 1 });
               if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
             },
             mouseout: (e) => lgaLayer.resetStyle(e.target),
@@ -1519,7 +1572,7 @@ function MapView({
     ).addTo(map);
     nigeriaLgaOverlay.current = lgaLayer;
     lgaLayer.bringToFront();
-  }, [showLgaBorders, mapLayers, onBoundarySelect]);
+  }, [showLgaBorders, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -1740,6 +1793,14 @@ function MapView({
   return (
     <>
       <div ref={el} className={`map map-${layer.toLowerCase()}`} />
+      {partyMapAnalysis?.party && (
+        <div className="party-map-legend" role="status" aria-label={`LGA performance map for ${partyMapAnalysis.party}`}>
+          <strong>{partyMapAnalysis.party} by LGA</strong>
+          <span><i className="winning" /> Winning</span>
+          <span><i className="losing" /> Losing</span>
+          <span><i className="undecided" /> Tied / no result</span>
+        </div>
+      )}
       {mapLayers.length > 0 && !layerPanelOpen && (
         <button
           className="layer-panel-open-btn"
@@ -4690,9 +4751,9 @@ function AnalyticsPanel({
   );
 }
 
-function ResultsCenter({ incidents, onClose, authToken }) {
+function ResultsCenter({ incidents, onClose, authToken, initialFocusParty = "", onPartyMapChange }) {
   const [view, setView] = useState("breakdown");
-  const [focusParty, setFocusParty] = useState("");
+  const [focusParty, setFocusParty] = useState(initialFocusParty);
   const [aiOutlook, setAiOutlook] = useState("");
   const [aiOutlookLoading, setAiOutlookLoading] = useState(false);
   const [news, setNews] = useState([]);
@@ -4728,10 +4789,15 @@ function ResultsCenter({ incidents, onClose, authToken }) {
     const groups = (key) => {
       const map = new Map();
       for (const row of summary.rows) { const id = key(row); if (!map.has(id)) map.set(id, { label: id, rows: [] }); map.get(id).rows.push(row); }
-      return [...map.values()].map(group => { const votes = Object.fromEntries(top6.map(p => [p, group.rows.reduce((n,r) => n + Number(r.results.find(x => x.party === p)?.votes || 0), 0)])); const max = Math.max(0, ...Object.values(votes)); return { ...group, votes, winner: max ? top6.find(p => votes[p] === max) : null }; });
+      return [...map.values()].map(group => {
+        const votes = Object.fromEntries(summary.partyNames.map(p => [p, group.rows.reduce((n,r) => n + Number(r.results.find(x => x.party === p)?.votes || 0), 0)]));
+        const max = Math.max(0, ...Object.values(votes));
+        const leaders = max ? summary.partyNames.filter(p => votes[p] === max) : [];
+        return { ...group, votes, max, leaders, winner: leaders.length === 1 ? leaders[0] : null, tied: leaders.length > 1 };
+      });
     };
     return { wards: groups(r => `${r.lga || "Unknown LGA"} / ${r.ward || "Unknown Ward"}`), lgas: groups(r => r.lga || "Unknown LGA") };
-  }, [summary, top6]);
+  }, [summary]);
   const forecast = useMemo(() => {
     const total = Object.values(summary.totals).reduce((a, b) => a + b, 0);
     const ranked = summary.partyNames.slice().sort((a,b) => summary.totals[b] - summary.totals[a]);
@@ -4744,10 +4810,34 @@ function ResultsCenter({ incidents, onClose, authToken }) {
   const partyAnalysis = useMemo(() => {
     if (!focusParty) return null;
     const wards = winLoss.wards.filter(g => g.winner === focusParty).length;
-    const lgas = winLoss.lgas.filter(g => g.winner === focusParty).length;
+    const assessedLgas = winLoss.lgas.filter(g => g.max > 0);
+    const winningLgas = assessedLgas.filter(g => g.winner === focusParty).map(g => {
+      const runnerUp = Object.entries(g.votes).filter(([party]) => party !== focusParty).sort((a, b) => b[1] - a[1])[0] || ["No challenger", 0];
+      return { name: g.label, votes: g.votes[focusParty] || 0, opponent: runnerUp[0], opponentVotes: runnerUp[1], margin: (g.votes[focusParty] || 0) - runnerUp[1] };
+    }).sort((a, b) => b.margin - a.margin);
+    const losingLgas = assessedLgas.filter(g => g.winner && g.winner !== focusParty).map(g => ({
+      name: g.label,
+      votes: g.votes[focusParty] || 0,
+      opponent: g.winner,
+      opponentVotes: g.votes[g.winner] || 0,
+      margin: (g.votes[g.winner] || 0) - (g.votes[focusParty] || 0)
+    })).sort((a, b) => b.margin - a.margin);
+    const tiedLgas = assessedLgas.filter(g => g.tied && g.leaders.includes(focusParty)).map(g => g.label);
     const incidentsForParty = incidents.filter(i => String(i.description || "").toLowerCase().includes(focusParty.toLowerCase())).length;
-    return { votes: summary.totals[focusParty] || 0, wards, lgas, incidents: incidentsForParty };
+    return { votes: summary.totals[focusParty] || 0, wards, lgas: winningLgas.length, winningLgas, losingLgas, tiedLgas, incidents: incidentsForParty };
   }, [focusParty, incidents, summary, winLoss]);
+  useEffect(() => {
+    if (!onPartyMapChange) return;
+    if (!focusParty || !partyAnalysis) {
+      onPartyMapChange(null);
+      return;
+    }
+    const byLga = {};
+    partyAnalysis.winningLgas.forEach(item => { byLga[item.name] = { ...item, status: "winning" }; });
+    partyAnalysis.losingLgas.forEach(item => { byLga[item.name] = { ...item, status: "losing" }; });
+    partyAnalysis.tiedLgas.forEach(name => { byLga[name] = { name, status: "tied" }; });
+    onPartyMapChange({ party: focusParty, byLga });
+  }, [focusParty, partyAnalysis, onPartyMapChange]);
   const actions = useMemo(() => {
     const critical = incidents.filter(i => i.severity === "Critical" || i.reportType === "SOS-Emergency").length;
     const open = incidents.filter(i => !["Resolved", "Submitted"].includes(i.status)).length;
@@ -4775,6 +4865,7 @@ function ResultsCenter({ incidents, onClose, authToken }) {
         {view !== "breakdown" && view !== "news" && <section className="result-total-strip"><article className="result-total-card grand"><span>Current projection</span><strong>{forecast.leader || "—"}</strong><small>{forecast.confidence}% indicative confidence; not a final result</small></article><article className="result-total-card"><span>Vote margin</span><strong>{forecast.margin.toLocaleString()}</strong><small>Against second place</small></article><article className="result-total-card"><span>Units covered</span><strong>{forecast.coverage.toLocaleString()}</strong><small>Unique submitted units</small></article></section>}
         {view === "news" && <section className="result-table-card"><div className="result-table-title"><div><h2>Oyo State News</h2><p>General Oyo State coverage, including politics, INEC, elections, parties, governance, security, and major local developments.</p></div><div className="analysis-actions news-actions"><button className="primary action-btn refresh-news-btn" onClick={() => { setNews([]); setNewsSummary(""); setNewsSummaryError(""); setView("news"); }}><FaSyncAlt /> <span>Refresh</span></button><button className="secondary action-btn ai-action-btn" disabled={!news.length || newsSummaryLoading} onClick={() => { setNewsSummaryLoading(true); setNewsSummaryError(""); request("/news/summary", authToken, { method: "POST", body: JSON.stringify({ articles: news }) }).then((x) => { setNewsSummary(x.summary || "No summary available yet."); if (x.provider === "local") setNewsSummaryError("AI was unavailable, so a local fallback summary was generated."); else setNewsSummaryError(""); }).catch((error) => { setNewsSummary(""); setNewsSummaryError(error.message || "The AI summary request failed."); }).finally(() => setNewsSummaryLoading(false)); }}><MdFlashOn /> <span>{newsSummaryLoading ? "Working…" : "AI Summary"}</span></button></div></div>{newsSummary && <div className="news-summary">{cleanAiText(newsSummary)}</div>}{newsSummaryError && <p className="muted">{newsSummaryError}</p>}{newsLoading ? <p>Loading current headlines…</p> : <div className="news-list">{news.map(item => <article className="news-item" key={item.url}><a href={item.url} target="_blank" rel="noreferrer"><h3>{item.title}</h3></a><small>{item.source} · {item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "Recent"}</small></article>)}{!news.length && <p>No current Oyo State headlines available.</p>}</div>}</section>}
         {view !== "breakdown" && view !== "news" && <section className="result-table-card" style={{ marginBottom: 16 }}><div className="result-table-title"><div><h2>Party performance & operational outlook</h2><p>Neutral analysis based only on submitted results and operational reports.</p></div><div className="analysis-actions"><label className="party-focus-field"><span>Party focus</span><select value={focusParty} onChange={e => setFocusParty(e.target.value)} aria-label="Select party for operational analysis"><option value="">All parties</option>{summary.partyNames.map(p => <option key={p} value={p}>{p}</option>)}</select></label><button className="primary action-btn ai-action-btn" disabled={aiOutlookLoading} onClick={() => { const safeIncidents = incidents.slice(0, 100).map(item => ({ id: item.id, title: item.title, description: String(item.description || "").slice(0, 500), reportType: item.reportType, severity: item.severity, status: item.status, lga: item.lga, ward: item.ward, pollingUnit: item.pollingUnit, createdAt: item.createdAt })); setAiOutlookLoading(true); request("/analysis/ai", authToken, { method: "POST", body: JSON.stringify({ context: { projection: forecast, selectedParty: focusParty, partyAnalysis, incidents: safeIncidents, actions } }) }).then(x => setAiOutlook(x.analysis || "No AI analysis returned.")).catch(e => setAiOutlook(e.message || "AI analysis unavailable.")).finally(() => setAiOutlookLoading(false)); }}><MdFlashOn /> <span>{aiOutlookLoading ? "Analyzing…" : "AI Operational Analysis"}</span></button></div></div>{partyAnalysis && <p>{focusParty}: <b>{partyAnalysis.votes.toLocaleString()}</b> votes, leading in <b>{partyAnalysis.wards}</b> wards and <b>{partyAnalysis.lgas}</b> LGAs. Related incident mentions: <b>{partyAnalysis.incidents}</b>.</p>}{aiOutlook && <div className="news-summary">{cleanAiText(aiOutlook)}</div>}<ul>{actions.map(action => <li key={action}>{action}</li>)}</ul></section>}
+        {partyAnalysis && view !== "breakdown" && view !== "news" && <section className="party-lga-analysis"><div className="party-lga-summary"><div><span>Selected party</span><strong>{focusParty}</strong></div><div className="winning"><span>LGAs winning</span><strong>{partyAnalysis.winningLgas.length}</strong></div><div className="losing"><span>LGAs losing</span><strong>{partyAnalysis.losingLgas.length}</strong></div><div><span>Total votes</span><strong>{partyAnalysis.votes.toLocaleString()}</strong></div></div><div className="party-lga-columns"><section className="party-lga-column winning"><header><div><span className="performance-dot" />Winning LGAs</div><b>{partyAnalysis.winningLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.winningLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Ahead of {item.opponent}</small></div><div><b>+{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.winningLgas.length && <p>No confirmed LGA lead for {focusParty} yet.</p>}</div></section><section className="party-lga-column losing"><header><div><span className="performance-dot" />Losing LGAs</div><b>{partyAnalysis.losingLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.losingLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Behind {item.opponent}</small></div><div><b>-{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.losingLgas.length && <p>No confirmed LGA loss for {focusParty} yet.</p>}</div></section></div>{partyAnalysis.tiedLgas.length > 0 && <p className="party-tied-note">Tied in: {partyAnalysis.tiedLgas.join(", ")}.</p>}<p className="party-analysis-note">Leading in {partyAnalysis.wards} wards. Related incident mentions: {partyAnalysis.incidents}. Based only on submitted polling-unit results.</p></section>}
         {view === "winloss" && <section className="result-table-card"><div className="result-table-title"><div><h2>Win / Loss Analysis</h2><p>Leading party by ward and LGA from submitted polling-unit results.</p></div><b>Top {top6.length} parties</b></div><div className="wl-sub-tabs"><button className="wl-sub-tab active">By Ward</button><button className="wl-sub-tab" onClick={() => setView("winloss-lga")}>By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>Ward</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.wards.map(g => <tr key={g.label}><td>{g.label}</td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}{!winLoss.wards.length && <tr><td colSpan={top6.length + 2} className="result-empty">No ward-level data available yet.</td></tr>}</tbody></table></div></section>}
         {view === "winloss-lga" && <section className="result-table-card"><div className="result-table-title"><div><h2>LGA Win / Loss Analysis</h2><p>Leading party in each Local Government Area.</p></div></div><div className="wl-sub-tabs"><button className="wl-sub-tab" onClick={() => setView("winloss")}>By Ward</button><button className="wl-sub-tab active">By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>LGA</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.lgas.map(g => <tr key={g.label}><td><b>{g.label}</b></td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}</tbody></table></div></section>}
         {view !== "breakdown" && <div className="result-table-card" style={{marginTop: 16}}><p className="muted">Select a party in the table to compare its wins and losses. Results update automatically as new submissions arrive.</p></div>}
@@ -4831,6 +4922,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [mapDataPanel, setMapDataPanel] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [partyMapAnalysis, setPartyMapAnalysis] = useState(null);
   const [analysisLayers, setAnalysisLayers] = useState([]);
   const [pendingAreaAction, setPendingAreaAction] = useState(null);
   const [areaSearchResult, setAreaSearchResult] = useState(null);
@@ -7697,6 +7789,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           showBoundaryLayer={showBoundaryLayer}
           showStateBorders={showStateBorders}
           showLgaBorders={showLgaBorders}
+          partyMapAnalysis={partyMapAnalysis}
           selectedBoundaryState={selectedBoundaryState}
           onBoundarySelect={(id, label) => {
             setSelectedBoundaryState(id);
@@ -8010,7 +8103,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </section>
       )}
-      {resultsOpen && <ResultsCenter incidents={incidents} onClose={() => setResultsOpen(false)} authToken={session.token} />}
+      {resultsOpen && <ResultsCenter incidents={incidents} onClose={() => setResultsOpen(false)} authToken={session.token} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} />}
       {analyticsOpen && canAdmin && (
         <AnalyticsPanel
           incidents={incidents}

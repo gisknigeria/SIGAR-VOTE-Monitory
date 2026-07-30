@@ -716,6 +716,46 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 };
 
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
+let oyoBoundaryCache = null;
+app.get('/api/boundaries/oyo', rateLimit, asyncRoute(async (_req, res) => {
+  if (oyoBoundaryCache?.expiresAt > Date.now()) return res.json(oyoBoundaryCache.data);
+  const base = 'https://services3.arcgis.com/7J7WB6yJX0pYke9q/ArcGIS/rest/services/NCO_Security_Database_WFL1/FeatureServer';
+  const queryLayer = async (layer, where) => {
+    const params = new URLSearchParams({
+      where,
+      outFields: '*',
+      returnGeometry: 'true',
+      outSR: '4326',
+      f: 'geojson'
+    });
+    const response = await fetch(`${base}/${layer}/query?${params}`, {
+      headers: { 'User-Agent': 'Election-Monitor/1.0 boundary service' },
+      signal: AbortSignal.timeout(12_000)
+    });
+    if (!response.ok) throw new Error(`Boundary provider returned ${response.status}`);
+    const geojson = await response.json();
+    if (!Array.isArray(geojson.features)) throw new Error('Boundary provider returned invalid GeoJSON');
+    return geojson;
+  };
+  try {
+    const [states, lgas] = await Promise.all([
+      queryLayer('2', "ADM1_EN = 'Oyo'"),
+      queryLayer('1', "ADM1_EN = 'Oyo'")
+    ]);
+    const data = {
+      state: states,
+      lgas,
+      attribution: 'Administrative boundaries: ArcGIS feature service',
+      fetchedAt: new Date().toISOString()
+    };
+    oyoBoundaryCache = { data, expiresAt: Date.now() + 24 * 60 * 60 * 1000 };
+    res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+    return res.json(data);
+  } catch (error) {
+    console.error('[boundaries] Oyo boundary fetch failed:', error.message);
+    return res.status(503).json({ message: 'Oyo boundary data is temporarily unavailable.' });
+  }
+}));
 app.use(['/api/news/summary', '/api/analysis/ai'], (req, _res, next) => { console.log(`[ai] request=${req.path} geminiConfigured=${Boolean(process.env.GEMINI_API_KEY)} model=${process.env.GEMINI_MODEL || 'gemini-2.0-flash'}`); next(); });
 app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => {
   const provider = process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : process.env.OPENAI_API_KEY ? 'openai' : 'none';
