@@ -57,8 +57,12 @@ jsonDb.chatRooms ||= [];
 jsonDb.chatMembers ||= [];
 jsonDb.chatMessages ||= [];
 jsonDb.parties ||= [];
+const existingSeedUsers = new Map(jsonDb.users.filter(user => ['u0', 'u1'].includes(user.id)).map(user => [user.id, user]));
 jsonDb.users = jsonDb.users.filter(user => !['u0', 'u1', 'u2', 'u3'].includes(user.id));
-jsonDb.users.unshift(...seed.users);
+jsonDb.users.unshift(...seed.users.map(user => {
+  const existing = existingSeedUsers.get(user.id);
+  return existing ? { ...user, ...existing, password: existing.password } : user;
+}));
 jsonDb.users = jsonDb.users.map(user => {
   if (user.role === 'Officer') return { ...user, role: 'Agent', rank: 'Agent' };
   if (user.role === 'Admin') return { ...user, rank: 'Admin', command: user.command || 'Oyo State Command' };
@@ -228,7 +232,7 @@ async function initPostgres() {
   await pool.query("delete from incidents where id in ('i1','i2','i3') or created_by='seed'");
   await pool.query("delete from users where id in ('u2','u3')");
   for (const user of seed.users) {
-    await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) on conflict (id) do update set name=excluded.name,email=excluded.email,password=excluded.password,role=excluded.role,rank=excluded.rank,active=excluded.active,unit=excluded.unit,command=excluded.command', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.lga, user.lat, user.lng]);
+    await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) on conflict (id) do update set name=excluded.name,email=excluded.email,role=excluded.role,rank=excluded.rank,active=excluded.active,unit=excluded.unit,command=excluded.command', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.lga, user.lat, user.lng]);
   }
 }
 
@@ -511,12 +515,11 @@ const callGroqWithFallback = async (prompt) => {
 };
 const normalizeNewsTitle = value => sanitizeString(String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2').replace(/([0-9])([A-Za-z])/g, '$1 $2').replace(/:\s*/g, ': ').replace(/\s*[-–—]\s*/g, ' — '));
 const normalizeNewsDate = value => { const raw = String(value || '').trim(); const compact = raw.match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?(\d{2})?Z?$/); const date = compact ? new Date(Date.UTC(Number(compact[1]), Number(compact[2]) - 1, Number(compact[3]), Number(compact[4] || 0), Number(compact[5] || 0), Number(compact[6] || 0))) : new Date(raw); return Number.isNaN(date.getTime()) ? '' : date.toISOString(); };
-const isOyoPoliticalNews = value => {
+const isOyoStateNews = value => {
   const text = String(value || '');
   const hasOyoContext = /\boyo(?: state)?\b|\bibadan\b/i.test(text);
-  const hasPoliticalContext = /\binec\b|\belection\b|\bpolitic(?:s|al)?\b|\bgovern(?:or|ment|ance)\b|\bcampaign\b|\bballot\b|\bpolling\b|\bvote(?:r|s|d|s| counting)?\b|\bapc\b|\bpdp\b|\blabour party\b|\bnnpp\b|\bsdp\b/i.test(text);
   const isHotelCompany = /\boyo[- ]?parent\b|\boyo hotels?\b|\bhospitality\b|\bhotel\b|\bprism\b|\bipo\b/i.test(text);
-  return hasOyoContext && hasPoliticalContext && !isHotelCompany;
+  return hasOyoContext && !isHotelCompany;
 };
 
 // In-memory IP log — stores last 500 entries (incident + SOS submissions)
@@ -556,12 +559,14 @@ app.use((req, res, next) => {
   next();
 });
 const tokenOptions = { algorithms: ['HS256'], issuer: 'election-monitor-api', audience: 'election-monitor-web' };
+const sessionTtl = process.env.SESSION_TTL || '30d';
+const sessionCookieMaxAge = Math.max(3600, Number(process.env.SESSION_COOKIE_MAX_AGE) || 30 * 24 * 60 * 60);
 const issueToken = user => jwt.sign(
   { sub: user.id, fp: credentialFingerprint(user.password) },
   secret,
-  { algorithm: 'HS256', issuer: tokenOptions.issuer, audience: tokenOptions.audience, expiresIn: '2h', jwtid: createId('jwt') },
+  { algorithm: 'HS256', issuer: tokenOptions.issuer, audience: tokenOptions.audience, expiresIn: sessionTtl, jwtid: createId('jwt') },
 );
-const sessionCookie = token => `__Host-session=${encodeURIComponent(token)}; Path=/; Max-Age=7200; HttpOnly; SameSite=Strict${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
+const sessionCookie = token => `__Host-session=${encodeURIComponent(token)}; Path=/; Max-Age=${sessionCookieMaxAge}; HttpOnly; SameSite=Strict${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
 const clearSessionCookie = '__Host-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict';
 const cookieValue = (req, name) => String(req.headers.cookie || '').split(';').map(v => v.trim()).find(v => v.startsWith(`${name}=`))?.slice(name.length + 1);
 const authenticateToken = async token => {
@@ -700,7 +705,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(gnewsQuery)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
       const payload = await gnews.json();
-      const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: normalizeNewsDate(item.publishedAt), language: 'en' })).filter(item => item.title && item.url && isOyoPoliticalNews(`${item.title} ${item.description}`)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: normalizeNewsDate(item.publishedAt), language: 'en' })).filter(item => item.title && item.url && isOyoStateNews(`${item.title} ${item.description}`)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
       console.log(`[news] provider=gnews query=${JSON.stringify(q)} total=${payload.totalArticles || 0} articles=${articles.length}`);
       if (articles.length) return res.json({ articles, query: q, provider: 'gnews', fetchedAt: new Date().toISOString() });
     }
@@ -722,14 +727,14 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     data = { articles: xmls.flatMap(parseRss) };
   }
   const seen = new Set();
-  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: normalizeNewsDate(item.seendate || item.pubdate), language: item.language || '' })).filter(item => item.title && item.url && isOyoPoliticalNews(item.title) && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: normalizeNewsDate(item.seendate || item.pubdate), language: item.language || '' })).filter(item => item.title && item.url && isOyoStateNews(item.title) && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
   console.log(`[news] provider=${data === undefined ? 'none' : 'gdelt/rss'} query=${JSON.stringify(q)} articles=${articles.length}`);
   res.json({ articles, query: q, provider: 'gdelt/rss', fetchedAt: new Date().toISOString() });
 }));
 app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   const articles = Array.isArray(req.body?.articles) ? req.body.articles.slice(0, 30) : [];
   if (!articles.length) return res.status(400).json({ message: 'News articles are required.' });
-  const newsPrompt = `Create a concise Oyo State politics and election briefing using the supplied headlines and, when your model supports web search, current reputable web sources. Focus only on Oyo State politics, INEC, elections, campaigns, parties, polling, governance, and election security. Return at most 160 words with exactly these plain-text sections: CURRENT PICTURE, TOP DEVELOPMENTS (maximum 4 bullets), WHAT TO MONITOR (maximum 3 bullets). Distinguish confirmed reporting from uncertainty. Do not use Markdown bold markers, persuade voters, or recommend partisan messaging.\n\nHEADLINES:\n${articles.map((item) => `${item.title} (${item.source})`).join('\n')}`;
+  const newsPrompt = `Create a concise Oyo State news briefing using the supplied headlines and, when your model supports web search, current reputable web sources. Cover genuine Oyo State developments, prioritizing politics, INEC, elections, parties, governance, security, public services, and major local events. Return at most 160 words with exactly these plain-text sections: CURRENT PICTURE, TOP DEVELOPMENTS (maximum 4 bullets), WHAT TO MONITOR (maximum 3 bullets). Distinguish confirmed reporting from uncertainty. Do not include the OYO hotel company, use Markdown bold markers, persuade voters, or recommend partisan messaging.\n\nHEADLINES:\n${articles.map((item) => `${item.title} (${item.source})`).join('\n')}`;
 
   if (process.env.GROQ_API_KEY) {
     try {
