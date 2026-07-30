@@ -842,6 +842,7 @@ function MapView({
   showBoundaryLayer,
   showStateBorders,
   showLgaBorders,
+  showBoundaryNames,
   partyMapAnalysis,
   selectedBoundaryState,
   onBoundarySelect,
@@ -1440,18 +1441,20 @@ function MapView({
             // Permanent label at centroid
             try {
               const center = layerGeo.getBounds().getCenter();
-              const label = L.marker(center, {
-                icon: L.divIcon({
-                  className: "nigeria-state-label",
-                  html: `<span>${name}</span>`,
-                  iconSize: null,
-                  iconAnchor: [0, 0],
-                }),
-                interactive: false,
-                zIndexOffset: -100,
-              });
-              label.addTo(map);
-              nigeriaStateLabels.current.push(label);
+              if (showBoundaryNames) {
+                const label = L.marker(center, {
+                  icon: L.divIcon({
+                    className: "nigeria-state-label",
+                    html: `<span>${escapeMapText(name)}</span>`,
+                    iconSize: null,
+                    iconAnchor: [0, 0],
+                  }),
+                  interactive: false,
+                  zIndexOffset: -100,
+                });
+                label.addTo(map);
+                nigeriaStateLabels.current.push(label);
+              }
             } catch {}
           }
           layerGeo.on({
@@ -1471,7 +1474,7 @@ function MapView({
     ).addTo(map);
     nigeriaStateOverlay.current = stateLayer;
     stateLayer.bringToFront();
-  }, [showStateBorders, mapLayers, onBoundarySelect, oyoBoundaries.state]);
+  }, [showStateBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.state]);
 
   // Oyo State LGA boundary overlay (from uploaded GeoJSON layers).
   useEffect(() => {
@@ -1541,18 +1544,20 @@ function MapView({
             layerGeo.bindTooltip(tooltip, { permanent: false, sticky: true, className: "nigeria-lga-tooltip" });
             try {
               const center = layerGeo.getBounds().getCenter();
-              const label = L.marker(center, {
-                icon: L.divIcon({
-                  className: "nigeria-lga-label",
-                  html: `<span>${name}</span>`,
-                  iconSize: null,
-                  iconAnchor: [0, 0],
-                }),
-                interactive: false,
-                zIndexOffset: -50,
-              });
-              label.addTo(map);
-              nigeriaLgaLabels.current.push(label);
+              if (showBoundaryNames) {
+                const label = L.marker(center, {
+                  icon: L.divIcon({
+                    className: "nigeria-lga-label",
+                    html: `<span>${escapeMapText(name)}</span>`,
+                    iconSize: null,
+                    iconAnchor: [0, 0],
+                  }),
+                  interactive: false,
+                  zIndexOffset: -50,
+                });
+                label.addTo(map);
+                nigeriaLgaLabels.current.push(label);
+              }
             } catch {}
           }
           layerGeo.on({
@@ -1572,7 +1577,7 @@ function MapView({
     ).addTo(map);
     nigeriaLgaOverlay.current = lgaLayer;
     lgaLayer.bringToFront();
-  }, [showLgaBorders, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
+  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -4934,6 +4939,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
   const [showStateBorders, setShowStateBorders] = useState(true);
   const [showLgaBorders, setShowLgaBorders] = useState(true);
+  const [showBoundaryNames, setShowBoundaryNames] = useState(true);
   const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
   const [selectedBoundaryLabel, setSelectedBoundaryLabel] = useState("");
   const [drawMode, setDrawMode] = useState("");
@@ -7725,6 +7731,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               <button className="map-action logout-btn" onClick={() => setProfileMenuOpen(value => !value)} title="Profile menu"><span>{session.user.name?.[0] || "U"}</span></button>
               <div className="profile-dropdown"><div><b>{session.user.name}</b><small>{session.user.role}</small></div><button onClick={() => setProfileOpen(true)}><FaKey /> Profile</button><button onClick={onLogout}><FaSignOutAlt /> Logout</button></div>
             </div>
+            <div className="boundary-display-controls" aria-label="Map boundary display">
+              <strong>Map boundaries</strong>
+              <button type="button" className={showStateBorders ? "active" : ""} aria-pressed={showStateBorders} onClick={() => setShowStateBorders(value => !value)}><span>State border</span><i /></button>
+              <button type="button" className={showLgaBorders ? "active" : ""} aria-pressed={showLgaBorders} onClick={() => setShowLgaBorders(value => !value)}><span>LGA borders</span><i /></button>
+              <button type="button" className={showBoundaryNames ? "active" : ""} aria-pressed={showBoundaryNames} onClick={() => setShowBoundaryNames(value => !value)}><span>Names</span><i /></button>
+            </div>
           </div>
         </div>
         {isAgent && <div className="agent-field-screen">
@@ -7789,6 +7801,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           showBoundaryLayer={showBoundaryLayer}
           showStateBorders={showStateBorders}
           showLgaBorders={showLgaBorders}
+          showBoundaryNames={showBoundaryNames}
           partyMapAnalysis={partyMapAnalysis}
           selectedBoundaryState={selectedBoundaryState}
           onBoundarySelect={(id, label) => {
