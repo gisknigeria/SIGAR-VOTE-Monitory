@@ -1834,6 +1834,9 @@ function PollingResultForm({ user, point, parties, onClose, onSave }) {
   const [photo, setPhoto] = useState(null);
   const [error, setError] = useState("");
   const submittedAt = useMemo(() => new Date(), []);
+  useEffect(() => {
+    setRows(current => current.map(row => parties.includes(row.party) ? row : { ...row, party: parties[0] || "" }));
+  }, [parties]);
   const addPhoto = (file) => {
     if (!file) return;
     if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) return setError("Choose an image not larger than 8MB.");
@@ -4756,7 +4759,7 @@ function AnalyticsPanel({
   );
 }
 
-function ResultsCenter({ incidents, onClose, authToken, initialFocusParty = "", onPartyMapChange }) {
+function ResultsCenter({ incidents, parties = [], onClose, authToken, initialFocusParty = "", onPartyMapChange }) {
   const [view, setView] = useState("breakdown");
   const [focusParty, setFocusParty] = useState(initialFocusParty);
   const [aiOutlook, setAiOutlook] = useState("");
@@ -4782,13 +4785,14 @@ function ResultsCenter({ incidents, onClose, authToken, initialFocusParty = "", 
       try { const parsed = JSON.parse(report.resultCount || "[]"); if (Array.isArray(parsed)) results = parsed; } catch { results = parseResultEntries(report.resultCount).map(item => ({ party: item.label, votes: item.value })); }
       return { ...report, results };
     });
-    const partyNames = [...new Set(rows.flatMap(row => row.results.map(item => item.party)))];
+    const historicalParties = rows.flatMap(row => row.results.map(item => item.party));
+    const partyNames = [...new Set([...parties, ...historicalParties].filter(Boolean))];
     const totals = Object.fromEntries(partyNames.map(party => [party, rows.reduce((sum, row) => sum + Number(row.results.find(item => item.party === party)?.votes || 0), 0)]));
     return {
       partyNames, totals,
       rows: rows.sort((a, b) => `${a.lga}${a.ward}${a.pollingUnit}`.localeCompare(`${b.lga}${b.ward}${b.pollingUnit}`)),
     };
-  }, [reports]);
+  }, [reports, parties]);
   const top6 = useMemo(() => summary.partyNames.slice().sort((a,b) => summary.totals[b]-summary.totals[a]).slice(0,6), [summary]);
   const winLoss = useMemo(() => {
     const groups = (key) => {
@@ -7731,14 +7735,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               <button className="map-action logout-btn" onClick={() => setProfileMenuOpen(value => !value)} title="Profile menu"><span>{session.user.name?.[0] || "U"}</span></button>
               <div className="profile-dropdown"><div><b>{session.user.name}</b><small>{session.user.role}</small></div><button onClick={() => setProfileOpen(true)}><FaKey /> Profile</button><button onClick={onLogout}><FaSignOutAlt /> Logout</button></div>
             </div>
-            <div className="boundary-display-controls" aria-label="Map boundary display">
-              <strong>Map boundaries</strong>
-              <button type="button" className={showStateBorders ? "active" : ""} aria-pressed={showStateBorders} onClick={() => setShowStateBorders(value => !value)}><span>State border</span><i /></button>
-              <button type="button" className={showLgaBorders ? "active" : ""} aria-pressed={showLgaBorders} onClick={() => setShowLgaBorders(value => !value)}><span>LGA borders</span><i /></button>
-              <button type="button" className={showBoundaryNames ? "active" : ""} aria-pressed={showBoundaryNames} onClick={() => setShowBoundaryNames(value => !value)}><span>Names</span><i /></button>
-            </div>
           </div>
         </div>
+        {!isAgent && <div className="boundary-display-controls" aria-label="Map boundary display">
+          <button type="button" className={showStateBorders || showLgaBorders ? "active" : ""} aria-pressed={showStateBorders || showLgaBorders} title={showStateBorders || showLgaBorders ? "Hide Oyo State and LGA borders" : "Show Oyo State and LGA borders"} onClick={() => { const next = !(showStateBorders || showLgaBorders); setShowStateBorders(next); setShowLgaBorders(next); }}><span>Border</span><i /></button>
+          <button type="button" className={showBoundaryNames ? "active" : ""} aria-pressed={showBoundaryNames} disabled={!showStateBorders && !showLgaBorders} title={showBoundaryNames ? "Hide boundary names" : "Show boundary names"} onClick={() => setShowBoundaryNames(value => !value)}><span>Names</span><i /></button>
+        </div>}
         {isAgent && <div className="agent-field-screen">
           <img src="/bsa-logo.png" alt="BSA Oyo Ahead" />
           <span className="eyebrow">FIELD REPORTING</span>
@@ -8116,7 +8118,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </section>
       )}
-      {resultsOpen && <ResultsCenter incidents={incidents} onClose={() => setResultsOpen(false)} authToken={session.token} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} />}
+      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} onClose={() => setResultsOpen(false)} authToken={session.token} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} />}
       {analyticsOpen && canAdmin && (
         <AnalyticsPanel
           incidents={incidents}

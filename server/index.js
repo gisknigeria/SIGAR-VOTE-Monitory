@@ -768,10 +768,16 @@ app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => {
 });
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Oyo State election').slice(0, 180);
+  const configuredParties = (await store.parties())
+    .slice(0, 20)
+    .map(party => sanitizeString(party).replace(/["()]/g, ' ').trim())
+    .filter(Boolean);
+  const partyQueryTerms = configuredParties.map(party => `"Oyo ${party}"`);
   const providerArticles = [];
   if (process.env.GNEWS_API_KEY) {
+    const gnewsPartyTerms = partyQueryTerms.slice(0, 5);
     const gnewsQuery = /oyo|ibadan/i.test(q)
-      ? '("Oyo State" OR Ibadan OR Ogbomoso OR Iseyin OR "Governor Makinde" OR "INEC Oyo" OR "Oyo APC" OR "Oyo PDP")'
+      ? `("Oyo State" OR Ibadan OR Ogbomoso OR Iseyin OR "Governor Makinde" OR "INEC Oyo"${gnewsPartyTerms.length ? ` OR ${gnewsPartyTerms.join(' OR ')}` : ''})`
       : q;
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(gnewsQuery)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
@@ -783,7 +789,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   }
   // Keep the query broad: requiring every keyword at once produces empty
   // results because most articles mention only one location or party.
-  const query = `("${q}" OR "Oyo State" OR Ibadan OR Ogbomoso OR Iseyin OR "Governor Makinde" OR "Oyo government" OR "INEC Oyo" OR "Oyo election" OR "Oyo APC" OR "Oyo PDP" OR "Oyo Labour Party")`;
+  const query = `("${q}" OR "Oyo State" OR Ibadan OR Ogbomoso OR Iseyin OR "Governor Makinde" OR "Oyo government" OR "INEC Oyo" OR "Oyo election"${partyQueryTerms.length ? ` OR ${partyQueryTerms.slice(0, 10).join(' OR ')}` : ''})`;
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=50&sort=HybridRel`;
   let data;
   try {
@@ -810,7 +816,8 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     '"Oyo SDP"',
     '"Oyo State House of Assembly"',
     '"Oyo State" local government',
-    '"Oyo State" upcoming election'
+    '"Oyo State" upcoming election',
+    ...configuredParties.map(party => `"Oyo State" political party "${party}"`)
   ];
   const feeds = queries.map(term => `https://news.google.com/rss/search?q=${encodeURIComponent(term)}&hl=en-NG&gl=NG&ceid=NG:en`).concat(['https://punchng.com/feed/', 'https://www.premiumtimesng.com/feed', 'https://guardian.ng/feed/']);
   const xmls = await Promise.all(feeds.map((feed, index) => fetch(feed, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).then(async r => ({ xml: r.ok ? await r.text() : '', searchContext: index < queries.length ? queries[index] : '' })).catch(() => ({ xml: '', searchContext: '' }))));
@@ -1116,7 +1123,17 @@ app.put('/api/users/:id/password', auth, rateLimit, asyncRoute(async (req, res) 
 }));
 app.get('/api/parties', auth, rateLimit, asyncRoute(async (_, res) => res.json(await store.parties())));
 app.put('/api/parties', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
-  const parties = [...new Set((Array.isArray(req.body.parties) ? req.body.parties : []).map(value => String(value).trim()).filter(Boolean))].slice(0, 100);
+  const seen = new Set();
+  const parties = (Array.isArray(req.body.parties) ? req.body.parties : [])
+    .map(value => sanitizeString(value).trim().slice(0, 100))
+    .filter(value => {
+      if (!value) return false;
+      const key = value.toLocaleLowerCase('en-NG');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 100);
   const saved = await store.setParties(parties);
   io.emit('parties:updated', saved);
   res.json(saved);
