@@ -476,6 +476,38 @@ const generalLimiter = createRateLimitState();
 const socketLimiter = createRateLimitState();
 const openAiPrimaryModel = process.env.OPENAI_MODEL || 'gpt-5.6-terra';
 const openAiFallbackModel = process.env.OPENAI_FALLBACK_MODEL || 'gpt-5.6-luna';
+const groqPrimaryModel = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+const groqFallbackModel = process.env.GROQ_FALLBACK_MODEL || 'openai/gpt-oss-20b';
+const callGroq = async (prompt, model) => {
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_completion_tokens: 700,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || 'Groq request failed');
+    error.status = response.status;
+    throw error;
+  }
+  return body.choices?.[0]?.message?.content || '';
+};
+const callGroqWithFallback = async (prompt) => {
+  try {
+    return { text: await callGroq(prompt, groqPrimaryModel), model: groqPrimaryModel };
+  } catch (primaryError) {
+    console.error('[groq] primary failed:', primaryError.status || '', primaryError.message);
+    return { text: await callGroq(prompt, groqFallbackModel), model: groqFallbackModel };
+  }
+};
 const normalizeNewsTitle = value => sanitizeString(String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2').replace(/([0-9])([A-Za-z])/g, '$1 $2').replace(/:\s*/g, ': ').replace(/\s*[-–—]\s*/g, ' — '));
 const normalizeNewsDate = value => { const raw = String(value || '').trim(); const compact = raw.match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?(\d{2})?Z?$/); const date = compact ? new Date(Date.UTC(Number(compact[1]), Number(compact[2]) - 1, Number(compact[3]), Number(compact[4] || 0), Number(compact[5] || 0), Number(compact[6] || 0))) : new Date(raw); return Number.isNaN(date.getTime()) ? '' : date.toISOString(); };
 
@@ -644,7 +676,15 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
 app.use(['/api/news/summary', '/api/analysis/ai'], (req, _res, next) => { console.log(`[ai] request=${req.path} geminiConfigured=${Boolean(process.env.GEMINI_API_KEY)} model=${process.env.GEMINI_MODEL || 'gemini-2.0-flash'}`); next(); });
-app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => res.json({ configured: Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY), provider: process.env.GEMINI_API_KEY ? 'gemini' : (process.env.OPENAI_API_KEY ? 'openai' : 'none'), model: process.env.GEMINI_API_KEY ? (process.env.GEMINI_MODEL || 'gemini-2.0-flash') : (process.env.OPENAI_MODEL || null), fallbackModel: process.env.GEMINI_API_KEY ? (process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite') : (process.env.OPENAI_FALLBACK_MODEL || null) }));
+app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => {
+  const provider = process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : process.env.OPENAI_API_KEY ? 'openai' : 'none';
+  const models = provider === 'groq'
+    ? [groqPrimaryModel, groqFallbackModel]
+    : provider === 'gemini'
+      ? [process.env.GEMINI_MODEL || 'gemini-2.0-flash', process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite']
+      : [process.env.OPENAI_MODEL || null, process.env.OPENAI_FALLBACK_MODEL || null];
+  res.json({ configured: provider !== 'none', provider, model: models[0], fallbackModel: models[1] });
+});
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Oyo State election').slice(0, 180);
   if (process.env.GNEWS_API_KEY) {
@@ -681,9 +721,19 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
 app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   const articles = Array.isArray(req.body?.articles) ? req.body.articles.slice(0, 30) : [];
   if (!articles.length) return res.status(400).json({ message: 'News articles are required.' });
+  const newsPrompt = `Summarize these Oyo State news headlines neutrally. Identify the hottest themes, distinguish confirmed facts from uncertainty, and give practical monitoring implications. Do not persuade voters or recommend partisan messaging.\n${articles.map((item) => `${item.title} (${item.source})`).join('\n')}`;
+
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const result = await callGroqWithFallback(newsPrompt);
+      return res.json({ summary: result.text, model: result.model, provider: 'groq' });
+    } catch (error) {
+      console.error('[groq-news] both models failed:', error.status || '', error.message);
+    }
+  }
 
   if (process.env.GEMINI_API_KEY) {
-    const prompt = `Summarize these election headlines neutrally and identify hot themes and operational implications.\n${articles.map((item) => `${item.title} (${item.source})`).join('\n')}`;
+    const prompt = newsPrompt;
     const call = async (model) => {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
         method: 'POST',
@@ -734,8 +784,19 @@ app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req,
 }));
 app.post('/api/analysis/ai', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   const context = req.body?.context || {};
+  const operationalPrompt = `Provide a neutral operational election-monitoring analysis from this data. Discuss uncertainty, data quality, incident/SOS priorities, and verification actions. Do not target voters or recommend partisan persuasion.\n${JSON.stringify(context)}`;
+
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const result = await callGroqWithFallback(operationalPrompt);
+      return res.json({ analysis: result.text, model: result.model, provider: 'groq' });
+    } catch (error) {
+      console.error('[groq-analysis] both models failed:', error.status || '', error.message);
+    }
+  }
+
   if (process.env.GEMINI_API_KEY) {
-    const prompt = `Provide a neutral operational election-monitoring analysis from this data. Discuss uncertainty, data quality, incident priorities and verification actions.\n${JSON.stringify(context)}`;
+    const prompt = operationalPrompt;
     const call = async (model) => {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
         method: 'POST',
