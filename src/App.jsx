@@ -5562,8 +5562,16 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       stopSilentAudio();
     };
   }, []);
-  const visible = incidents.filter(
-    (i) => filter === "All" || i.severity === filter || i.status === filter,
+  const visible = useMemo(
+    () => incidents
+      .map((incident, index) => ({ incident, index }))
+      .filter(({ incident }) => filter === "All" || incident.severity === filter || incident.status === filter)
+      .sort((a, b) => {
+        const dateDifference = (Date.parse(b.incident.createdAt) || 0) - (Date.parse(a.incident.createdAt) || 0);
+        return dateDifference || a.index - b.index;
+      })
+      .map(({ incident }) => incident),
+    [incidents, filter],
   );
   const mapVisibleIncidents = showReports
     ? incidents.filter(
@@ -7512,7 +7520,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                             <div className="card-top">
                               <b>{item.title}</b>
                               <time>
-                                {new Date(item.createdAt).toLocaleTimeString([], {
+                                {new Date(item.createdAt).toLocaleString([], {
+                                  month: "short",
+                                  day: "numeric",
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 })}
