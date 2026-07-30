@@ -513,13 +513,41 @@ const callGroqWithFallback = async (prompt) => {
     return { text: await callGroq(prompt, groqFallbackModel), model: groqFallbackModel };
   }
 };
-const normalizeNewsTitle = value => sanitizeString(String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2').replace(/([0-9])([A-Za-z])/g, '$1 $2').replace(/:\s*/g, ': ').replace(/\s*[-–—]\s*/g, ' — '));
+const normalizeNewsTitle = (value, articleUrl = '') => {
+  const normalized = sanitizeString(String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]{2,})([a-z])/g, '$1 $2')
+    .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+    .replace(/([0-9])([A-Za-z])/g, '$1 $2')
+    .replace(/:\s*/g, ': ')
+    .replace(/\s*[-–—]\s*/g, ' — '));
+  if ((normalized.match(/\s/g) || []).length < 2 && articleUrl) {
+    try {
+      const parts = new URL(articleUrl).pathname.split('/').filter(Boolean);
+      const slug = decodeURIComponent(parts.at(-1) || '')
+        .replace(/\.(?:html?|ece|php|aspx?)$/i, '')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\d{7,}\b.*$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if ((slug.match(/\s/g) || []).length >= 2 && /[A-Za-z]/.test(slug)) {
+        return sanitizeString(slug.charAt(0).toUpperCase() + slug.slice(1));
+      }
+    } catch {
+      // Keep the provider title when its URL is opaque or malformed.
+    }
+  }
+  return normalized;
+};
 const normalizeNewsDate = value => { const raw = String(value || '').trim(); const compact = raw.match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?(\d{2})?Z?$/); const date = compact ? new Date(Date.UTC(Number(compact[1]), Number(compact[2]) - 1, Number(compact[3]), Number(compact[4] || 0), Number(compact[5] || 0), Number(compact[6] || 0))) : new Date(raw); return Number.isNaN(date.getTime()) ? '' : date.toISOString(); };
 const isOyoStateNews = value => {
   const text = String(value || '');
-  const hasOyoContext = /\boyo(?: state)?\b|\bibadan\b/i.test(text);
-  const isHotelCompany = /\boyo[- ]?parent\b|\boyo hotels?\b|\bhospitality\b|\bhotel\b|\bprism\b|\bipo\b/i.test(text);
-  return hasOyoContext && !isHotelCompany;
+  const isHotelCompany = /\boyo[\s\-–—]*parent\b|\boyo[\s\-–—]*hotels?\b|\bhospitality\b|\bhotels?\b|\bprism\b|\bipo\b|\brooms?\b/i.test(text);
+  if (isHotelCompany) return false;
+  if (/\boyo state\b|\bibadan\b/i.test(text)) return true;
+  const hasBareOyo = /\boyo\b/i.test(text);
+  const hasLocalContext = /\bnigeria(?:n)?\b|\binec\b|\bmakinde\b|\bgovern(?:or|ment|ance)\b|\bstate assembly\b|\bcommissioner\b|\bpolice\b|\bsecurity\b|\bcp\b|\blga\b|\blocal government\b|\bmonarchs?\b|\bresidents?\b|\bpolitic(?:s|al)?\b|\belections?\b|\bapc\b|\bpdp\b|\blabour party\b/i.test(text);
+  return hasBareOyo && hasLocalContext;
 };
 
 // In-memory IP log — stores last 500 entries (incident + SOS submissions)
@@ -701,33 +729,54 @@ app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => {
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Oyo State election').slice(0, 180);
   if (process.env.GNEWS_API_KEY) {
-    const gnewsQuery = /oyo|ibadan/i.test(q) ? '(Oyo OR Ibadan OR "Oyo State" OR "INEC Oyo")' : q;
+    const gnewsQuery = /oyo|ibadan/i.test(q)
+      ? '("Oyo State" OR Ibadan OR Ogbomoso OR Iseyin OR "Governor Makinde" OR "INEC Oyo" OR "Oyo APC" OR "Oyo PDP")'
+      : q;
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(gnewsQuery)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
       const payload = await gnews.json();
-      const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: normalizeNewsDate(item.publishedAt), language: 'en' })).filter(item => item.title && item.url && isOyoStateNews(`${item.title} ${item.description}`)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title, item.url), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: normalizeNewsDate(item.publishedAt), language: 'en' })).filter(item => item.title && item.url && isOyoStateNews(`${item.title} ${item.description}`)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
       console.log(`[news] provider=gnews query=${JSON.stringify(q)} total=${payload.totalArticles || 0} articles=${articles.length}`);
       if (articles.length) return res.json({ articles, query: q, provider: 'gnews', fetchedAt: new Date().toISOString() });
     }
   }
   // Keep the query broad: requiring every keyword at once produces empty
   // results because most articles mention only one location or party.
-  const query = `(${q} OR Nigeria OR Oyo OR INEC OR election OR ballot OR polling OR vote OR APC OR PDP OR LP OR NNPP OR SDP)`;
+  const query = `("${q}" OR "Oyo State" OR Ibadan OR Ogbomoso OR Iseyin OR "Governor Makinde" OR "Oyo government" OR "INEC Oyo" OR "Oyo election" OR "Oyo APC" OR "Oyo PDP" OR "Oyo Labour Party")`;
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=50&sort=HybridRel`;
   let data;
   try {
     const response = await fetch(url, { headers: { 'User-Agent': 'Election-Monitor/1.0 news aggregation' } });
     if (response.ok) data = await response.json();
   } catch { /* fall through to RSS */ }
-  if (!data) {
-    const queries = [q, 'Oyo State election INEC', 'Ibadan election', 'Oyo political party', 'Oyo election violence'];
-    const feeds = queries.map(term => `https://news.google.com/rss/search?q=${encodeURIComponent(term)}&hl=en-NG&gl=NG&ceid=NG:en`).concat(['https://punchng.com/feed/', 'https://www.premiumtimesng.com/feed', 'https://guardian.ng/feed/']);
-    const xmls = await Promise.all(feeds.map(feed => fetch(feed, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).then(r => r.ok ? r.text() : '').catch(() => '')));
-    const parseRss = xml => [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => { const block = m[1]; const read = tag => (block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim(); return { title: read('title'), url: read('link') || read('guid'), domain: 'News feed', pubdate: read('pubDate') }; });
-    data = { articles: xmls.flatMap(parseRss) };
-  }
+  const queries = [
+    q,
+    '"Oyo State"',
+    '"Oyo State" news',
+    '"Oyo State" government',
+    '"Oyo State" security',
+    'Ibadan news',
+    'Ogbomoso news',
+    'Iseyin Oyo news',
+    '"Governor Makinde"',
+    '"INEC Oyo"',
+    '"Oyo State" election',
+    '"Oyo State" political parties',
+    '"Oyo APC"',
+    '"Oyo PDP"',
+    '"Oyo Labour Party"',
+    '"Oyo NNPP"',
+    '"Oyo SDP"',
+    '"Oyo State House of Assembly"',
+    '"Oyo State" local government',
+    '"Oyo State" upcoming election'
+  ];
+  const feeds = queries.map(term => `https://news.google.com/rss/search?q=${encodeURIComponent(term)}&hl=en-NG&gl=NG&ceid=NG:en`).concat(['https://punchng.com/feed/', 'https://www.premiumtimesng.com/feed', 'https://guardian.ng/feed/']);
+  const xmls = await Promise.all(feeds.map(feed => fetch(feed, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).then(r => r.ok ? r.text() : '').catch(() => '')));
+  const parseRss = xml => [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => { const block = m[1]; const read = tag => (block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim(); return { title: read('title'), url: read('link') || read('guid'), domain: 'News feed', pubdate: read('pubDate') }; });
+  data = { articles: [...(Array.isArray(data?.articles) ? data.articles : []), ...xmls.flatMap(parseRss)] };
   const seen = new Set();
-  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: normalizeNewsDate(item.seendate || item.pubdate), language: item.language || '' })).filter(item => item.title && item.url && isOyoStateNews(item.title) && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title, item.url), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: normalizeNewsDate(item.seendate || item.pubdate), language: item.language || '' })).filter(item => item.title && item.url && isOyoStateNews(item.title) && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
   console.log(`[news] provider=${data === undefined ? 'none' : 'gdelt/rss'} query=${JSON.stringify(q)} articles=${articles.length}`);
   res.json({ articles, query: q, provider: 'gdelt/rss', fetchedAt: new Date().toISOString() });
 }));
