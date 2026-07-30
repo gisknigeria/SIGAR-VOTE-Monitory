@@ -478,6 +478,7 @@ const openAiPrimaryModel = process.env.OPENAI_MODEL || 'gpt-5.6-terra';
 const openAiFallbackModel = process.env.OPENAI_FALLBACK_MODEL || 'gpt-5.6-luna';
 const groqPrimaryModel = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 const groqFallbackModel = process.env.GROQ_FALLBACK_MODEL || 'openai/gpt-oss-20b';
+const groqNewsModel = process.env.GROQ_NEWS_MODEL || 'groq/compound-mini';
 const callGroq = async (prompt, model) => {
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -510,6 +511,13 @@ const callGroqWithFallback = async (prompt) => {
 };
 const normalizeNewsTitle = value => sanitizeString(String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2').replace(/([0-9])([A-Za-z])/g, '$1 $2').replace(/:\s*/g, ': ').replace(/\s*[-–—]\s*/g, ' — '));
 const normalizeNewsDate = value => { const raw = String(value || '').trim(); const compact = raw.match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?(\d{2})?Z?$/); const date = compact ? new Date(Date.UTC(Number(compact[1]), Number(compact[2]) - 1, Number(compact[3]), Number(compact[4] || 0), Number(compact[5] || 0), Number(compact[6] || 0))) : new Date(raw); return Number.isNaN(date.getTime()) ? '' : date.toISOString(); };
+const isOyoPoliticalNews = value => {
+  const text = String(value || '');
+  const hasOyoContext = /\boyo(?: state)?\b|\bibadan\b/i.test(text);
+  const hasPoliticalContext = /\binec\b|\belection\b|\bpolitic(?:s|al)?\b|\bgovern(?:or|ment|ance)\b|\bcampaign\b|\bballot\b|\bpolling\b|\bvote(?:r|s|d|s| counting)?\b|\bapc\b|\bpdp\b|\blabour party\b|\bnnpp\b|\bsdp\b/i.test(text);
+  const isHotelCompany = /\boyo[- ]?parent\b|\boyo hotels?\b|\bhospitality\b|\bhotel\b|\bprism\b|\bipo\b/i.test(text);
+  return hasOyoContext && hasPoliticalContext && !isHotelCompany;
+};
 
 // In-memory IP log — stores last 500 entries (incident + SOS submissions)
 const ipLog = [];
@@ -692,7 +700,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(gnewsQuery)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
       const payload = await gnews.json();
-      const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: normalizeNewsDate(item.publishedAt), language: 'en' })).filter(item => { const text = `${item.title} ${item.description}`; return item.title && item.url && /oyo state|ibadan|nigeria|nigerian|inec/i.test(text) && !/oyo[- ]?parent|oyo hotels?|hospitality|hotel|prism|ipo/i.test(text); }).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: normalizeNewsDate(item.publishedAt), language: 'en' })).filter(item => item.title && item.url && isOyoPoliticalNews(`${item.title} ${item.description}`)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
       console.log(`[news] provider=gnews query=${JSON.stringify(q)} total=${payload.totalArticles || 0} articles=${articles.length}`);
       if (articles.length) return res.json({ articles, query: q, provider: 'gnews', fetchedAt: new Date().toISOString() });
     }
@@ -714,19 +722,25 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     data = { articles: xmls.flatMap(parseRss) };
   }
   const seen = new Set();
-  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: normalizeNewsDate(item.seendate || item.pubdate), language: item.language || '' })).filter(item => { const text = item.title; return item.title && item.url && /oyo state|ibadan|nigeria|nigerian|inec/i.test(text) && !/oyo[- ]?parent|oyo hotels?|hospitality|hotel|prism|ipo/i.test(text) && !seen.has(item.url) && seen.add(item.url); }).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: normalizeNewsDate(item.seendate || item.pubdate), language: item.language || '' })).filter(item => item.title && item.url && isOyoPoliticalNews(item.title) && !seen.has(item.url) && seen.add(item.url)).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
   console.log(`[news] provider=${data === undefined ? 'none' : 'gdelt/rss'} query=${JSON.stringify(q)} articles=${articles.length}`);
   res.json({ articles, query: q, provider: 'gdelt/rss', fetchedAt: new Date().toISOString() });
 }));
 app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   const articles = Array.isArray(req.body?.articles) ? req.body.articles.slice(0, 30) : [];
   if (!articles.length) return res.status(400).json({ message: 'News articles are required.' });
-  const newsPrompt = `Summarize these Oyo State news headlines neutrally. Identify the hottest themes, distinguish confirmed facts from uncertainty, and give practical monitoring implications. Do not persuade voters or recommend partisan messaging.\n${articles.map((item) => `${item.title} (${item.source})`).join('\n')}`;
+  const newsPrompt = `Create a concise Oyo State politics and election briefing using the supplied headlines and, when your model supports web search, current reputable web sources. Focus only on Oyo State politics, INEC, elections, campaigns, parties, polling, governance, and election security. Return at most 160 words with exactly these plain-text sections: CURRENT PICTURE, TOP DEVELOPMENTS (maximum 4 bullets), WHAT TO MONITOR (maximum 3 bullets). Distinguish confirmed reporting from uncertainty. Do not use Markdown bold markers, persuade voters, or recommend partisan messaging.\n\nHEADLINES:\n${articles.map((item) => `${item.title} (${item.source})`).join('\n')}`;
 
   if (process.env.GROQ_API_KEY) {
     try {
-      const result = await callGroqWithFallback(newsPrompt);
-      return res.json({ summary: result.text, model: result.model, provider: 'groq' });
+      try {
+        const text = await callGroq(newsPrompt, groqNewsModel);
+        return res.json({ summary: text, model: groqNewsModel, provider: 'groq' });
+      } catch (searchError) {
+        console.error('[groq-news] search model failed:', searchError.status || '', searchError.message);
+        const result = await callGroqWithFallback(newsPrompt);
+        return res.json({ summary: result.text, model: result.model, provider: 'groq' });
+      }
     } catch (error) {
       console.error('[groq-news] both models failed:', error.status || '', error.message);
     }
@@ -784,7 +798,7 @@ app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req,
 }));
 app.post('/api/analysis/ai', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
   const context = req.body?.context || {};
-  const operationalPrompt = `Provide a neutral operational election-monitoring analysis from this data. Discuss uncertainty, data quality, incident/SOS priorities, and verification actions. Do not target voters or recommend partisan persuasion.\n${JSON.stringify(context)}`;
+  const operationalPrompt = `Produce a concise, neutral Oyo election-operations briefing from this structured data. Return no more than 180 words with exactly these plain-text sections: STATUS, URGENT RISKS (maximum 4 bullets), NEXT ACTIONS (maximum 4 bullets), CONFIDENCE. Prioritize verified SOS and critical incidents, missing evidence, reporting coverage, and vote-data uncertainty. Avoid repeating the raw counts more than once. Do not use Markdown bold markers, target voters, or recommend partisan persuasion.\n\nDATA:\n${JSON.stringify(context)}`;
 
   if (process.env.GROQ_API_KEY) {
     try {
