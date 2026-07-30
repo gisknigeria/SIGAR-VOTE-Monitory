@@ -690,8 +690,11 @@ app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
       });
-      const b = await r.json();
-      if (!r.ok) throw new Error('Gemini failed');
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        console.error('[gemini-news]', r.status, b?.error?.message || 'request failed');
+        throw new Error(b?.error?.message || 'Gemini failed');
+      }
       return b.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
     };
     try {
@@ -699,8 +702,9 @@ app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req,
       let summary;
       try { summary = await call(model); } catch { model = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3-flash'; summary = await call(model); }
       return res.json({ summary, model, provider: 'gemini' });
-    } catch {
-      return res.json({ provider: 'local', model: 'statistical-fallback', summary: `AI provider unavailable. ${articles.split('\n').length} Oyo-related headlines were retrieved. Review the linked sources, prioritize the newest reports, and verify claims against official Oyo State and INEC channels before acting.` });
+    } catch (error) {
+      console.error('[gemini-news] both models failed:', error.message);
+      return res.json({ provider: 'local', model: 'statistical-fallback', summary: `AI provider unavailable. ${articles.length} Oyo-related headlines were retrieved. Review the linked sources, prioritize the newest reports, and verify claims against official Oyo State and INEC channels before acting.` });
     }
   }
 
@@ -738,8 +742,11 @@ app.post('/api/analysis/ai', auth, adminOnly, rateLimit, asyncRoute(async (req, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
       });
-      const b = await r.json();
-      if (!r.ok) throw new Error('Gemini failed');
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        console.error('[gemini-analysis]', r.status, b?.error?.message || 'request failed');
+        throw new Error(b?.error?.message || 'Gemini failed');
+      }
       return b.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
     };
     try {
@@ -747,8 +754,9 @@ app.post('/api/analysis/ai', auth, adminOnly, rateLimit, asyncRoute(async (req, 
       let analysis;
       try { analysis = await call(model); } catch { model = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3-flash'; analysis = await call(model); }
       return res.json({ analysis, model, provider: 'gemini' });
-    } catch {
-      return res.status(503).json({ message: 'Gemini analysis unavailable.' });
+    } catch (error) {
+      console.error('[gemini-analysis] both models failed:', error.message);
+      return res.json({ analysis: analyzeContextLocally(context), provider: 'local', model: 'local-fallback' });
     }
   }
 
