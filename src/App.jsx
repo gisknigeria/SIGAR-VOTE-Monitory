@@ -5026,6 +5026,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const sosLongTriggeredRef = useRef(false);
   const localCameraStreamRef = useRef(null);
   const rtcPeersRef = useRef({});
+  const rtcPeerCreationsRef = useRef({});
+  const pendingIceCandidatesRef = useRef({});
   const sharingCameraRef = useRef(false);
   const offlineRecorderRef = useRef(null);
   const offlineChunksRef = useRef([]);
@@ -5287,50 +5289,82 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     if (socket.connected) registerCameraUser();
     const fallbackIceServers = [{ urls: "stun:stun.l.google.com:19302" }];
     const iceServersPromise = request("/turn/credentials", session.token)
-      .then((result) =>
-        Array.isArray(result?.iceServers) && result.iceServers.length
+      .then((result) => {
+        console.info(`[camera] ICE provider: ${result?.provider || "unknown"}`);
+        return Array.isArray(result?.iceServers) && result.iceServers.length
           ? result.iceServers
-          : fallbackIceServers,
-      )
-      .catch(() => fallbackIceServers);
-    const makePeer = async (key, remoteUserId) => {
-      const iceServers = await iceServersPromise;
-      const pc = new RTCPeerConnection({
-        iceServers,
+          : fallbackIceServers;
+      })
+      .catch((error) => {
+        console.warn("[camera] TURN credentials unavailable; using STUN fallback", error);
+        return fallbackIceServers;
       });
-      const connectionTimer = setTimeout(() => {
-        if (pc.connectionState !== "connected" && localCameraStreamRef.current)
-          startOfflineVideoRecording("Live video could not connect");
-      }, 15000);
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "connected") {
-          clearTimeout(connectionTimer);
-          stopOfflineVideoRecording();
-          setNotice("Live video connected");
-          setTimeout(() => setNotice(""), 2500);
-        } else if (["failed", "disconnected"].includes(pc.connectionState)) {
-          startOfflineVideoRecording(
-            pc.connectionState === "failed"
-              ? "Live video could not connect"
-              : "Live video connection interrupted",
-          );
+    const queueIceCandidate = (key, candidate) => {
+      const queue = pendingIceCandidatesRef.current[key] || [];
+      queue.push(candidate);
+      pendingIceCandidatesRef.current[key] = queue.slice(-64);
+    };
+    const flushIceCandidates = async (key, pc) => {
+      if (!pc.remoteDescription) return;
+      const candidates = pendingIceCandidatesRef.current[key] || [];
+      delete pendingIceCandidatesRef.current[key];
+      for (const candidate of candidates) {
+        try {
+          await pc.addIceCandidate(candidate);
+        } catch (error) {
+          console.warn("[camera] rejected queued ICE candidate", error);
         }
-      };
-      pc.onicecandidate = (event) => {
-        if (event.candidate)
-          socket.emit("camera:signal", {
-            target: key,
-            data: { candidate: event.candidate },
-          });
-      };
-      if (remoteUserId)
-        pc.ontrack = (event) =>
-          setRemoteStreams((old) => ({
-            ...old,
-            [remoteUserId]: event.streams[0],
-          }));
-      rtcPeersRef.current[key] = pc;
-      return pc;
+      }
+    };
+    const makePeer = async (key, remoteUserId) => {
+      if (rtcPeersRef.current[key]) return rtcPeersRef.current[key];
+      if (rtcPeerCreationsRef.current[key]) return rtcPeerCreationsRef.current[key];
+      const creation = (async () => {
+        const iceServers = await iceServersPromise;
+        if (rtcPeersRef.current[key]) return rtcPeersRef.current[key];
+        const pc = new RTCPeerConnection({ iceServers });
+        rtcPeersRef.current[key] = pc;
+        const connectionTimer = setTimeout(() => {
+          if (pc.connectionState !== "connected" && localCameraStreamRef.current)
+            startOfflineVideoRecording("Live video could not connect");
+        }, 15000);
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === "connected") {
+            clearTimeout(connectionTimer);
+            stopOfflineVideoRecording();
+            setNotice("Live video connected");
+            setTimeout(() => setNotice(""), 2500);
+          } else if (["failed", "disconnected"].includes(pc.connectionState)) {
+            startOfflineVideoRecording(
+              pc.connectionState === "failed"
+                ? "Live video could not connect"
+                : "Live video connection interrupted",
+            );
+          }
+          if (pc.connectionState === "closed") clearTimeout(connectionTimer);
+        };
+        pc.onicecandidate = (event) => {
+          if (event.candidate)
+            socket.emit("camera:signal", {
+              target: key,
+              data: { candidate: event.candidate },
+            });
+        };
+        if (remoteUserId)
+          pc.ontrack = (event) => {
+            const stream = event.streams[0];
+            if (!stream) return;
+            setRemoteStreams((old) => ({
+              ...old,
+              [remoteUserId]: stream,
+            }));
+          };
+        return pc;
+      })().finally(() => {
+        delete rtcPeerCreationsRef.current[key];
+      });
+      rtcPeerCreationsRef.current[key] = creation;
+      return creation;
     };
     socket.on("incident:created", (x) => {
       if (canSeeReport(x))
@@ -5469,30 +5503,49 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     socket.on("camera:viewer:request", async ({ viewerSocketId }) => {
       const stream = localCameraStreamRef.current;
       if (!stream) return;
-      const pc = await makePeer(viewerSocketId);
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit("camera:signal", {
-        target: viewerSocketId,
-        data: { sdp: pc.localDescription },
-      });
-    });
-    socket.on("camera:signal", async ({ from, fromUserId, data }) => {
-      let pc = rtcPeersRef.current[from];
-      if (data.sdp?.type === "offer") {
-        pc ||= await makePeer(from, fromUserId);
-        await pc.setRemoteDescription(data.sdp);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+      try {
+        const stalePeer = rtcPeersRef.current[viewerSocketId];
+        if (stalePeer) {
+          stalePeer.close();
+          delete rtcPeersRef.current[viewerSocketId];
+        }
+        const pc = await makePeer(viewerSocketId);
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
         socket.emit("camera:signal", {
-          target: from,
+          target: viewerSocketId,
           data: { sdp: pc.localDescription },
         });
-      } else if (data.sdp?.type === "answer" && pc)
-        await pc.setRemoteDescription(data.sdp);
-      else if (data.candidate && pc)
-        await pc.addIceCandidate(data.candidate).catch(() => {});
+      } catch (error) {
+        console.error("[camera] failed to create live offer", error);
+        startOfflineVideoRecording("Live video negotiation failed");
+      }
+    });
+    socket.on("camera:signal", async ({ from, fromUserId, data }) => {
+      try {
+        let pc = rtcPeersRef.current[from];
+        if (data.sdp?.type === "offer") {
+          pc ||= await makePeer(from, fromUserId);
+          await pc.setRemoteDescription(data.sdp);
+          await flushIceCandidates(from, pc);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit("camera:signal", {
+            target: from,
+            data: { sdp: pc.localDescription },
+          });
+        } else if (data.sdp?.type === "answer" && pc) {
+          await pc.setRemoteDescription(data.sdp);
+          await flushIceCandidates(from, pc);
+        } else if (data.candidate) {
+          if (!pc || !pc.remoteDescription) queueIceCandidate(from, data.candidate);
+          else await pc.addIceCandidate(data.candidate);
+        }
+      } catch (error) {
+        console.error("[camera] WebRTC signalling failed", error);
+        setNotice("Live video connection failed. Tap the feed to retry.");
+      }
     });
     // Restart camera stream when app returns to foreground after being backgrounded
     const handleVisibilityChange = async () => {
@@ -5554,6 +5607,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         ?.getTracks()
         .forEach((track) => track.stop());
       Object.values(rtcPeersRef.current).forEach((pc) => pc.close());
+      rtcPeersRef.current = {};
+      rtcPeerCreationsRef.current = {};
+      pendingIceCandidatesRef.current = {};
       socket.close();
       socketRef.current = null;
       window.removeEventListener("online", flushOfflineVideoQueue);
