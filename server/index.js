@@ -476,7 +476,8 @@ const generalLimiter = createRateLimitState();
 const socketLimiter = createRateLimitState();
 const openAiPrimaryModel = process.env.OPENAI_MODEL || 'gpt-5.6-terra';
 const openAiFallbackModel = process.env.OPENAI_FALLBACK_MODEL || 'gpt-5.6-luna';
-const normalizeNewsTitle = value => sanitizeString(String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2').replace(/([0-9])([A-Za-z])/g, '$1 $2').replace(/\s*[-–—]\s*/g, ' — '));
+const normalizeNewsTitle = value => sanitizeString(String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2').replace(/([0-9])([A-Za-z])/g, '$1 $2').replace(/:\s*/g, ': ').replace(/\s*[-–—]\s*/g, ' — '));
+const normalizeNewsDate = value => { const raw = String(value || '').trim(); const compact = raw.match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?(\d{2})?Z?$/); const date = compact ? new Date(Date.UTC(Number(compact[1]), Number(compact[2]) - 1, Number(compact[3]), Number(compact[4] || 0), Number(compact[5] || 0), Number(compact[6] || 0))) : new Date(raw); return Number.isNaN(date.getTime()) ? '' : date.toISOString(); };
 
 // In-memory IP log — stores last 500 entries (incident + SOS submissions)
 const ipLog = [];
@@ -642,6 +643,7 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 };
 
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
+app.use(['/api/news/summary', '/api/analysis/ai'], (req, _res, next) => { console.log(`[ai] request=${req.path} geminiConfigured=${Boolean(process.env.GEMINI_API_KEY)} model=${process.env.GEMINI_MODEL || 'gemini-2.0-flash'}`); next(); });
 app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => res.json({ configured: Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY), provider: process.env.GEMINI_API_KEY ? 'gemini' : (process.env.OPENAI_API_KEY ? 'openai' : 'none'), model: process.env.GEMINI_API_KEY ? (process.env.GEMINI_MODEL || 'gemini-2.0-flash') : (process.env.OPENAI_MODEL || null), fallbackModel: process.env.GEMINI_API_KEY ? (process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite') : (process.env.OPENAI_FALLBACK_MODEL || null) }));
 app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
   const q = String(req.query.q || 'Oyo State election').slice(0, 180);
@@ -650,7 +652,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     const gnews = await fetch(`https://gnews.io/api/v4/search?q=${encodeURIComponent(gnewsQuery)}&lang=en&max=50&sortby=publishedAt&apikey=${encodeURIComponent(process.env.GNEWS_API_KEY)}`, { headers: { 'User-Agent': 'Election-Monitor/1.0' } }).catch(() => null);
     if (gnews?.ok) {
       const payload = await gnews.json();
-      const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: item.publishedAt || '', language: 'en' })).filter(item => { const text = `${item.title} ${item.description}`; return item.title && item.url && /oyo state|ibadan|nigeria|nigerian|inec/i.test(text) && !/oyo[- ]?parent|oyo hotels?|hospitality|hotel|prism|ipo/i.test(text); }).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+      const articles = (payload.articles || []).map(item => ({ title: normalizeNewsTitle(item.title), description: sanitizeString(item.description || ''), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.source?.name || ''), publishedAt: normalizeNewsDate(item.publishedAt), language: 'en' })).filter(item => { const text = `${item.title} ${item.description}`; return item.title && item.url && /oyo state|ibadan|nigeria|nigerian|inec/i.test(text) && !/oyo[- ]?parent|oyo hotels?|hospitality|hotel|prism|ipo/i.test(text); }).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
       console.log(`[news] provider=gnews query=${JSON.stringify(q)} total=${payload.totalArticles || 0} articles=${articles.length}`);
       if (articles.length) return res.json({ articles, query: q, provider: 'gnews', fetchedAt: new Date().toISOString() });
     }
@@ -672,7 +674,7 @@ app.get('/api/news', auth, rateLimit, asyncRoute(async (req, res) => {
     data = { articles: xmls.flatMap(parseRss) };
   }
   const seen = new Set();
-  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: item.seendate || item.pubdate || '', language: item.language || '' })).filter(item => { const text = item.title; return item.title && item.url && /oyo state|ibadan|nigeria|nigerian|inec/i.test(text) && !/oyo[- ]?parent|oyo hotels?|hospitality|hotel|prism|ipo/i.test(text) && !seen.has(item.url) && seen.add(item.url); }).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  const articles = (Array.isArray(data.articles) ? data.articles : []).map(item => ({ title: normalizeNewsTitle(item.title), url: validateExternalUrl(item.url, ['https:']) ? item.url : '', source: sanitizeString(item.domain || ''), publishedAt: normalizeNewsDate(item.seendate || item.pubdate), language: item.language || '' })).filter(item => { const text = item.title; return item.title && item.url && /oyo state|ibadan|nigeria|nigerian|inec/i.test(text) && !/oyo[- ]?parent|oyo hotels?|hospitality|hotel|prism|ipo/i.test(text) && !seen.has(item.url) && seen.add(item.url); }).sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
   console.log(`[news] provider=${data === undefined ? 'none' : 'gdelt/rss'} query=${JSON.stringify(q)} articles=${articles.length}`);
   res.json({ articles, query: q, provider: 'gdelt/rss', fetchedAt: new Date().toISOString() });
 }));
@@ -698,7 +700,7 @@ app.post('/api/news/summary', auth, adminOnly, rateLimit, asyncRoute(async (req,
       try { summary = await call(model); } catch { model = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3-flash'; summary = await call(model); }
       return res.json({ summary, model, provider: 'gemini' });
     } catch {
-      return res.status(503).json({ message: 'Gemini news summary unavailable.' });
+      return res.json({ provider: 'local', model: 'statistical-fallback', summary: `AI provider unavailable. ${articles.split('\n').length} Oyo-related headlines were retrieved. Review the linked sources, prioritize the newest reports, and verify claims against official Oyo State and INEC channels before acting.` });
     }
   }
 
