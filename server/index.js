@@ -12,6 +12,7 @@ import pg from 'pg';
 import { canManageRank, normalizeCommand, ranksBelow } from '../shared/electionData.js';
 import { credentialFingerprint, createId, createRateLimitState, normalizeText, sanitizeString, validateContentLength, validateCoordinates, validateEmail, validateExternalUrl, validateMediaPayload, validatePassword } from './security.js';
 import { analyzeContextLocally, summarizeNewsLocally } from './ai.js';
+import { FALLBACK_ICE_SERVERS, normalizeMeteredDomain, normalizeMeteredRegion, sanitizeIceServers } from './turn.js';
 
 const { Pool } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,12 @@ const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@command.loc
 const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || randomBytes(24).toString('hex');
 const adminEmail = process.env.ADMIN_EMAIL || 'admin@command.local';
 const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(24).toString('hex');
+const meteredDomain = normalizeMeteredDomain(process.env.METERED_DOMAIN);
+const meteredTurnApiKey = String(process.env.METERED_TURN_API_KEY || '').trim();
+const meteredTurnRegion = normalizeMeteredRegion(process.env.METERED_TURN_REGION);
+if ((process.env.METERED_DOMAIN || process.env.METERED_TURN_API_KEY) && (!meteredDomain || !meteredTurnApiKey)) {
+  console.warn('Metered TURN is not fully configured. Live video will use the STUN fallback.');
+}
 if (!process.env.SUPER_ADMIN_PASSWORD || !process.env.ADMIN_PASSWORD) {
   console.warn('SUPER_ADMIN_PASSWORD and ADMIN_PASSWORD were not set. Generated secure random passwords for the seeded admin accounts.');
 }
@@ -716,6 +723,33 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
 };
 
 app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
+let turnCredentialCache = null;
+app.get('/api/turn/credentials', auth, rateLimit, asyncRoute(async (_req, res) => {
+  if (!meteredDomain || !meteredTurnApiKey) {
+    return res.json({ iceServers: FALLBACK_ICE_SERVERS, provider: 'stun-fallback' });
+  }
+  if (turnCredentialCache?.expiresAt > Date.now()) return res.json(turnCredentialCache.data);
+  try {
+    const params = new URLSearchParams({ apiKey: meteredTurnApiKey, region: meteredTurnRegion });
+    const response = await fetch(`https://${meteredDomain}/api/v1/turn/credentials?${params}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) throw new Error(`Metered returned ${response.status}`);
+    const iceServers = sanitizeIceServers(await response.json());
+    if (!iceServers.some(server => {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      return urls.some(url => /^turns?:/i.test(url));
+    })) throw new Error('Metered returned no usable TURN servers');
+    const data = { iceServers, provider: 'metered', region: meteredTurnRegion };
+    turnCredentialCache = { data, expiresAt: Date.now() + 5 * 60 * 1000 };
+    res.set('Cache-Control', 'private, max-age=300');
+    return res.json(data);
+  } catch (error) {
+    console.error('[turn] Metered credential fetch failed:', error.message);
+    return res.json({ iceServers: FALLBACK_ICE_SERVERS, provider: 'stun-fallback' });
+  }
+}));
 let oyoBoundaryCache = null;
 app.get('/api/boundaries/oyo', rateLimit, asyncRoute(async (_req, res) => {
   if (oyoBoundaryCache?.expiresAt > Date.now()) return res.json(oyoBoundaryCache.data);

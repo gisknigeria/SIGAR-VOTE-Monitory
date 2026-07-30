@@ -6,11 +6,13 @@ test('registration location data includes Nigeria states and real polling-unit o
   assert.ok(NIGERIA_STATES.includes('Oyo'));
   assert.ok(NIGERIA_STATES.includes('Abia'));
   const oyoOptions = getRegistrationLocationOptions('Oyo');
-  assert.ok(oyoOptions.lgas.length > 0);
-  assert.ok(oyoOptions.wards.length > 0);
-  assert.ok(oyoOptions.pollingUnits.length > 0);
+  assert.ok(oyoOptions.lgas.includes('AFIJIO'));
+  const afijioOptions = getRegistrationLocationOptions('Oyo', 'AFIJIO');
+  assert.ok(afijioOptions.wards.includes('AKINMORIN/JOBELE'));
+  const oyoPollingUnits = getRegistrationLocationOptions('Oyo', 'AFIJIO', 'AKINMORIN/JOBELE');
+  assert.ok(oyoPollingUnits.pollingUnits.includes('BAALE JOBELE OPEN SPACE'));
 
-  const abiaOptions = getRegistrationLocationOptions('Abia');
+  const abiaOptions = getRegistrationLocationOptions('Abia', 'ABA NORTH', 'EZIAMA');
   assert.ok(abiaOptions.lgas.includes('ABA NORTH'));
   assert.ok(abiaOptions.wards.includes('EZIAMA'));
   assert.ok(abiaOptions.pollingUnits.some((unit) => unit.includes('RAILWAY QUARTERS')));

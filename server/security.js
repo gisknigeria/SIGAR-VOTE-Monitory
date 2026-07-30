@@ -40,6 +40,11 @@ export function validateMediaPayload(media) {
       errors.push('Declared media type does not match its MIME type');
       continue;
     }
+    const declaredMime = String(item.mimeType || '').split(';')[0].trim().toLowerCase();
+    if (declaredMime && declaredMime !== mime) {
+      errors.push('Media MIME metadata does not match its payload');
+      continue;
+    }
     const payload = match[2];
     const bytes = Buffer.from(payload, 'base64').length;
     if (!bytes) {

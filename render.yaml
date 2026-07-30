@@ -27,6 +27,12 @@ services:
         value: superadmin@command.local
       - key: SUPER_ADMIN_PASSWORD
         sync: false
+      - key: METERED_DOMAIN
+        sync: false
+      - key: METERED_TURN_API_KEY
+        sync: false
+      - key: METERED_TURN_REGION
+        value: standard
     disk:
       name: election-monitor-data
       mountPath: /data

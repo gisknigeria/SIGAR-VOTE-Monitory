@@ -555,6 +555,10 @@ const blobToDataUrl = (blob) =>
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+const canonicalVideoMime = value =>
+  /^(?:data:)?video\/mp4(?:;|,|$)/i.test(String(value || "")) ? "video/mp4" : "video/webm";
+const normalizeRecordedVideoBlob = blob =>
+  new Blob([blob], { type: canonicalVideoMime(blob?.type) });
 
 function LayerControlPanel({ layers, isAdmin, onToggle, onOpacity, onClose }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -2834,6 +2838,29 @@ function StreamVideo({ src, stream, muted = false, showControls = true }) {
   );
 }
 
+function ReportVideoAttachment({ item, index, incidentId }) {
+  const [playbackError, setPlaybackError] = useState("");
+  const source = String(item?.data || "");
+  const extension = canonicalVideoMime(item?.mimeType || source) === "video/mp4" ? "mp4" : "webm";
+  return (
+    <div className="report-video-attachment">
+      <video
+        key={`${incidentId}-${index}-${source.length}`}
+        src={source}
+        controls
+        playsInline
+        preload="metadata"
+        onLoadedMetadata={() => setPlaybackError("")}
+        onError={() => setPlaybackError("This browser could not decode the recording. Download it to open it with another video player.")}
+      />
+      {playbackError && <small className="video-playback-error">{playbackError}</small>}
+      <a href={source} download={item.name || `report-video-${index + 1}.${extension}`}>
+        Download video
+      </a>
+    </div>
+  );
+}
+
 function CameraPanel({
   cameras,
   phoneShares,
@@ -5061,7 +5088,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     try {
       const clips = await listOfflineVideos();
       for (const clip of clips) {
-        const data = await blobToDataUrl(clip.blob);
+        const normalizedBlob = normalizeRecordedVideoBlob(clip.blob);
+        if (!normalizedBlob.size || normalizedBlob.size > 10 * 1024 * 1024)
+          throw new Error("Queued offline video is empty or too large");
+        const mimeType = canonicalVideoMime(normalizedBlob.type);
+        const data = await blobToDataUrl(normalizedBlob);
         const point = gpsBestRef.current || session.user;
         await request("/incidents", session.token, {
           method: "POST",
@@ -5076,10 +5107,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             assignedTo: "",
             visibleTo: [],
             media: [{
-              name: `offline-field-video-${Date.now()}.${clip.blob.type.includes("mp4") ? "mp4" : "webm"}`,
+              name: `offline-field-video-${Date.now()}.${mimeType === "video/mp4" ? "mp4" : "webm"}`,
               type: "video",
-              mimeType: clip.blob.type,
-              size: clip.blob.size,
+              mimeType,
+              size: normalizedBlob.size,
               data,
             }],
             style: { source: "offline-video", icon: "video", color: "#d9aa4b", fillColor: "#ecc86f" },
@@ -5100,13 +5131,30 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const startOfflineVideoRecording = (reason = "Live connection unavailable") => {
     const stream = localCameraStreamRef.current;
     if (!stream || offlineRecorderRef.current || typeof MediaRecorder === "undefined") return;
+    const liveTracks = stream.getTracks().filter(track => track.readyState === "live");
+    if (!liveTracks.some(track => track.kind === "video")) {
+      setNotice("Offline recording could not start because the camera track is unavailable.");
+      return;
+    }
     offlineFallbackRef.current = true;
-    const mimeType = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(type => MediaRecorder.isTypeSupported(type)) || "";
-    const recorder = new MediaRecorder(stream, {
-      ...(mimeType ? { mimeType } : {}),
-      videoBitsPerSecond: 400000,
-      audioBitsPerSecond: 32000,
-    });
+    const mimeType = [
+      "video/webm;codecs=vp8,opus",
+      "video/webm;codecs=vp8",
+      "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+      "video/mp4",
+      "video/webm",
+    ].find(type => MediaRecorder.isTypeSupported?.(type)) || "";
+    const recordingStream = new MediaStream(liveTracks);
+    let recorder;
+    try {
+      recorder = new MediaRecorder(recordingStream, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 400000,
+        audioBitsPerSecond: 32000,
+      });
+    } catch {
+      recorder = new MediaRecorder(recordingStream);
+    }
     offlineChunksRef.current = [];
     offlineRecorderRef.current = recorder;
     recorder.ondataavailable = (event) => {
@@ -5115,17 +5163,18 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     recorder.onstop = async () => {
       clearTimeout(offlineSegmentTimerRef.current);
       offlineRecorderRef.current = null;
-      const blob = new Blob(offlineChunksRef.current, { type: recorder.mimeType || mimeType || "video/webm" });
+      const blob = normalizeRecordedVideoBlob(new Blob(offlineChunksRef.current, { type: recorder.mimeType || mimeType || "video/webm" }));
       offlineChunksRef.current = [];
-      if (blob.size) {
+      if (blob.size >= 1024) {
         const point = gpsBestRef.current || session.user;
-        await queueOfflineVideo(blob, { lat: point.lat, lng: point.lng }).catch(() => {});
+        await queueOfflineVideo(blob, { lat: point.lat, lng: point.lng, mimeType: blob.type }).catch(() => {});
         if (navigator.onLine) flushOfflineVideoQueue();
       }
       if (offlineFallbackRef.current && sharingCameraRef.current)
         setTimeout(() => startOfflineVideoRecording(reason), 250);
     };
-    recorder.start(5000);
+    recorder.onerror = () => setNotice("Offline video recording failed; keep the camera open and try again.");
+    recorder.start(1000);
     offlineSegmentTimerRef.current = setTimeout(() => recorder.stop(), 45000);
     navigator.storage?.persist?.().catch(() => {});
     setNotice(`${reason}. Recording safely on this device.`);
@@ -5236,9 +5285,18 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     };
     socket.on("connect", registerCameraUser);
     if (socket.connected) registerCameraUser();
-    const makePeer = (key, remoteUserId) => {
+    const fallbackIceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+    const iceServersPromise = request("/turn/credentials", session.token)
+      .then((result) =>
+        Array.isArray(result?.iceServers) && result.iceServers.length
+          ? result.iceServers
+          : fallbackIceServers,
+      )
+      .catch(() => fallbackIceServers);
+    const makePeer = async (key, remoteUserId) => {
+      const iceServers = await iceServersPromise;
       const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        iceServers,
       });
       const connectionTimer = setTimeout(() => {
         if (pc.connectionState !== "connected" && localCameraStreamRef.current)
@@ -5411,7 +5469,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     socket.on("camera:viewer:request", async ({ viewerSocketId }) => {
       const stream = localCameraStreamRef.current;
       if (!stream) return;
-      const pc = makePeer(viewerSocketId);
+      const pc = await makePeer(viewerSocketId);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -5423,7 +5481,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     socket.on("camera:signal", async ({ from, fromUserId, data }) => {
       let pc = rtcPeersRef.current[from];
       if (data.sdp?.type === "offer") {
-        pc ||= makePeer(from, fromUserId);
+        pc ||= await makePeer(from, fromUserId);
         await pc.setRemoteDescription(data.sdp);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -7936,22 +7994,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             <div className="report-media-grid">
               {selected.media.map((item, index) =>
                 item.type === "video" ? (
-                  <div className="report-video-attachment" key={index}>
-                    <video controls playsInline preload="metadata">
-                      <source
-                        src={item.data}
-                        type={
-                          item.mimeType ||
-                          (String(item.data || "").startsWith("data:video/mp4")
-                            ? "video/mp4"
-                            : "video/webm")
-                        }
-                      />
-                    </video>
-                    <a href={item.data} download={item.name || `report-video-${index + 1}.webm`}>
-                      Download video
-                    </a>
-                  </div>
+                  <ReportVideoAttachment item={item} index={index} incidentId={selected.id} key={`${selected.id}-${index}`} />
                 ) : (
                   <img
                     key={index}
