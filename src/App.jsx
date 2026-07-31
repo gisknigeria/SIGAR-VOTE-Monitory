@@ -7837,6 +7837,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </div>
           </div>
         </div>
+        {!isAgent && <div className="boundary-display-controls" aria-label="Map boundary display">
+          <button type="button" className={showStateBorders || showLgaBorders ? "active" : ""} aria-pressed={showStateBorders || showLgaBorders} title={showStateBorders || showLgaBorders ? "Hide Oyo State and LGA borders" : "Show Oyo State and LGA borders"} onClick={() => { const next = !(showStateBorders || showLgaBorders); setShowStateBorders(next); setShowLgaBorders(next); }}><span>Border</span><i /></button>
+          <button type="button" className={showBoundaryNames ? "active" : ""} aria-pressed={showBoundaryNames} disabled={!showStateBorders && !showLgaBorders} title={showBoundaryNames ? "Hide boundary names" : "Show boundary names"} onClick={() => setShowBoundaryNames(value => !value)}><span>Names</span><i /></button>
+        </div>}
         {isAgent && <div className="agent-field-screen">
           <img src="/bsa-logo.png" alt="BSA Oyo Ahead" />
           <span className="eyebrow">FIELD REPORTING</span>
