@@ -1577,7 +1577,7 @@ function MapView({
         }
       });
     }
-  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults];
+  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
 
   useEffect(() => {
     const map = leaflet.current;
