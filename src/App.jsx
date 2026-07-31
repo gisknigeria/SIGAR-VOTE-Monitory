@@ -7654,8 +7654,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     setShowBoundaryNames(value => !value);
                     setMapMenu("");
                   }}
+                  title={showBoundaryNames ? "Hide boundary labels" : "Show boundary labels"}
                 >
-                  Names <span>{showBoundaryNames ? "Hide" : "Show"}</span>
+                  <span>Labels</span>
+                  <span>{showBoundaryNames ? "Hide" : "Show"}</span>
                 </button>
               </div>
             </div>}
