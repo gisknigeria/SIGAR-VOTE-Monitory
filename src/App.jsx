@@ -1442,24 +1442,6 @@ function MapView({
             "";
           if (name) {
             layerGeo.bindTooltip(name, { permanent: false, sticky: true, className: "nigeria-state-tooltip" });
-            // Permanent label at centroid
-            try {
-              const center = layerGeo.getBounds().getCenter();
-              if (showBoundaryNames) {
-                const label = L.marker(center, {
-                  icon: L.divIcon({
-                    className: "nigeria-state-label",
-                    html: `<span>${escapeMapText(name)}</span>`,
-                    iconSize: null,
-                    iconAnchor: [0, 0],
-                  }),
-                  interactive: false,
-                  zIndexOffset: -100,
-                });
-                label.addTo(map);
-                nigeriaStateLabels.current.push(label);
-              }
-            } catch {}
           }
           layerGeo.on({
             mouseover: (e) => {
@@ -1478,7 +1460,7 @@ function MapView({
     ).addTo(map);
     nigeriaStateOverlay.current = stateLayer;
     stateLayer.bringToFront();
-  }, [showStateBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.state]);
+  }, [showStateBorders, mapLayers, onBoundarySelect, oyoBoundaries.state]);
 
   // Oyo State LGA boundary overlay (from uploaded GeoJSON layers).
   useEffect(() => {
@@ -1546,23 +1528,6 @@ function MapView({
               ? `<strong>${escapeMapText(name)}</strong><br>${escapeMapText(partyMapAnalysis.party)}: ${escapeMapText(statusLabel)}${escapeMapText(margin)}`
               : escapeMapText(name);
             layerGeo.bindTooltip(tooltip, { permanent: false, sticky: true, className: "nigeria-lga-tooltip" });
-            try {
-              const center = layerGeo.getBounds().getCenter();
-              if (showBoundaryNames) {
-                const label = L.marker(center, {
-                  icon: L.divIcon({
-                    className: "nigeria-lga-label",
-                    html: `<span>${escapeMapText(name)}</span>`,
-                    iconSize: null,
-                    iconAnchor: [0, 0],
-                  }),
-                  interactive: false,
-                  zIndexOffset: -50,
-                });
-                label.addTo(map);
-                nigeriaLgaLabels.current.push(label);
-              }
-            } catch {}
           }
           layerGeo.on({
             mouseover: (e) => {
@@ -1581,7 +1546,7 @@ function MapView({
     ).addTo(map);
     nigeriaLgaOverlay.current = lgaLayer;
     lgaLayer.bringToFront();
-  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
+  }, [showLgaBorders, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -7671,6 +7636,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 >
                    SOS <span>{showSosIncidents ? "Hide" : "Show"}</span>
                 </button>
+                <button
+                  className={(showStateBorders || showLgaBorders) ? "active" : ""}
+                  onClick={() => {
+                    const next = !(showStateBorders || showLgaBorders);
+                    setShowStateBorders(next);
+                    setShowLgaBorders(next);
+                    setMapMenu("");
+                  }}
+                >
+                  Borders <span>{showStateBorders || showLgaBorders ? "Hide" : "Show"}</span>
+                </button>
               </div>
             </div>}
             {!isAgent && <div className={`map-home-menu incident-menu ${mapMenu === "incident" ? "open" : ""}`}>
@@ -7861,10 +7837,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </div>
           </div>
         </div>
-        {!isAgent && <div className="boundary-display-controls" aria-label="Map boundary display">
-          <button type="button" className={showStateBorders || showLgaBorders ? "active" : ""} aria-pressed={showStateBorders || showLgaBorders} title={showStateBorders || showLgaBorders ? "Hide Oyo State and LGA borders" : "Show Oyo State and LGA borders"} onClick={() => { const next = !(showStateBorders || showLgaBorders); setShowStateBorders(next); setShowLgaBorders(next); }}><span>Border</span><i /></button>
-          <button type="button" className={showBoundaryNames ? "active" : ""} aria-pressed={showBoundaryNames} disabled={!showStateBorders && !showLgaBorders} title={showBoundaryNames ? "Hide boundary names" : "Show boundary names"} onClick={() => setShowBoundaryNames(value => !value)}><span>Names</span><i /></button>
-        </div>}
         {isAgent && <div className="agent-field-screen">
           <img src="/bsa-logo.png" alt="BSA Oyo Ahead" />
           <span className="eyebrow">FIELD REPORTING</span>
