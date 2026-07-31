@@ -1546,7 +1546,38 @@ function MapView({
     ).addTo(map);
     nigeriaLgaOverlay.current = lgaLayer;
     lgaLayer.bringToFront();
-  }, [showLgaBorders, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
+
+    // Add LGA name labels if showBoundaryNames is enabled
+    if (showBoundaryNames && lgaFeatures.length) {
+      lgaFeatures.forEach((feature) => {
+        if (feature.geometry?.type?.includes("Polygon")) {
+          const name = feature.properties?.ADM2_EN || feature.properties?.lga_name || feature.properties?.LGA || feature.properties?.lga || feature.properties?.LTNAME || feature.properties?.name || "";
+          if (name && feature.geometry.coordinates) {
+            // Calculate centroid of the polygon
+            const coordinates = feature.geometry.coordinates[0];
+            const lats = coordinates.map(c => c[1]);
+            const lngs = coordinates.map(c => c[0]);
+            const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+            const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+
+            // Create label marker
+            const labelMarker = L.marker([centerLat, centerLng], {
+              icon: L.divIcon({
+                className: "lga-name-label",
+                html: `<div class="lga-label-text">${escapeMapText(name)}</div>`,
+                iconSize: [120, 30],
+                iconAnchor: [60, 15],
+              }),
+              pane: "overlayPane",
+              interactive: false,
+            }).addTo(map);
+
+            nigeriaLgaLabels.current.push(labelMarker);
+          }
+        }
+      });
+    }
+  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults];
 
   useEffect(() => {
     const map = leaflet.current;

@@ -1224,6 +1224,23 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
   box-shadow: 0 1px 5px rgba(0,0,0,.4);
   transform: translate(-50%, -50%);
 }
+.lga-name-label {
+  pointer-events: none !important;
+}
+.lga-label-text {
+  display: inline-block;
+  background: rgba(10, 16, 26, 0.85);
+  color: #a7f3d0 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: .03em;
+  padding: 3px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(52, 211, 153, 0.5);
+  box-shadow: 0 2px 6px rgba(0,0,0,.5);
+  white-space: nowrap;
+  text-align: center;
+}
 .nigeria-state-tooltip,
 .nigeria-lga-tooltip {
   background: rgba(10, 18, 30, 0.95) !important;
