@@ -4,7 +4,7 @@ function summarizeNewsLocally(articles = []) {
     .filter(Boolean)
     .slice(0, 10);
 
-  if (!headlines.length) return 'No recent headlines were available for AI summarization.';
+  if (!headlines.length) return 'No recent headlines were available for summarization.';
 
   const mentionsInec = headlines.some((headline) => /inec|polling|ballot|vote/i.test(headline));
   const mentionsSecurity = headlines.some((headline) => /security|violence|thugg|attack|sos|incident/i.test(headline));

@@ -4484,6 +4484,7 @@ function AnalyticsPanel({
   onCsv,
   onClear,
   full,
+  embedded = false,
 }) {
   const resultReports = useMemo(
     () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
@@ -4589,9 +4590,9 @@ function AnalyticsPanel({
     });
 
   return (
-    <section className={full ? "results-center" : "analytics-panel"}>
+    <section className={embedded ? "analytics-embedded" : full ? "results-center" : "analytics-panel"}>
       {/* ── Header ── */}
-      <div className="results-center-head ap-head">
+      {!embedded && <div className="results-center-head ap-head">
         <div>
           <span className="eyebrow">INTELLIGENCE DASHBOARD</span>
           <h1>Map Analysis &amp; Reports</h1>
@@ -4603,7 +4604,7 @@ function AnalyticsPanel({
             <FaTimes />
           </button>
         </div>
-      </div>
+      </div>}
 
       <div className="results-center-body ap-body">
 
@@ -4782,11 +4783,11 @@ function AnalyticsPanel({
   );
 }
 
-function ResultsCenter({ incidents, parties = [], onClose, authToken, initialFocusParty = "", onPartyMapChange }) {
-  const [view, setView] = useState("breakdown");
+function ResultsCenter({ incidents, parties = [], officers = [], mapLayers = [], selected, onClose, authToken, initialFocusParty = "", onPartyMapChange, onTool, onCsv, onClear }) {
+  const [view, setView] = useState("pulse");
   const [focusParty, setFocusParty] = useState(initialFocusParty);
-  const [aiOutlook, setAiOutlook] = useState("");
-  const [aiOutlookLoading, setAiOutlookLoading] = useState(false);
+  const [outlook, setOutlook] = useState("");
+  const [outlookLoading, setOutlookLoading] = useState(false);
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState("");
@@ -4840,7 +4841,7 @@ function ResultsCenter({ incidents, parties = [], onClose, authToken, initialFoc
     return { leader, margin, total, coverage, confidence: total && leader ? Math.min(99, Math.round((summary.totals[leader] / total) * 100 + Math.min(20, coverage / 10))) : 0 };
   }, [summary]);
   const partyAnalysis = useMemo(() => {
-    if (!focusParty) return null;
+    if (!focusParty || view !== "action") return null;
     const wards = winLoss.wards.filter(g => g.winner === focusParty).length;
     const assessedLgas = winLoss.lgas.filter(g => g.max > 0);
     const winningLgas = assessedLgas.filter(g => g.winner === focusParty).map(g => {
@@ -4857,7 +4858,7 @@ function ResultsCenter({ incidents, parties = [], onClose, authToken, initialFoc
     const tiedLgas = assessedLgas.filter(g => g.tied && g.leaders.includes(focusParty)).map(g => g.label);
     const incidentsForParty = incidents.filter(i => String(i.description || "").toLowerCase().includes(focusParty.toLowerCase())).length;
     return { votes: summary.totals[focusParty] || 0, wards, lgas: winningLgas.length, winningLgas, losingLgas, tiedLgas, incidents: incidentsForParty };
-  }, [focusParty, incidents, summary, winLoss]);
+  }, [focusParty, incidents, summary, winLoss, view]);
   useEffect(() => {
     if (!onPartyMapChange) return;
     if (!focusParty || !partyAnalysis) {
@@ -4881,26 +4882,28 @@ function ResultsCenter({ incidents, parties = [], onClose, authToken, initialFoc
     if (!actions.length) actions.push("Continue verification and monitor new submissions; no exceptional operational signal detected.");
     return actions;
   }, [incidents, forecast]);
-  const cleanAiText = (value) => String(value || "").replace(/\*\*/g, "").trim();
+  const cleanSummaryText = (value) => String(value || "").replace(/\*\*/g, "").trim();
   return (
     <div className="results-center">
       <header className="results-center-head">
         <div>
-          <span className="eyebrow">COMMAND CENTER RESULTS</span>
-          <h1>Election result progress</h1>
-          <p>Live totals for every political party uploaded by Admin.</p>
+          <span className="eyebrow">INTELLIGENCE DASHBOARD</span>
+          <h1>Analytics Dashboard</h1>
+          <p>Live operational pulse, election results, actions, and news.</p>
         </div>
-        <button className="icon-btn" onClick={onClose} title="Close results"><FaTimes /></button>
+        <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
-      <div className="rc-tab-bar"><button className={view === "breakdown" ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Polling Unit Breakdown</button><button className={view === "winloss" || view === "winloss-lga" ? "rc-tab active" : "rc-tab"} onClick={() => setView("winloss")}>Win / Loss Analysis</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>Election News</button></div>
+      <div className="rc-tab-bar"><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>
       <main className="results-center-body">
-        {view !== "breakdown" && view !== "news" && <section className="result-total-strip"><article className="result-total-card grand"><span>Current projection</span><strong>{forecast.leader || "—"}</strong><small>{forecast.confidence}% indicative confidence; not a final result</small></article><article className="result-total-card"><span>Vote margin</span><strong>{forecast.margin.toLocaleString()}</strong><small>Against second place</small></article><article className="result-total-card"><span>Units covered</span><strong>{forecast.coverage.toLocaleString()}</strong><small>Unique submitted units</small></article></section>}
-        {view === "news" && <section className="result-table-card"><div className="result-table-title"><div><h2>Oyo State News</h2><p>General Oyo State coverage, including politics, INEC, elections, parties, governance, security, and major local developments.</p></div><div className="analysis-actions news-actions"><button className="primary action-btn refresh-news-btn" onClick={() => { setNews([]); setNewsSummary(""); setNewsSummaryError(""); setView("news"); }}><FaSyncAlt /> <span>Refresh</span></button><button className="secondary action-btn ai-action-btn" disabled={!news.length || newsSummaryLoading} onClick={() => { setNewsSummaryLoading(true); setNewsSummaryError(""); request("/news/summary", authToken, { method: "POST", body: JSON.stringify({ articles: news }) }).then((x) => { setNewsSummary(x.summary || "No summary available yet."); if (x.provider === "local") setNewsSummaryError("AI was unavailable, so a local fallback summary was generated."); else setNewsSummaryError(""); }).catch((error) => { setNewsSummary(""); setNewsSummaryError(error.message || "The AI summary request failed."); }).finally(() => setNewsSummaryLoading(false)); }}><MdFlashOn /> <span>{newsSummaryLoading ? "Working…" : "AI Summary"}</span></button></div></div>{newsSummary && <div className="news-summary">{cleanAiText(newsSummary)}</div>}{newsSummaryError && <p className="muted">{newsSummaryError}</p>}{newsLoading ? <p>Loading current headlines…</p> : <div className="news-list">{news.map(item => <article className="news-item" key={item.url}><a href={item.url} target="_blank" rel="noreferrer"><h3>{item.title}</h3></a><small>{item.source} · {item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "Recent"}</small></article>)}{!news.length && <p>No current Oyo State headlines available.</p>}</div>}</section>}
-        {view !== "breakdown" && view !== "news" && <section className="result-table-card" style={{ marginBottom: 16 }}><div className="result-table-title"><div><h2>Party performance & operational outlook</h2><p>Neutral analysis based only on submitted results and operational reports.</p></div><div className="analysis-actions"><label className="party-focus-field"><span>Party focus</span><select value={focusParty} onChange={e => setFocusParty(e.target.value)} aria-label="Select party for operational analysis"><option value="">All parties</option>{summary.partyNames.map(p => <option key={p} value={p}>{p}</option>)}</select></label><button className="primary action-btn ai-action-btn" disabled={aiOutlookLoading} onClick={() => { const safeIncidents = incidents.slice(0, 100).map(item => ({ id: item.id, title: item.title, description: String(item.description || "").slice(0, 500), reportType: item.reportType, severity: item.severity, status: item.status, lga: item.lga, ward: item.ward, pollingUnit: item.pollingUnit, createdAt: item.createdAt })); setAiOutlookLoading(true); request("/analysis/ai", authToken, { method: "POST", body: JSON.stringify({ context: { projection: forecast, selectedParty: focusParty, partyAnalysis, incidents: safeIncidents, actions } }) }).then(x => setAiOutlook(x.analysis || "No AI analysis returned.")).catch(e => setAiOutlook(e.message || "AI analysis unavailable.")).finally(() => setAiOutlookLoading(false)); }}><MdFlashOn /> <span>{aiOutlookLoading ? "Analyzing…" : "AI Operational Analysis"}</span></button></div></div>{partyAnalysis && <p>{focusParty}: <b>{partyAnalysis.votes.toLocaleString()}</b> votes, leading in <b>{partyAnalysis.wards}</b> wards and <b>{partyAnalysis.lgas}</b> LGAs. Related incident mentions: <b>{partyAnalysis.incidents}</b>.</p>}{aiOutlook && <div className="news-summary">{cleanAiText(aiOutlook)}</div>}<ul>{actions.map(action => <li key={action}>{action}</li>)}</ul></section>}
+        {view === "pulse" && <AnalyticsPanel incidents={incidents} officers={officers} mapLayers={mapLayers} selected={selected} onClose={onClose} onTool={onTool} onCsv={onCsv} onClear={onClear} embedded />}
+        {["breakdown", "winloss", "winloss-lga"].includes(view) && <div className="wl-sub-tabs result-view-tabs"><button className={view === "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("breakdown")}>Polling Unit Breakdown</button><button className={view !== "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("winloss")}>Win / Loss Analysis</button></div>}
+        {["winloss", "winloss-lga"].includes(view) && <section className="result-total-strip"><article className="result-total-card grand"><span>Current projection</span><strong>{forecast.leader || "—"}</strong><small>{forecast.confidence}% indicative confidence; not a final result</small></article><article className="result-total-card"><span>Vote margin</span><strong>{forecast.margin.toLocaleString()}</strong><small>Against second place</small></article><article className="result-total-card"><span>Units covered</span><strong>{forecast.coverage.toLocaleString()}</strong><small>Unique submitted units</small></article></section>}
+        {view === "news" && <section className="result-table-card"><div className="result-table-title"><div><h2>Oyo State News</h2><p>General Oyo State coverage, including politics, INEC, elections, parties, governance, security, and major local developments.</p></div><div className="analysis-actions news-actions"><button className="primary action-btn refresh-news-btn" onClick={() => { setNews([]); setNewsSummary(""); setNewsSummaryError(""); setView("news"); }}><FaSyncAlt /> <span>Refresh</span></button><button className="secondary action-btn summary-action-btn" disabled={!news.length || newsSummaryLoading} onClick={() => { setNewsSummaryLoading(true); setNewsSummaryError(""); request("/news/summary", authToken, { method: "POST", body: JSON.stringify({ articles: news }) }).then((x) => { setNewsSummary(x.summary || "No summary available yet."); if (x.provider === "local") setNewsSummaryError("The summary service was unavailable, so a local fallback was generated."); else setNewsSummaryError(""); }).catch((error) => { setNewsSummary(""); setNewsSummaryError(error.message || "The summary request failed."); }).finally(() => setNewsSummaryLoading(false)); }}><MdFlashOn /> <span>{newsSummaryLoading ? "Working…" : "Summary"}</span></button></div></div>{newsSummary && <div className="news-summary">{cleanSummaryText(newsSummary)}</div>}{newsSummaryError && <p className="muted">{newsSummaryError}</p>}{newsLoading ? <p>Loading current headlines…</p> : <div className="news-list">{news.map(item => <article className="news-item" key={item.url}><a href={item.url} target="_blank" rel="noreferrer"><h3>{item.title}</h3></a><small>{item.source} · {item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "Recent"}</small></article>)}{!news.length && <p>No current Oyo State headlines available.</p>}</div>}</section>}
+        {view === "action" && <section className="result-table-card" style={{ marginBottom: 16 }}><div className="result-table-title"><div><h2>Party performance & operational outlook</h2><p>Neutral analysis based only on submitted results and operational reports.</p></div><div className="analysis-actions"><label className="party-focus-field"><span>Party focus</span><select value={focusParty} onChange={e => setFocusParty(e.target.value)} aria-label="Select party for operational analysis"><option value="">All parties</option>{summary.partyNames.map(p => <option key={p} value={p}>{p}</option>)}</select></label><button className="primary action-btn summary-action-btn" disabled={outlookLoading} onClick={() => { const safeIncidents = incidents.slice(0, 100).map(item => ({ id: item.id, title: item.title, description: String(item.description || "").slice(0, 500), reportType: item.reportType, severity: item.severity, status: item.status, lga: item.lga, ward: item.ward, pollingUnit: item.pollingUnit, createdAt: item.createdAt })); setOutlookLoading(true); request("/analysis/ai", authToken, { method: "POST", body: JSON.stringify({ context: { projection: forecast, selectedParty: focusParty, partyAnalysis, incidents: safeIncidents, actions } }) }).then(x => setOutlook(x.analysis || "No operational analysis returned.")).catch(e => setOutlook(e.message || "Operational analysis unavailable.")).finally(() => setOutlookLoading(false)); }}><MdFlashOn /> <span>{outlookLoading ? "Analyzing…" : "Operational Analysis"}</span></button></div></div>{partyAnalysis && <p>{focusParty}: <b>{partyAnalysis.votes.toLocaleString()}</b> votes, leading in <b>{partyAnalysis.wards}</b> wards and <b>{partyAnalysis.lgas}</b> LGAs. Related incident mentions: <b>{partyAnalysis.incidents}</b>.</p>}{outlook && <div className="news-summary">{cleanSummaryText(outlook)}</div>}<ul>{actions.map(action => <li key={action}>{action}</li>)}</ul></section>}
         {partyAnalysis && view !== "breakdown" && view !== "news" && <section className="party-lga-analysis"><div className="party-lga-summary"><div><span>Selected party</span><strong>{focusParty}</strong></div><div className="winning"><span>LGAs winning</span><strong>{partyAnalysis.winningLgas.length}</strong></div><div className="losing"><span>LGAs losing</span><strong>{partyAnalysis.losingLgas.length}</strong></div><div><span>Total votes</span><strong>{partyAnalysis.votes.toLocaleString()}</strong></div></div><div className="party-lga-columns"><section className="party-lga-column winning"><header><div><span className="performance-dot" />Winning LGAs</div><b>{partyAnalysis.winningLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.winningLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Ahead of {item.opponent}</small></div><div><b>+{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.winningLgas.length && <p>No confirmed LGA lead for {focusParty} yet.</p>}</div></section><section className="party-lga-column losing"><header><div><span className="performance-dot" />Losing LGAs</div><b>{partyAnalysis.losingLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.losingLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Behind {item.opponent}</small></div><div><b>-{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.losingLgas.length && <p>No confirmed LGA loss for {focusParty} yet.</p>}</div></section></div>{partyAnalysis.tiedLgas.length > 0 && <p className="party-tied-note">Tied in: {partyAnalysis.tiedLgas.join(", ")}.</p>}<p className="party-analysis-note">Leading in {partyAnalysis.wards} wards. Related incident mentions: {partyAnalysis.incidents}. Based only on submitted polling-unit results.</p></section>}
         {view === "winloss" && <section className="result-table-card"><div className="result-table-title"><div><h2>Win / Loss Analysis</h2><p>Leading party by ward and LGA from submitted polling-unit results.</p></div><b>Top {top6.length} parties</b></div><div className="wl-sub-tabs"><button className="wl-sub-tab active">By Ward</button><button className="wl-sub-tab" onClick={() => setView("winloss-lga")}>By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>Ward</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.wards.map(g => <tr key={g.label}><td>{g.label}</td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}{!winLoss.wards.length && <tr><td colSpan={top6.length + 2} className="result-empty">No ward-level data available yet.</td></tr>}</tbody></table></div></section>}
         {view === "winloss-lga" && <section className="result-table-card"><div className="result-table-title"><div><h2>LGA Win / Loss Analysis</h2><p>Leading party in each Local Government Area.</p></div></div><div className="wl-sub-tabs"><button className="wl-sub-tab" onClick={() => setView("winloss")}>By Ward</button><button className="wl-sub-tab active">By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>LGA</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.lgas.map(g => <tr key={g.label}><td><b>{g.label}</b></td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}</tbody></table></div></section>}
-        {view !== "breakdown" && <div className="result-table-card" style={{marginTop: 16}}><p className="muted">Select a party in the table to compare its wins and losses. Results update automatically as new submissions arrive.</p></div>}
+        {["winloss", "winloss-lga"].includes(view) && <div className="result-table-card" style={{marginTop: 16}}><p className="muted">Select a party in the Action tab to compare its wins and losses. Results update automatically as new submissions arrive.</p></div>}
         {view !== "breakdown" ? null : <>
         <section className="result-total-strip">
           <article className="result-total-card grand"><span>Polling-unit submissions</span><strong>{reports.length}</strong><small>Multiple updates per unit are allowed</small></article>{summary.partyNames.map(party => <article className="result-total-card" key={party}><span>{party}</span><strong>{summary.totals[party].toLocaleString()}</strong><small>Total uploaded votes</small></article>)}
@@ -4952,7 +4955,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [notice, setNotice] = useState("");
   const [manageOfficers, setManageOfficers] = useState(false);
   const [mapDataPanel, setMapDataPanel] = useState(false);
-  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
   const [partyMapAnalysis, setPartyMapAnalysis] = useState(null);
   const [analysisLayers, setAnalysisLayers] = useState([]);
@@ -6282,19 +6284,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     let lastBroadcast = 0;
     let warmUpCount = 0;
 
-    // Unlock the gate after 8 seconds regardless — prevents permanent lockout
-    const gateUnlockTimer = setTimeout(() => {
-      if (isAgent) setGpsRequiredBlocked(false);
-    }, 8000);
-
     const onPosition = (position) => {
       const { latitude, longitude, accuracy, speed, heading } = position.coords;
-
-      // Unblock the agent gate as soon as any valid coords arrive
-      if (isAgent) {
-        setGpsRequiredBlocked(false);
-        clearTimeout(gateUnlockTimer);
-      }
 
       const fixAge = Date.now() - Number(position.timestamp || Date.now());
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy)) return;
@@ -6331,6 +6322,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         heading: heading ?? 0,
         timestamp: new Date(now).toISOString(),
       };
+      // Agent accounts remain locked until a fresh, acceptably accurate fix exists.
+      if (isAgent) setGpsRequiredBlocked(false);
 
       warmUpCount++;
 
@@ -6371,19 +6364,15 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     };
 
     const onError = (error) => {
-      // PERMISSION_DENIED — hard stop
-      if (error.code === 1) {
-        clearTimeout(gateUnlockTimer);
-        if (gpsWatchRef.current != null)
-          navigator.geolocation.clearWatch(gpsWatchRef.current);
-        gpsWatchRef.current = null;
-        setSharingGps(false);
-        setNotice("Location permission was denied — please enable location in your browser settings and try again");
-        if (isAgent) setGpsRequiredBlocked(true);
-        return;
-      }
-      // POSITION_UNAVAILABLE or TIMEOUT — keep the watch alive, just show notice
-      setNotice("GPS signal lost — retrying...");
+      if (gpsWatchRef.current != null)
+        navigator.geolocation.clearWatch(gpsWatchRef.current);
+      gpsWatchRef.current = null;
+      gpsBestRef.current = null;
+      setSharingGps(false);
+      if (isAgent) setGpsRequiredBlocked(true);
+      setNotice(error.code === 1
+        ? "Location permission was denied — enable location in your browser settings and try again"
+        : "A valid location could not be obtained — check GPS and try again");
     };
 
     gpsWatchRef.current = navigator.geolocation.watchPosition(
@@ -7315,7 +7304,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                       }
                       return next;
                     });
-                    setAnalyticsOpen(false);
                   }}
                   className={toolsOpen ? "active" : ""}
                 >
@@ -7807,22 +7795,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             <button
               className="map-action result-center-open"
               onClick={() => setResultsOpen(true)}
-              title="Election results and forecast"
+              title="Actions, reports, results, forecast, and news"
             >
-              Results & Forecast
+              Dashboard
             </button>
-            {canAdmin && (
-              <button
-                className="map-action report-action"
-                onClick={() => {
-                  setAnalyticsOpen(true);
-                  setOperationsOpen(false);
-                }}
-                title="Report"
-              >
-                <FaChartBar />
-              </button>
-            )}
            
            
            
@@ -8242,20 +8218,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </section>
       )}
-      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} onClose={() => setResultsOpen(false)} authToken={session.token} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} />}
-      {analyticsOpen && canAdmin && (
-        <AnalyticsPanel
-          incidents={incidents}
-          officers={officers}
-          mapLayers={mapLayers}
-          selected={selected}
-          onClose={() => setAnalyticsOpen(false)}
-          onTool={runAnalyticTool}
-          onCsv={importCsvPoints}
-          onClear={clearMapTools}
-          full
-        />
-      )}
+      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
       {activeEmergency && (
         <div className="emergency-alert-card">
           <b>Emergency from {activeEmergency.name}</b>
@@ -8395,7 +8358,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           </div>
         </div>
       )}
-      {gpsRequiredBlocked && isAgent && <div className="modal-backdrop gps-required-gate"><div className="modal"><span className="eyebrow">LOCATION REQUIRED</span><h2>Allow Location</h2><p>Your location needs to be shared before you can use the app. Tap the button below and allow location access when prompted.</p><button className="primary wide" onClick={toggleGps}><LuLocateFixed /> Allow Location</button><button className="ghost wide" style={{marginTop:10}} onClick={() => setGpsRequiredBlocked(false)}>Skip for now</button></div></div>}
+      {gpsRequiredBlocked && isAgent && <div className="modal-backdrop gps-required-gate"><div className="modal"><span className="eyebrow">LOCATION REQUIRED</span><h2>Allow Location</h2><p>Location sharing is mandatory for Agent accounts. The app will remain locked until you allow access and a valid location is received.</p><button className="primary wide" onClick={toggleGps} disabled={sharingGps}><LuLocateFixed /> {sharingGps ? "Waiting for Location…" : "Allow Location"}</button></div></div>}
       {partyManagerOpen && canAdmin && <PartyManager parties={parties} onClose={() => setPartyManagerOpen(false)} onSave={saveParties} />}
       {emergencyOpen && (
         <EmergencyPanel
