@@ -726,8 +726,11 @@ app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Ele
 let turnCredentialCache = null;
 app.get('/api/turn/credentials', auth, rateLimit, asyncRoute(async (_req, res) => {
   if (!meteredDomain || !meteredTurnApiKey) {
+    res.set('Cache-Control', 'private, no-store');
     return res.json({ iceServers: FALLBACK_ICE_SERVERS, provider: 'stun-fallback' });
   }
+  res.set('Cache-Control', 'private, max-age=240');
+  res.set('Vary', 'Authorization');
   if (turnCredentialCache?.expiresAt > Date.now()) return res.json(turnCredentialCache.data);
   try {
     const params = new URLSearchParams({ apiKey: meteredTurnApiKey, region: meteredTurnRegion });
@@ -743,10 +746,10 @@ app.get('/api/turn/credentials', auth, rateLimit, asyncRoute(async (_req, res) =
     })) throw new Error('Metered returned no usable TURN servers');
     const data = { iceServers, provider: 'metered', region: meteredTurnRegion };
     turnCredentialCache = { data, expiresAt: Date.now() + 5 * 60 * 1000 };
-    res.set('Cache-Control', 'private, max-age=300');
     return res.json(data);
   } catch (error) {
     console.error('[turn] Metered credential fetch failed:', error.message);
+    res.set('Cache-Control', 'private, no-store');
     return res.json({ iceServers: FALLBACK_ICE_SERVERS, provider: 'stun-fallback' });
   }
 }));

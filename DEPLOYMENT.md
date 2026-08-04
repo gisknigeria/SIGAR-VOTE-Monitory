@@ -10,6 +10,9 @@
    - `DATABASE_URL`: your Neon pooled PostgreSQL connection string, including `sslmode=require`.
    - `ADMIN_PASSWORD`: the password for `admin@command.local`.
    - `SUPER_ADMIN_PASSWORD`: the password for `superadmin@command.local`.
+   - `METERED_DOMAIN`: the Metered application domain, for example `your-app.metered.live` (no path).
+   - `METERED_TURN_API_KEY`: the credential-scoped API key shown for the TURN credential in Metered. Do not use the account Secret Key.
+   - `METERED_TURN_REGION`: optional Metered region; use `standard` to follow the credential's default region.
 
    Do not put these values directly into `render.yaml` or commit them to Git.
 
@@ -19,6 +22,19 @@
 The Starter plan is intentional: Render's free web service cannot attach a persistent disk. Without a disk, personnel accounts and incidents stored in the current JSON file can be lost on restarts and deploys.
 
 The single service supports WebSockets, so live incident and GPS updates use the same public HTTPS domain.
+
+## Metered TURN
+
+The browser requests authenticated ICE configuration from `/api/turn/credentials`. The server reads the Metered values from Render, retrieves the STUN/TURN URLs and credentials, validates them, and passes them to WebRTC without exposing the Render environment values.
+
+In the Camera Feeds header:
+
+- `Metered TURN ready` means valid Metered relay credentials were loaded.
+- `Connected via Metered TURN` means the selected WebRTC candidate pair is actively using the relay.
+- `Metered ready · direct route` means TURN is available, but WebRTC selected a faster direct/STUN route.
+- `STUN fallback only` means the Metered values are missing, invalid, or the credential request failed.
+
+After changing Render environment values, redeploy or restart the service so the server reads them.
 
 ## Neon database
 
