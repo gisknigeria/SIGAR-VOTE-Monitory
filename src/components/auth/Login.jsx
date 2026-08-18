@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { FaEye, FaEyeSlash, FaShieldAlt } from "react-icons/fa";
 
 const API = "/api";
 
@@ -62,16 +62,20 @@ export default function Login({ onLogin }) {
   return (
     <main className="login-shell">
       <section className="login-brand">
-        <img className="campaign-logo-bare" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
+        <img className="campaign-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
         <p className="command-kicker">Election Intelligence Platform</p>
         <h1 className="command-title">Election Monitoring Command Center</h1>
         <p className="command-copy">
           Real-time monitoring, coordinated field operations and location-based election intelligence.
         </p>
+        <div className="security-line">
+          <FaShieldAlt size={12} />
+          <span>Secure operations access</span>
+        </div>
       </section>
 
       <form className="login-card" onSubmit={submit}>
-        <img className="login-card-logo-bare" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
+        <img className="login-card-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
         <div className="eyebrow">SECURE ACCESS</div>
         <h2>Welcome back</h2>
         <p className="muted">Sign in with your authorized election operations credentials.</p>
@@ -82,6 +86,7 @@ export default function Login({ onLogin }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
+            autoComplete="email"
           />
         </label>
 
@@ -92,6 +97,7 @@ export default function Login({ onLogin }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
             />
             <button
               type="button"
