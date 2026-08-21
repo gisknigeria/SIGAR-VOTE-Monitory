@@ -245,6 +245,7 @@ export function PollingResultForm({ user, point, parties, onClose, onSave }) {
           if (!results.length) return setError("Add at least one party and vote number.");
           if (!photo) return setError("A photograph of the signed result is required.");
           onSave({
+            state: user.state,
             pollingUnit: user.pollingUnit,
             lga: user.lga,
             ward: user.ward,

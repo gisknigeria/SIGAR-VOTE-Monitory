@@ -1,5 +1,20 @@
-import { useMemo, useState } from "react";
-import { FaTimes } from "react-icons/fa";
+import { useMemo, useRef, useState } from "react";
+import { FaFile, FaImage, FaPaperclip, FaTimes, FaTrash, FaVideo } from "react-icons/fa";
+
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 7 * 1024 * 1024;
+const ALLOWED_MIME = new Set([
+  "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv", "text/plain", "image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm",
+]);
+const kindFor = (mime) => mime.startsWith("image/") ? "image" : mime.startsWith("video/") ? "video" : "document";
+const readFile = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+  reader.readAsDataURL(file);
+});
 
 export default function ChatPanel({
   rooms,
@@ -18,6 +33,10 @@ export default function ChatPanel({
   const [newRoom, setNewRoom] = useState({ name: "", userId: "" });
   const [memberId, setMemberId] = useState("");
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [sending, setSending] = useState(false);
+  const fileRef = useRef(null);
 
   const names = useMemo(
     () =>
@@ -43,9 +62,30 @@ export default function ChatPanel({
 
   const submitMessage = async (e) => {
     e.preventDefault();
-    if (!text.trim() || !activeRoom) return;
-    await onSend(text);
-    setText("");
+    if ((!text.trim() && !attachments.length) || !activeRoom || sending) return;
+    setSending(true); setAttachmentError("");
+    try {
+      await onSend({ body: text.trim(), attachments });
+      setText(""); setAttachments([]);
+    } catch (error) { setAttachmentError(error.message || "Message could not be sent."); }
+    finally { setSending(false); }
+  };
+
+  const selectFiles = async (event) => {
+    const files = [...(event.target.files || [])];
+    event.target.value = "";
+    setAttachmentError("");
+    if (attachments.length + files.length > 3) return setAttachmentError("Attach at most 3 files to one message.");
+    try {
+      const next = [];
+      for (const file of files) {
+        if (!ALLOWED_MIME.has(file.type)) throw new Error(`${file.name} is not a supported image, video, PDF, Office, CSV, or text file.`);
+        if (file.size > MAX_FILE_BYTES) throw new Error(`${file.name} is larger than 5 MB.`);
+        next.push({ type: kindFor(file.type), name: file.name, mimeType: file.type, size: file.size, data: await readFile(file) });
+      }
+      if ([...attachments, ...next].reduce((total, item) => total + item.size, 0) > MAX_TOTAL_BYTES) throw new Error("Attachments must be 7 MB or smaller in total.");
+      setAttachments((old) => [...old, ...next]);
+    } catch (error) { setAttachmentError(error.message); }
   };
 
   const addMember = async () => {
@@ -171,6 +211,12 @@ export default function ChatPanel({
                         (message.senderId === currentUser.id ? "You" : "User")}
                     </b>
                     <p>{message.body}</p>
+                    {!!message.attachments?.length && <div className="chat-attachments">{message.attachments.map((attachment, index) => (
+                      <div className={`chat-attachment ${attachment.type}`} key={`${attachment.name}-${index}`}>
+                        {attachment.type === "image" ? <img src={attachment.data} alt={attachment.name} /> : attachment.type === "video" ? <video src={attachment.data} controls preload="metadata" /> : <FaFile />}
+                        <span><b>{attachment.name}</b><a href={attachment.data} download={attachment.name} target="_blank" rel="noreferrer">Open or download</a></span>
+                      </div>
+                    ))}</div>}
                     <time>
                       {new Date(message.createdAt).toLocaleTimeString([], {
                         hour: "2-digit",
@@ -187,12 +233,16 @@ export default function ChatPanel({
                 )}
               </div>
               <form className="chat-send" onSubmit={submitMessage}>
+                {!!attachments.length && <div className="chat-selected-files">{attachments.map((item, index) => <span key={`${item.name}-${index}`}>{item.type === "image" ? <FaImage /> : item.type === "video" ? <FaVideo /> : <FaFile />}<b>{item.name}</b><button type="button" onClick={() => setAttachments((old) => old.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ${item.name}`}><FaTrash /></button></span>)}</div>}
+                {attachmentError && <p className="chat-attachment-error">{attachmentError}</p>}
+                <input ref={fileRef} className="chat-file-input" type="file" multiple accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" onChange={selectFiles} />
+                <button type="button" className="chat-attach-button" onClick={() => fileRef.current?.click()} title="Attach evidence"><FaPaperclip /><span>Attach</span></button>
                 <input
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="Type a message"
+                  placeholder="Type a message or attach evidence"
                 />
-                <button className="primary">Send</button>
+                <button className="primary" disabled={sending || (!text.trim() && !attachments.length)}>{sending ? "Sending…" : "Send"}</button>
               </form>
             </>
           ) : (

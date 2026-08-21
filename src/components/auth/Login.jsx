@@ -2,6 +2,13 @@ import { useState } from "react";
 import { FaEye, FaEyeSlash, FaShieldAlt } from "react-icons/fa";
 
 const API = "/api";
+const safeError = (status, body, contentType = "") => {
+  const message = typeof body === "object" && body ? body.message : typeof body === "string" ? body.trim() : "";
+  const html = contentType.includes("text/html") || /<!doctype|<html[\s>]|<style[\s>]/i.test(message);
+  if (status === 429) return "Too many requests. Please wait a moment and try again.";
+  if (!html && message && message.length <= 300) return message;
+  return status >= 500 ? "Service temporarily unavailable. Please try again shortly." : `Request failed (${status})`;
+};
 
 async function request(path, token, options = {}) {
   const response = await fetch(`${API}${path}`, {
@@ -16,13 +23,11 @@ async function request(path, token, options = {}) {
     },
   });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    const message = error.message || `Request failed (${response.status})`;
-    throw new Error(message);
-  }
-
   const contentType = response.headers.get("content-type") || "";
+  if (!response.ok) {
+    const body = contentType.includes("application/json") ? await response.json().catch(() => ({})) : await response.text().catch(() => "");
+    throw new Error(safeError(response.status, body, contentType));
+  }
   if (contentType.includes("application/json")) return response.json();
   return null;
 }

@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
-import { canManageRank, normalizeCommand, ranksBelow } from '../shared/electionData.js';
+import { canManageRank, getRegistrationLocationOptions, normalizeCommand, normalizeRegistrationState, ranksBelow } from '../shared/electionData.js';
 import { credentialFingerprint, createId, createRateLimitState, normalizeText, sanitizeString, validateContentLength, validateCoordinates, validateEmail, validateExternalUrl, validateMediaPayload, validatePassword } from './security.js';
 import { analyzeContextLocally, summarizeNewsLocally } from './ai.js';
 import { FALLBACK_ICE_SERVERS, normalizeMeteredDomain, normalizeMeteredRegion, sanitizeIceServers } from './turn.js';
@@ -52,6 +52,7 @@ const seed = {
   chatRooms: [],
   chatMembers: [],
   chatMessages: [],
+  notifications: [],
   parties: []
 };
 
@@ -61,6 +62,7 @@ let jsonDb = existsSync(dataFile)
 jsonDb.cameras ||= [];
 jsonDb.mapLayers ||= [];
 jsonDb.chatRooms ||= [];
+jsonDb.notifications ||= [];
 jsonDb.chatMembers ||= [];
 jsonDb.chatMessages ||= [];
 jsonDb.parties ||= [];
@@ -91,10 +93,11 @@ const publicUser = ({ password, ...user }) => user;
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const toUser = row => row && ({ id: row.id, name: row.name, email: row.email, password: row.password, role: row.role, rank: row.rank || '', active: row.active, unit: row.unit, unitType: row.unit_type || 'Division', command: row.command || '', division: row.division || '', station: row.station || '', state: row.state || '', lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', lat: Number(row.lat) || 7.3775, lng: Number(row.lng) || 3.9470 });
 const toIncident = row => row && ({ id: row.id, title: row.title, description: row.description, reportType: row.report_type || 'IP', severity: row.severity, status: row.status, lat: Number(row.lat), lng: Number(row.lng), assignedTo: row.assigned_to || '', visibleTo: row.visible_to || [], media: row.media || [], geometry: row.geometry || null, style: row.style || null, lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', resultCount: row.result_count || '', createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at, createdBy: row.created_by || '' });
+const toNotification = row => row && ({ id: row.id, userId: row.user_id, incidentId: row.incident_id || '', roomId: row.room_id || '', senderId: row.sender_id || '', message: row.message, incidentType: row.incident_type || '', read: Boolean(row.read), createdAt: row.created_at?.toISOString?.() || row.created_at });
 const toCamera = row => row && ({ id: row.id, name: row.name, type: row.type, url: row.url, lat: Number(row.lat), lng: Number(row.lng), status: row.status, createdAt: row.created_at?.toISOString?.() || row.created_at });
 const toMapLayer = row => row && ({ id: row.id, name: row.name, type: row.type, data: row.data, url: row.url || '', bounds: row.bounds, opacity: Number(row.opacity ?? 0.65), fillOpacity: Number(row.fill_opacity ?? 0.18), category: row.category || (row.type === 'raster' ? 'Raster' : 'Point'), operationalUse: row.operational_use || 'Reference', color: row.color || '#facc15', fillColor: row.fill_color || '#f59e0b', lineWeight: Number(row.line_weight || 2), lineStyle: row.line_style || 'solid', pointIcon: row.point_icon || 'pin', pointIconColor: row.point_icon_color || '#ffffff', pointSize: Number(row.point_size || 24), showLabels: row.show_labels ?? true, labelField: row.label_field || 'name', popupFields: row.popup_fields || '', visible: row.visible ?? true, zIndex: Number(row.z_index || 0), createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at });
 const toChatRoom = row => row && ({ id: row.id, name: row.name, type: row.type || 'room', incidentId: row.incident_id || '', createdBy: row.created_by || '', createdAt: row.created_at?.toISOString?.() || row.created_at, members: row.members || [] });
-const toChatMessage = row => row && ({ id: row.id, roomId: row.room_id, senderId: row.sender_id, body: row.body, createdAt: row.created_at?.toISOString?.() || row.created_at });
+const toChatMessage = row => row && ({ id: row.id, roomId: row.room_id, senderId: row.sender_id, body: row.body, attachments: row.attachments || [], createdAt: row.created_at?.toISOString?.() || row.created_at });
 
 async function initPostgres() {
   if (!pool) return;
@@ -195,6 +198,18 @@ async function initPostgres() {
       room_id text not null,
       sender_id text not null,
       body text not null,
+      attachments jsonb default '[]'::jsonb,
+      created_at timestamptz default now()
+    );
+    create table if not exists notifications (
+      id text primary key,
+      user_id text not null,
+      incident_id text default '',
+      room_id text default '',
+      sender_id text default '',
+      message text not null,
+      incident_type text default '',
+      read boolean default false,
       created_at timestamptz default now()
     );
     create table if not exists app_settings (key text primary key, value jsonb not null default '[]'::jsonb);
@@ -208,6 +223,9 @@ async function initPostgres() {
   await pool.query("alter table users add column if not exists lga text default ''");
   await pool.query("alter table users add column if not exists ward text default ''");
   await pool.query("alter table users add column if not exists polling_unit text default ''");
+  await pool.query("alter table notifications add column if not exists room_id text default ''");
+  await pool.query("alter table notifications add column if not exists sender_id text default ''");
+  await pool.query("alter table chat_messages add column if not exists attachments jsonb default '[]'::jsonb");
   await pool.query("alter table incidents add column if not exists report_type text default 'IP'");
   await pool.query("alter table incidents add column if not exists visible_to jsonb default '[]'::jsonb");
   await pool.query("alter table incidents add column if not exists media jsonb default '[]'::jsonb");
@@ -351,6 +369,25 @@ const store = {
     if (!pool) { jsonDb.incidents = jsonDb.incidents.filter(i => i.id !== id); saveJson(); return; }
     await pool.query('delete from incidents where id=$1', [id]);
   },
+  async notifications(userId) {
+    if (!pool) return (jsonDb.notifications || []).filter(item => item.userId === userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const { rows } = await pool.query('select * from notifications where user_id=$1 order by created_at desc', [userId]);
+    return rows.map(toNotification);
+  },
+  async createNotification(notification) {
+    if (!pool) { jsonDb.notifications ||= []; jsonDb.notifications.push(notification); saveJson(); return notification; }
+    const { rows } = await pool.query('insert into notifications (id,user_id,incident_id,room_id,sender_id,message,incident_type,read,created_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *', [notification.id, notification.userId, notification.incidentId || '', notification.roomId || '', notification.senderId || '', notification.message, notification.incidentType || '', false, notification.createdAt]);
+    return toNotification(rows[0]);
+  },
+  async markNotificationAsRead(id) {
+    if (!pool) { const item = (jsonDb.notifications || []).find(notification => notification.id === id); if (item) { item.read = true; saveJson(); } return item; }
+    const { rows } = await pool.query('update notifications set read=true where id=$1 returning *', [id]);
+    return toNotification(rows[0]);
+  },
+  async deleteNotification(id) {
+    if (!pool) { jsonDb.notifications = (jsonDb.notifications || []).filter(item => item.id !== id); saveJson(); return; }
+    await pool.query('delete from notifications where id=$1', [id]);
+  },
   async cameras() {
     if (!pool) return jsonDb.cameras;
     const { rows } = await pool.query('select * from cameras order by created_at desc');
@@ -440,7 +477,7 @@ const store = {
   },
   async createChatMessage(message) {
     if (!pool) { jsonDb.chatMessages.push(message); saveJson(); return message; }
-    const { rows } = await pool.query('insert into chat_messages (id,room_id,sender_id,body,created_at) values ($1,$2,$3,$4,$5) returning *', [message.id, message.roomId, message.senderId, message.body, message.createdAt]);
+    const { rows } = await pool.query('insert into chat_messages (id,room_id,sender_id,body,attachments,created_at) values ($1,$2,$3,$4,$5,$6) returning *', [message.id, message.roomId, message.senderId, message.body, JSON.stringify(message.attachments || []), message.createdAt]);
     return toChatMessage(rows[0]);
   },
   async deleteChatRoom(roomId) {
@@ -666,6 +703,19 @@ const canAccessRoom = (viewer, room) => !!room && (isAdminRole(viewer) || room.m
 const isSosIncident = incident => incident?.reportType === 'SOS-Emergency' || incident?.style?.source === 'sos';
 const sameZone = (viewer, incident) => !!viewer?.lga && !!viewer?.ward && normalizeKey(viewer.lga) === normalizeKey(incident?.lga) && normalizeKey(viewer.ward) === normalizeKey(incident?.ward);
 const canAccessIncident = (viewer, incident) => isAdminRole(viewer) || (viewer?.role === 'Supervisor' && sameZone(viewer, incident)) || incident.createdBy === viewer.id || incident.assignedTo === viewer.id || (incident.visibleTo || []).includes(viewer.id);
+const canSupervisorAssign = (viewer, incident, target) => viewer?.role === 'Supervisor'
+  && canAccessIncident(viewer, incident)
+  && (target?.id === viewer.id || visibleUsersFor(viewer, [target]).length > 0);
+const emitIncidentToViewers = (event, incident) => {
+  for (const client of io.sockets.sockets.values()) {
+    if (client.data.authUser && canAccessIncident(client.data.authUser, incident)) client.emit(event, incident);
+  }
+};
+const emitNotification = notification => {
+  for (const client of io.sockets.sockets.values()) {
+    if (client.data.authUser?.id === notification.userId) client.emit('notification:new', notification);
+  }
+};
 const normalizeKey = value => String(value || '').trim().toLowerCase();
 const normalizeCommandKey = value => normalizeCommand(value || '').toLowerCase();
 const userIdOf = user => user?.userId || user?.id;
@@ -1176,6 +1226,7 @@ app.put('/api/parties', auth, adminOnly, rateLimit, asyncRoute(async (req, res) 
   res.json(saved);
 }));
 app.post('/api/results', auth, rateLimit, asyncRoute(async (req, res) => {
+  if (!['Agent', 'Supervisor', 'Admin', 'Super Admin'].includes(req.user.role)) return res.status(403).json({ message: 'This role cannot submit polling-unit results' });
   const parties = await store.parties();
   const rawEntries = (Array.isArray(req.body.results) ? req.body.results : []).map(item => ({ party: String(item.party || '').trim(), votes: Number(item.votes) })).filter(item => parties.includes(item.party) && Number.isInteger(item.votes) && item.votes >= 0);
   const entries = [...rawEntries.reduce((map, item) => map.set(item.party, { party: item.party, votes: (map.get(item.party)?.votes || 0) + item.votes }), new Map()).values()];
@@ -1186,16 +1237,29 @@ app.post('/api/results', auth, rateLimit, asyncRoute(async (req, res) => {
   if (!media.some(item => item?.type === 'image')) return res.status(400).json({ message: 'A photograph of the signed result is required' });
   const lat = Number(req.body.lat); const lng = Number(req.body.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(400).json({ message: 'Current location is required' });
-  const pollingUnit = String(req.user.pollingUnit || req.body.pollingUnit || '').trim();
-  if (!pollingUnit) return res.status(400).json({ message: 'The reporting account must have a polling unit' });
+  const fieldRole = ['Agent', 'Supervisor'].includes(req.user.role);
+  const state = normalizeRegistrationState(fieldRole ? req.user.state : req.body.state || req.user.state);
+  const lga = String(fieldRole ? req.user.lga : req.body.lga || '').trim();
+  const ward = String(fieldRole ? req.user.ward : req.body.ward || '').trim();
+  const pollingUnit = String(req.user.role === 'Agent' ? req.user.pollingUnit : req.body.pollingUnit || req.user.pollingUnit || '').trim();
+  if (!state || !lga || !ward || !pollingUnit) return res.status(400).json({ message: 'A valid state, LGA, ward, and polling unit are required' });
+  const wardUnits = getRegistrationLocationOptions(state, lga, ward).pollingUnits;
+  if (!wardUnits.some(unit => normalizeKey(unit) === normalizeKey(pollingUnit))) return res.status(403).json({ message: 'That polling unit is not assigned to this ward' });
+  if (req.user.role === 'Agent' && normalizeKey(pollingUnit) !== normalizeKey(req.user.pollingUnit)) return res.status(403).json({ message: 'Agents can only report their assigned polling unit' });
+  const resultSource = req.user.role === 'Agent' ? 'Agent' : req.user.role === 'Supervisor' ? 'Supervisor' : 'Command';
   const createdAt = new Date().toISOString();
-  const result = { id: createId('r'), title: `Polling Unit Result - ${sanitizeString(pollingUnit)}`, description: `Submitted by ${sanitizeString(req.user.name)} at ${createdAt}`, reportType: 'Polling Unit Result', severity: 'Low', status: 'Submitted', lat, lng, assignedTo: '', visibleTo: [], media, geometry: null, style: { source: 'result', icon: 'POI', color: '#d9aa4b', fillColor: '#d9aa4b' }, lga: req.user.lga || req.body.lga || '', ward: req.user.ward || req.body.ward || '', pollingUnit, resultCount: JSON.stringify(entries), createdAt, createdBy: req.user.id };
+  const result = { id: createId('r'), title: `Polling Unit Result - ${sanitizeString(pollingUnit)}`, description: `Submitted by ${sanitizeString(req.user.name)} at ${createdAt}`, reportType: 'Polling Unit Result', severity: 'Low', status: 'Submitted', lat, lng, assignedTo: '', visibleTo: [], media, geometry: null, style: { source: 'result', resultSource, submittedByRole: req.user.role, icon: 'POI', color: '#d9aa4b', fillColor: '#d9aa4b' }, lga, ward, pollingUnit, resultCount: JSON.stringify(entries), createdAt, createdBy: req.user.id };
   const created = await store.createIncident(result);
   logIp('result', req.user, created.id, getClientIp(req));
-  io.emit('incident:created', created);
+  emitIncidentToViewers('incident:created', created);
   res.status(201).json(created);
 }));
 app.get('/api/incidents', auth, rateLimit, asyncRoute(async (req, res) => res.json((await store.incidents()).filter(incident => canAccessIncident(req.user, incident)))));
+app.get('/api/incidents/:id', auth, rateLimit, asyncRoute(async (req, res) => {
+  const incident = (await store.incidents()).find(item => item.id === req.params.id);
+  if (!incident || !canAccessIncident(req.user, incident)) return res.status(404).json({ message: 'Incident not found' });
+  res.json(incident);
+}));
 app.post('/api/incidents', auth, rateLimit, asyncRoute(async (req, res) => {
   const media = Array.isArray(req.body.media) ? req.body.media.slice(0, 6) : [];
   const mediaValidation = validateMediaPayload(media);
@@ -1262,6 +1326,39 @@ app.post('/api/incidents/:id/chat', auth, rateLimit, asyncRoute(async (req, res)
   const room = await store.incidentChatRoom(incident, req.user);
   io.emit('chat:room', room);
   res.json(room);
+}));
+app.post('/api/incidents/:id/assign', auth, rateLimit, asyncRoute(async (req, res) => {
+  const incident = (await store.incidents()).find(item => item.id === req.params.id);
+  if (!incident) return res.status(404).json({ message: 'Incident not found' });
+  const assignedUserId = String(req.body.assignedUserId || '').trim();
+  const message = normalizeText(req.body.message || '').trim();
+  if (!assignedUserId || !message) return res.status(400).json({ message: 'Choose a field user and include an operational instruction' });
+  const target = (await store.users()).find(user => user.id === assignedUserId && user.active);
+  if (!target) return res.status(404).json({ message: 'Assigned user not found' });
+  if (!['Agent', 'Supervisor', 'Response Team'].includes(target.role)) return res.status(400).json({ message: 'Incidents may only be assigned to operational field roles' });
+  if (!isAdminRole(req.user) && !canSupervisorAssign(req.user, incident, target)) return res.status(403).json({ message: 'Supervisors may only assign incidents in their own LGA and ward' });
+  const visibleTo = [...new Set([...(incident.visibleTo || []), assignedUserId])];
+  const updated = await store.updateIncident(incident.id, { assignedTo: assignedUserId, visibleTo });
+  const notification = await store.createNotification({
+    id: createId('notif'), userId: assignedUserId, incidentId: incident.id,
+    senderId: req.user.id, message, incidentType: incident.reportType || 'Incident assignment',
+    read: false, createdAt: new Date().toISOString(),
+  });
+  emitIncidentToViewers('incident:updated', updated);
+  emitNotification(notification);
+  res.json({ incident: updated, notification });
+}));
+app.get('/api/notifications', auth, rateLimit, asyncRoute(async (req, res) => res.json(await store.notifications(req.user.id))));
+app.put('/api/notifications/:id/read', auth, rateLimit, asyncRoute(async (req, res) => {
+  const owned = (await store.notifications(req.user.id)).find(item => item.id === req.params.id);
+  if (!owned) return res.status(404).json({ message: 'Notification not found' });
+  res.json(await store.markNotificationAsRead(req.params.id));
+}));
+app.delete('/api/notifications/:id', auth, rateLimit, asyncRoute(async (req, res) => {
+  const owned = (await store.notifications(req.user.id)).some(item => item.id === req.params.id);
+  if (!owned) return res.status(404).json({ message: 'Notification not found' });
+  await store.deleteNotification(req.params.id);
+  res.status(204).end();
 }));
 app.get('/api/cameras', auth, rateLimit, asyncRoute(async (_, res) => res.json(await store.cameras())));
 app.post('/api/cameras', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
@@ -1337,9 +1434,23 @@ app.post('/api/chat/rooms/:id/messages', auth, rateLimit, asyncRoute(async (req,
   const room = await store.chatRoom(req.params.id);
   if (!canAccessRoom(req.user, room)) return res.status(403).json({ message: 'You cannot send to this chat' });
   const body = normalizeText(req.body.body || '').trim();
-  if (!body) return res.status(400).json({ message: 'Message cannot be empty' });
-  const message = await store.createChatMessage({ id: createId('msg'), roomId: req.params.id, senderId: req.user.id, body, createdAt: new Date().toISOString() });
+  const allowedMime = new Set(['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/csv','text/plain','image/png','image/jpeg','image/webp','video/mp4','video/webm']);
+  const attachments = (Array.isArray(req.body.attachments) ? req.body.attachments : []).slice(0, 3).map(item => ({
+    type: sanitizeString(item?.type || '').toLowerCase(), name: sanitizeString(item?.name || 'attachment').slice(0, 180),
+    mimeType: sanitizeString(item?.mimeType || '').slice(0, 120), size: Math.max(0, Number(item?.size) || 0), data: String(item?.data || ''),
+  }));
+  const totalBytes = attachments.reduce((sum, item) => sum + item.size, 0);
+  if (attachments.some(item => !['image','video','document'].includes(item.type) || !allowedMime.has(item.mimeType) || item.size > 5 * 1024 * 1024 || !item.data.startsWith(`data:${item.mimeType};base64,`))) return res.status(400).json({ message: 'Unsupported or oversized chat attachment' });
+  if (totalBytes > 7 * 1024 * 1024) return res.status(413).json({ message: 'Chat attachments must be 7 MB or smaller in total' });
+  if (!body && !attachments.length) return res.status(400).json({ message: 'Enter a message or attach evidence' });
+  const message = await store.createChatMessage({ id: createId('msg'), roomId: req.params.id, senderId: req.user.id, body, attachments, createdAt: new Date().toISOString() });
   io.emit('chat:message', { roomId: req.params.id, message });
+  if (isAdminRole(req.user)) {
+    for (const userId of (room.members || []).filter(id => id !== req.user.id)) {
+      const notification = await store.createNotification({ id: createId('notif'), userId, incidentId: room.incidentId || '', roomId: room.id, senderId: req.user.id, message: body || `Sent ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}`, incidentType: 'Message from command', read: false, createdAt: message.createdAt });
+      emitNotification(notification);
+    }
+  }
   res.status(201).json(message);
 }));
 app.post('/api/gps/ping', auth, rateLimit, (req, res) => {

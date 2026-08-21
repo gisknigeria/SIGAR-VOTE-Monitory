@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
 
 export default function ProfileModal({ session, onClose, onSave }) {
+  const wards = String(session.user.ward || "").split(",").map((item) => item.trim()).filter(Boolean);
   const [form, setForm] = useState({
     name: session.user.name || "",
     email: session.user.email || "",
@@ -33,6 +34,12 @@ export default function ProfileModal({ session, onClose, onSave }) {
           <button type="button" className="icon-btn" onClick={onClose}>
             <FaTimes />
           </button>
+        </div>
+
+        <div className="profile-role-summary">
+          <div><span>Operational role</span><b>{session.user.role === "Supervisor" ? "Ward Supervisor" : session.user.role}</b></div>
+          {session.user.lga && <div><span>Assigned LGA</span><b>{session.user.lga}</b></div>}
+          {wards.length > 0 && <div className="profile-wards"><span>{wards.length === 1 ? "Assigned ward" : "Assigned wards"}</span><b>{wards.join(" • ")}</b></div>}
         </div>
 
         <label>
