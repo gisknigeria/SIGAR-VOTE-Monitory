@@ -1241,16 +1241,17 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .lga-label-text {
   display: inline-block;
   background: rgba(10, 16, 26, 0.85);
-  color: #a7f3d0 !important;
+  color: #ffffff !important;
   font-size: 10px !important;
   font-weight: 700 !important;
   letter-spacing: .03em;
   padding: 3px 6px;
   border-radius: 3px;
-  border: 1px solid rgba(52, 211, 153, 0.5);
+  border: 1px solid #22d3ee;
   box-shadow: 0 2px 6px rgba(0,0,0,.5);
   white-space: nowrap;
   text-align: center;
+  text-shadow: 0 1px 2px #000;
 }
 .nigeria-state-tooltip,
 .nigeria-lga-tooltip {
@@ -1318,6 +1319,12 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 }
 @media(max-width:600px) {
   .role-change-fields { grid-template-columns: 1fr; }
+}
+.nigeria-state-tooltip strong,
+.nigeria-lga-tooltip strong,
+.nigeria-state-tooltip b,
+.nigeria-lga-tooltip b {
+  color: #ffffff !important;
 }
 
 /* Command notifications and incident dispatch — uses the existing Oyo burgundy/gold pattern. */

@@ -1043,15 +1043,16 @@ const IREV_OYO_PORTAL_URL = IREV_OYO_ELECTION_ID
 const IREV_IMAGE_HOSTS = new Set(['inc-s3-cache.incportals.com', 'etransmission-result-docs.s3.eu-west-2.amazonaws.com']);
 let irevOyoCache = null;
 const irevOcrCache = new Map();
-const IREV_OYO_ARCHIVE_KEY = 'irev_oyo_2027_archive_v1';
-const IREV_OYO_OCR_KEY = 'irev_oyo_2027_ocr_v1';
+const IREV_OYO_ARCHIVE_KEY = 'irev_oyo_2027_governorship_archive_v1';
+const IREV_OYO_OCR_KEY = 'irev_oyo_2027_governorship_ocr_v1';
+const isGovernorshipElectionName = value => /(govern|gubern)/i.test(String(value || ''));
 let irevArchiveLoadPromise = null;
 const ensureIrevArchiveLoaded = () => {
   if (!irevArchiveLoadPromise) irevArchiveLoadPromise = Promise.all([
     store.setting(IREV_OYO_ARCHIVE_KEY, null),
     store.setting(IREV_OYO_OCR_KEY, {}),
   ]).then(async ([archive, extractions]) => {
-    if (IREV_OYO_ELECTION_ID && archive?.electionId === IREV_OYO_ELECTION_ID && Array.isArray(archive.uploads)) {
+    if (IREV_OYO_ELECTION_ID && archive?.electionId === IREV_OYO_ELECTION_ID && isGovernorshipElectionName(archive.electionName) && Array.isArray(archive.uploads)) {
       irevOyoCache = { data: { ...archive, offline: true }, expiresAt: 0 };
     }
     const savedExtractions = Object.entries(extractions || {});
@@ -1111,7 +1112,7 @@ const oyoIrevWaitingData = () => ({
   pilot: false,
   state: 'Oyo',
   electionId: '',
-  electionName: 'Oyo 2027 General Election',
+  electionName: 'Oyo 2027 Governorship Election',
   portalUrl: IREV_OYO_PORTAL_URL,
   submitted: 0,
   expected: 0,
@@ -1121,7 +1122,7 @@ const oyoIrevWaitingData = () => ({
   archivedAt: '',
   offline: false,
   refreshIntervalMs: 900_000,
-  notice: 'INEC has not published the Oyo 2027 IReV election identifier yet. Live polling is paused and will activate after the identifier is configured.',
+  notice: 'Oyo 2027 governorship result sheets are not available on IReV yet.',
 });
 const loadOyoIrev = async (force = false) => {
   await ensureIrevArchiveLoaded();
@@ -1132,6 +1133,10 @@ const loadOyoIrev = async (force = false) => {
       fetchIrevJson(`elections/${IREV_OYO_ELECTION_ID}/result/stats`),
       fetchIrevJson(`elections/${IREV_OYO_ELECTION_ID}/pus`, 16 * 1024 * 1024),
     ]);
+    const remoteElectionName = sanitizeString(allUnits?.[0]?.election?.full_name || '');
+    if (Array.isArray(allUnits) && allUnits.length && !isGovernorshipElectionName(remoteElectionName)) {
+      throw new Error('The configured IReV election is not an Oyo governorship election');
+    }
     const liveUploads = (Array.isArray(allUnits) ? allUnits : [])
       .map(normalizeIrevUpload)
       .filter(item => item.id && item.puCode && item.imageUrl);
@@ -1143,7 +1148,7 @@ const loadOyoIrev = async (force = false) => {
       configured: true,
       state: 'Oyo',
       electionId: IREV_OYO_ELECTION_ID,
-      electionName: sanitizeString(allUnits?.[0]?.election?.full_name || irevOyoCache?.data?.electionName || 'Oyo 2027 General Election'),
+      electionName: remoteElectionName || irevOyoCache?.data?.electionName || 'Oyo 2027 Governorship Election',
       portalUrl: IREV_OYO_PORTAL_URL,
       submitted: Math.max(uploads.length, Number(stats?.documents) || 0),
       expected: Math.max(0, Number(stats?.expected ?? stats?.pus) || irevOyoCache?.data?.expected || 0),
@@ -1175,7 +1180,7 @@ app.get('/api/irev/oyo', auth, rateLimit, asyncRoute(async (req, res) => {
     return res.json({ ...data, uploads: data.uploads.map(upload => ({ ...upload, extraction: irevOcrCache.get(upload.id) || null })) });
   } catch (error) {
     console.error('[irev] Oyo feed fetch failed:', error.message);
-    return res.status(503).json({ message: 'The official IReV feed is temporarily unavailable.' });
+    return res.status(503).json({ message: 'The official Oyo governorship IReV feed is temporarily unavailable.' });
   }
 }));
 let irevOcrPersistQueue = Promise.resolve();

@@ -54,7 +54,7 @@ export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) 
     <div className="pre-election-head">
       <div><span className="eyebrow">BEFORE THE NEXT ELECTION</span><h2>Pre-Election Historical Analysis</h2><p>Compare previous Oyo outcomes while keeping incomplete records clearly visible.</p></div>
       <div className="pre-election-head-actions">
-        {dataset?.geography?.levels?.includes('lga') && <button className="secondary action-btn" onClick={() => onShowHistoricalMap?.(dataset)}><MdMap /> Show previous election history</button>}
+        {dataset?.geography?.levels?.includes('lga') && <button className="secondary action-btn history-map-launch" onClick={() => onShowHistoricalMap?.(dataset)}><MdMap /> Show previous election history</button>}
         <button className="primary action-btn" disabled={loading || !result} onClick={generate}><MdFlashOn /> {loading ? 'Analyzing…' : 'Generate Brief'}</button>
       </div>
     </div>

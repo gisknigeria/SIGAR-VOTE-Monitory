@@ -1450,7 +1450,7 @@ function MapView({
             "no-data": { line: "#ca8a04", fill: "#facc15" },
           };
           const selectedColor = historical
-            ? { line: historicalPartyColor(historical.winner), fill: historicalPartyColor(historical.winner) }
+            ? { line: "#22d3ee", fill: historicalPartyColor(historical.winner) }
             : colors[status];
           return {
             color: selectedColor?.line || "#22d3ee",
@@ -1568,8 +1568,8 @@ function MapView({
       style: feature => {
         const name = feature.properties?.ward || "";
         const result = historicalWardForFeature(feature);
-        const color = result ? historicalPartyColor(result.winner) : "#d9aa4b";
-        return { color, weight: 2.2, dashArray: result ? "" : "5 4", fillColor: color, fillOpacity: result ? 0.26 : 0.04, opacity: 1 };
+        const fillColor = result ? historicalPartyColor(result.winner) : "#64748b";
+        return { color: "#f0abfc", weight: 2.7, dashArray: result ? "" : "5 4", fillColor, fillOpacity: result ? 0.28 : 0.05, opacity: 1 };
       },
       onEachFeature: (feature, wardLayer) => {
         const name = feature.properties?.ward || feature.properties?.ward_alt_names || "Ward";
@@ -1578,7 +1578,7 @@ function MapView({
         wardLayer.bindTooltip(`<strong>${escapeMapText(name)}</strong><br>${result ? `Winner: ${escapeMapText(result.winner)}<br>${shares}` : "Historical result not matched"}`, { sticky: true, className: "nigeria-lga-tooltip" });
         wardLayer.on({
           mouseover: event => {
-            event.target.setStyle({ weight: 3.5, fillOpacity: 0.38 });
+            event.target.setStyle({ weight: 4, color: "#ffffff", fillOpacity: 0.42 });
             event.target.bringToFront();
           },
           mouseout: event => layer.resetStyle(event.target),
@@ -2735,7 +2735,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
     const pilot = await loadIrevPilot();
     setIrevCompareLoading(false);
     if (pilot?.configured && pilot.uploads?.length) setCompareWithIrev(true);
-    else setIrevError("Oyo 2027 IReV results are not available yet.");
+    else setIrevError("Oyo 2027 governorship IReV results are not available yet.");
   };
   const partyVoteFor = (row, party) => Number(row?.results?.find((result) => normalizeResultKeyPart(result.party) === normalizeResultKeyPart(party))?.votes || 0);
   const renderFieldVote = (row, party) => {
@@ -2859,7 +2859,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
         </>}
         {view === "irev" && <section className="irev-pilot-card">
           <header className="irev-pilot-head">
-            <div><span className="eyebrow">OFFICIAL SOURCE · KWARA 2027</span><h2>INEC IReV — Oyo</h2><p>Prepared for Oyo polling-unit result sheets and automatic verification during the 2027 general election.</p></div>
+            <div><span className="eyebrow">OFFICIAL SOURCE · OYO 2027 GOVERNORSHIP</span><h2>INEC IReV — Oyo Governorship</h2><p>Prepared only for Oyo governorship polling-unit result sheets and automatic verification.</p></div>
             <div className="irev-pilot-actions"><a href={irevPilot?.portalUrl || "https://irev.inecnigeria.org/"} target="_blank" rel="noreferrer">Open IReV</a><button type="button" disabled={irevLoading || irevPilot?.configured === false} onClick={() => loadIrevPilot(true)}><FaSyncAlt /> {irevLoading ? "Checking…" : irevPilot?.configured === false ? "Awaiting INEC" : "Refresh now"}</button></div>
           </header>
           {irevError && <div className="error">{irevError}</div>}
@@ -2868,14 +2868,14 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
             {irevSection === "results" && irevResultRows.length > 0 && <section className="result-total-strip irev-result-totals">{irevTopParties.map((party) => <article className="result-total-card" key={party}><span>{party}</span><strong>{irevOnlyTotals[party].toLocaleString()}</strong></article>)}</section>}
             <div className="irev-pilot-stats"><div><span>Uploaded</span><strong>{irevPilot.submitted.toLocaleString()}</strong></div><div><span>Expected</span><strong>{irevPilot.expected.toLocaleString()}</strong></div><div><span>Coverage</span><strong>{irevPilot.expected ? `${((irevPilot.submitted / irevPilot.expected) * 100).toFixed(1)}%` : "—"}</strong></div><div><span>Last checked</span><strong>{new Date(irevPilot.fetchedAt).toLocaleTimeString()}</strong></div></div>
             {irevPilot.notice && <p className="irev-verification-note"><MdWarning /> {irevPilot.notice}</p>}
-            {!irevPilot.configured && <div className="irev-activation-panel"><div><span>20 February 2027</span><strong>Presidential &amp; National Assembly</strong></div><div><span>6 March 2027</span><strong>Governorship &amp; State Assembly</strong></div><p>The server will not contact the result feed until INEC publishes the Oyo election identifier and it is added as <code>IREV_OYO_ELECTION_ID</code> on Render.</p></div>}
+            {!irevPilot.configured && <div className="irev-activation-panel governorship-only"><div><span>6 February 2027</span><strong>Oyo Governorship Election</strong></div></div>}
             <div className="wl-sub-tabs irev-sub-tabs"><button className={irevSection === "uploads" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setIrevSection("uploads")}>Polling-unit uploads</button>{irevResultRows.length > 0 && <button className={irevSection === "results" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setIrevSection("results")}>Results</button>}{irevExtractingIds.size > 0 && <span>Reading {irevExtractingIds.size} sheets in parallel… {irevResultRows.length.toLocaleString()} ready</span>}</div>
             {irevSection === "uploads" && <>
             <div className="irev-table-toolbar"><div><strong>{irevPilot.configured ? "All uploaded polling units" : "Oyo result-sheet feed"}</strong><span>{irevPilot.configured ? `${filteredIrevUploads.length.toLocaleString()} of ${irevPilot.uploads.length.toLocaleString()} sheets shown` : "Waiting for INEC activation"}</span></div><label><FaSearch /><input disabled={!irevPilot.configured} value={irevSearch} onChange={(event) => setIrevSearch(event.target.value)} placeholder={irevPilot.configured ? "Search LGA, ward, polling unit or PU code" : "Search activates with the live feed"} />{irevSearch && <button type="button" onClick={() => setIrevSearch("")} aria-label="Clear IReV search"><FaTimes /></button>}</label></div>
             <div className="irev-table-scroll">
               <table className="result-progress-table irev-full-table">
                 <thead><tr><th>#</th><th>LGA</th><th>Ward</th><th>Polling unit</th><th>PU code</th><th>Uploaded</th><th>Status</th><th>Result sheet</th></tr></thead>
-                <tbody>{filteredIrevUploads.map((upload, index) => <tr key={upload.id}><td>{index + 1}</td><td><b>{upload.lga || "—"}</b></td><td>{upload.ward || "—"}</td><td>{upload.pollingUnit || "—"}</td><td><strong>{upload.puCode}</strong></td><td>{upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : "—"}</td><td><span className="irev-awaiting-badge">{upload.verificationStatus}</span></td><td><button className="irev-sheet-link" type="button" onClick={() => openIrevPreview(upload)}>View image</button></td></tr>)}{!filteredIrevUploads.length && <tr><td className="result-empty" colSpan="8">{irevPilot.configured ? "No Oyo result sheets have been uploaded yet." : "The Oyo 2027 IReV feed is waiting for its official INEC election identifier."}</td></tr>}</tbody>
+                <tbody>{filteredIrevUploads.map((upload, index) => <tr key={upload.id}><td>{index + 1}</td><td><b>{upload.lga || "—"}</b></td><td>{upload.ward || "—"}</td><td>{upload.pollingUnit || "—"}</td><td><strong>{upload.puCode}</strong></td><td>{upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : "—"}</td><td><span className="irev-awaiting-badge">{upload.verificationStatus}</span></td><td><button className="irev-sheet-link" type="button" onClick={() => openIrevPreview(upload)}>View image</button></td></tr>)}{!filteredIrevUploads.length && <tr><td className="result-empty" colSpan="8">No Oyo governorship result sheets are available yet.</td></tr>}</tbody>
               </table>
             </div>
             </>}
