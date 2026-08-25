@@ -17,7 +17,7 @@ export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) 
   const result = dataset ? HISTORICAL_ELECTION_RESULTS[dataset.id] : null;
   const maxValue = Math.max(1, ...(result?.parties || []).map((item) => item.value));
   const election2023Results = HISTORICAL_ELECTION_DATASETS
-    .filter((item) => item.year === 2023)
+    .filter((item) => item.id === '2023-president')
     .map((item) => ({ dataset: item, result: HISTORICAL_ELECTION_RESULTS[item.id] }))
     .filter((item) => item.result);
   const sentimentParties = election2023Results.reduce((totals, item) => {
@@ -80,7 +80,7 @@ export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) 
     </div>
 
     {tab === 'sentiment' && <article className="pre-card pre-generated-brief">
-      <header><div><h3>2023 Election Sentiment Analysis</h3><p>Aggregated 2023 presidential and governorship records, with PDP displayed as APM.</p></div></header>
+      <header><div><h3>2023 Presidential Election Sentiment Analysis</h3><p>Analysis based on the 2023 Presidential election record.</p></div><button className="secondary action-btn history-map-launch" onClick={() => onShowHistoricalMap?.(election2023Results[0].dataset)}><MdMap /> Show on map</button></header>
       <div className="historical-party-bars">{Object.entries(sentimentParties).map(([party, value]) => <div key={party}><div><strong>{party}</strong><b>{value.toLocaleString()} votes</b></div><span><i style={{ width: `${(value / maxSentiment) * 100}%` }} /></span></div>)}</div>
       {brief && <div>{brief}</div>}{error && <p className="pre-analysis-error">{error}</p>}
     </article>}

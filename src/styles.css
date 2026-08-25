@@ -1009,12 +1009,12 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .map-action.election-phase-action{border-color:#7d5b20;background:#241b0d;color:#f2ce78}
 .map-action.election-phase-action:hover{border-color:#e1b954;background:#3a2a10;color:#fff1bd}
 .map-action.election-phase-action svg{font-size:17px}
-.map-action.pre-election-action{border-color:#15803d;color:#86efac}
-.map-action.pre-election-action:hover{border-color:#22c55e;background:#12351f;color:#bbf7d0}
-.map-action.result-report-action{border-color:#c2410c;color:#fdba74}
-.map-action.result-report-action:hover{border-color:#f97316;background:#3b1d0d;color:#fed7aa}
-.map-action.post-election-action{border-color:#2563eb;color:#93c5fd}
-.map-action.post-election-action:hover{border-color:#3b82f6;background:#102b52;color:#bfdbfe}
+.map-action.pre-election-action{border-color:#22c55e;background:#15803d;color:#ffffff}
+.map-action.pre-election-action:hover{border-color:#4ade80;background:#166534;color:#ffffff}
+.map-action.result-report-action{border-color:#f97316;background:#c2410c;color:#ffffff}
+.map-action.result-report-action:hover{border-color:#fb923c;background:#9a3412;color:#ffffff}
+.map-action.post-election-action{border-color:#3b82f6;background:#2563eb;color:#ffffff}
+.map-action.post-election-action:hover{border-color:#60a5fa;background:#1d4ed8;color:#ffffff}
 .map-action.clear-tools-btn.active{border-color:#f87171;background:#2a1016;color:#fca5a5;box-shadow:0 0 10px #ef444440;animation:clear-pulse 1.8s ease-in-out infinite}
 @keyframes clear-pulse{0%,100%{box-shadow:0 0 8px #ef444430}50%{box-shadow:0 0 16px #ef444480}}
 .map-action.emergency-open{background:#b91c1c;border-color:#7f1d1d;color:#fff;font:900 10px Inter}
