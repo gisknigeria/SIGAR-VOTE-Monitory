@@ -8,8 +8,8 @@ const SOURCES = {
 export const HISTORICAL_ELECTION_DATASETS = [
   { id: '2019-president', year: 2019, election: 'Presidential', authority: 'INEC archive', level: 'State summary', status: 'partial', available: 'APC and PDP state totals', missing: 'Other-party and LGA vote breakdown', source: SOURCES.inecArchive },
   { id: '2019-governor', year: 2019, election: 'Governorship', authority: 'INEC', level: 'State declaration', status: 'available', available: 'Official leading-party totals and winner', missing: 'Complete party and LGA/ward/PU breakdown', source: SOURCES.inec2019Governor },
-  { id: '2023-president', year: 2023, election: 'Presidential', authority: 'INEC/IReV', level: 'State summary', status: 'available', available: 'Declared leading-party state totals', missing: 'Verified LGA/ward/PU transcription', source: SOURCES.irev },
-  { id: '2023-governor', year: 2023, election: 'Governorship', authority: 'INEC/IReV', level: 'State declaration', status: 'available', available: 'Declared leading-party totals and winner', missing: 'Verified LGA/ward/PU transcription', source: SOURCES.oyo2023Governor },
+  { id: '2023-president', year: 2023, election: 'Presidential', authority: 'INEC/IReV', level: 'State summary', status: 'available', available: 'Declared state totals plus evidence transcriptions by LGA, ward, and polling unit', missing: 'Some polling-unit sheets or party scores may be unavailable', geography: { office: 'presidential', levels: ['lga', 'ward', 'polling-unit'] }, source: SOURCES.irev },
+  { id: '2023-governor', year: 2023, election: 'Governorship', authority: 'INEC/IReV', level: 'State declaration', status: 'available', available: 'Declared state totals plus evidence transcriptions by LGA', missing: 'Ward and polling-unit geographic transcriptions', geography: { office: 'governor', levels: ['lga'] }, source: SOURCES.oyo2023Governor },
 ];
 
 export const HISTORICAL_ELECTION_RESULTS = {

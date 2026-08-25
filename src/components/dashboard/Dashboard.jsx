@@ -748,6 +748,11 @@ function MapView({
   showLgaBorders,
   showBoundaryNames,
   partyMapAnalysis,
+  historicalMapAnalysis,
+  onHistoricalLgaSelect,
+  onHistoricalWardSelect,
+  onHistoricalBack,
+  onHistoricalClose,
   selectedBoundaryState,
   onBoundarySelect,
   onBoundaryClear,
@@ -790,6 +795,18 @@ function MapView({
     () => Object.fromEntries(Object.entries(partyMapAnalysis?.byLga || {}).map(([name, result]) => [normalizeLgaMatch(name), result])),
     [partyMapAnalysis],
   );
+  const historicalLgaResults = useMemo(
+    () => Object.fromEntries(Object.entries(historicalMapAnalysis?.byLga || {}).map(([name, result]) => [normalizeLgaMatch(name), result])),
+    [historicalMapAnalysis],
+  );
+  const historicalPartyColor = (party) => ({
+    APC: '#2563eb', PDP: '#dc2626', LP: '#16a34a', NNPP: '#7c3aed', ACCORD: '#f59e0b', A: '#f59e0b', ADC: '#0891b2', SDP: '#ea580c',
+  })[String(party || '').toUpperCase()] || '#64748b';
+  const compactPartyShares = (area) => {
+    const listed = (area?.parties || []).slice(0, 3);
+    const otherPercentage = (area?.parties || []).slice(3).reduce((sum, item) => sum + Number(item.percentage || 0), 0);
+    return [...listed, ...(otherPercentage > 0 ? [{ party: 'Others', percentage: Number(otherPercentage.toFixed(2)) }] : [])];
+  };
 
   const getStateKey = (feature) =>
     normalizeBoundaryKey(
@@ -1411,6 +1428,7 @@ function MapView({
         pane: "overlayPane",
         style: (feature) => {
           const name = feature.properties?.ADM2_EN || feature.properties?.lga_name || feature.properties?.LGA || feature.properties?.lga || feature.properties?.LTNAME || feature.properties?.name || "";
+          const historical = historicalLgaResults[normalizeLgaMatch(name)];
           const status = partyLgaResults[normalizeLgaMatch(name)]?.status || (partyMapAnalysis?.party ? "no-data" : "");
           const colors = {
             winning: { line: "#16a34a", fill: "#22c55e" },
@@ -1418,7 +1436,9 @@ function MapView({
             tied: { line: "#ca8a04", fill: "#facc15" },
             "no-data": { line: "#ca8a04", fill: "#facc15" },
           };
-          const selectedColor = colors[status];
+          const selectedColor = historical
+            ? { line: historicalPartyColor(historical.winner), fill: historicalPartyColor(historical.winner) }
+            : colors[status];
           return {
             color: selectedColor?.line || "#22d3ee",
             weight: selectedColor ? 3.5 : 2.75,
@@ -1438,11 +1458,15 @@ function MapView({
             feature.properties?.name ||
             "";
           if (name) {
+            const historical = historicalLgaResults[normalizeLgaMatch(name)];
             const performance = partyLgaResults[normalizeLgaMatch(name)];
             const status = performance?.status || (partyMapAnalysis?.party ? "no-data" : "");
             const statusLabel = status === "winning" ? "Winning" : status === "losing" ? "Losing" : status === "tied" ? "Tied" : status === "no-data" ? "No submitted result" : "";
             const margin = performance?.margin ? ` · margin ${Number(performance.margin).toLocaleString()}` : "";
-            const tooltip = partyMapAnalysis?.party
+            const historicalShares = compactPartyShares(historical).map(item => `${escapeMapText(item.party)} ${escapeMapText(item.percentage)}%`).join(" · ");
+            const tooltip = historicalMapAnalysis
+              ? `<strong>${escapeMapText(name)}</strong><br>Winner: ${escapeMapText(historical?.winner || "No recorded result")}<br>${historicalShares || "No recorded party shares"}`
+              : partyMapAnalysis?.party
               ? `<strong>${escapeMapText(name)}</strong><br>${escapeMapText(partyMapAnalysis.party)}: ${escapeMapText(statusLabel)}${escapeMapText(margin)}`
               : escapeMapText(name);
             layerGeo.bindTooltip(tooltip, { permanent: false, sticky: true, className: "nigeria-lga-tooltip" });
@@ -1455,6 +1479,11 @@ function MapView({
             mouseout: (e) => lgaLayer.resetStyle(e.target),
             click: (e) => {
               L.DomEvent.stopPropagation(e);
+              if (historicalMapAnalysis) {
+                if (layerGeo.getBounds?.().isValid?.()) leaflet.current?.fitBounds(layerGeo.getBounds(), { padding: [40, 40], maxZoom: 11 });
+                onHistoricalLgaSelect?.(name);
+                return;
+              }
               const key = String(name).trim().toLowerCase().replace(/\s+/g, " ");
               onBoundarySelect?.(key, name);
             },
@@ -1494,7 +1523,7 @@ function MapView({
         } catch {}
       });
     }
-  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
+  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults, historicalMapAnalysis, historicalLgaResults, onHistoricalLgaSelect]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -1722,6 +1751,29 @@ function MapView({
           <span><i className="losing" /> Losing</span>
           <span><i className="undecided" /> Tied / no result</span>
         </div>
+      )}
+      {historicalMapAnalysis && (
+        <aside className="historical-map-panel" aria-label="Previous election history">
+          <header>
+            <div><span>PREVIOUS ELECTION HISTORY</span><strong>{historicalMapAnalysis.year} {historicalMapAnalysis.election}</strong></div>
+            <button type="button" onClick={onHistoricalClose} aria-label="Close previous election history">×</button>
+          </header>
+          <p className="historical-map-notice">{historicalMapAnalysis.notice || "Geographic figures are evidence transcriptions and may not reconcile with declared totals."}</p>
+          {historicalMapAnalysis.error && <p className="historical-map-error">{historicalMapAnalysis.error}</p>}
+          {historicalMapAnalysis.loading && <p className="historical-map-loading">Loading historical distribution…</p>}
+          {!historicalMapAnalysis.loading && !historicalMapAnalysis.selectedLga && <>
+            <p className="historical-map-instruction">Select a coloured LGA to see its party percentages{historicalMapAnalysis.availableLevels?.includes("ward") ? ", then drill into wards and polling units." : "."}</p>
+            <div className="historical-winner-legend">{Object.entries(historicalMapAnalysis.winnerCounts || {}).map(([party, count]) => <span key={party}><i style={{ background: historicalPartyColor(party) }} /> {party}: {count} LGA{count === 1 ? "" : "s"}</span>)}</div>
+          </>}
+          {historicalMapAnalysis.selectedLga && <>
+            <div className="historical-breadcrumb"><button type="button" onClick={onHistoricalBack}>Oyo LGAs</button><span>›</span><b>{historicalMapAnalysis.selectedLga.name}</b>{historicalMapAnalysis.selectedWard && <><span>›</span><b>{historicalMapAnalysis.selectedWard.name}</b></>}</div>
+            <div className="historical-selected-summary"><strong>{historicalMapAnalysis.selectedWard?.name || historicalMapAnalysis.selectedLga.name}</strong><span>Winner: <b>{historicalMapAnalysis.selectedWard?.winner || historicalMapAnalysis.selectedLga.winner || "No result"}</b></span><div>{compactPartyShares(historicalMapAnalysis.selectedWard || historicalMapAnalysis.selectedLga).map(item => <small key={item.party}>{item.party} {item.percentage}%</small>)}</div></div>
+            {historicalMapAnalysis.detailLoading && <p className="historical-map-loading">Loading the next level…</p>}
+            {!historicalMapAnalysis.detailLoading && historicalMapAnalysis.detail?.areas?.length > 0 && <div className="historical-area-list">{historicalMapAnalysis.detail.areas.map(area => <button type="button" key={area.id} onClick={() => historicalMapAnalysis.detail.level === "ward" && onHistoricalWardSelect?.(area)} className={historicalMapAnalysis.detail.level === "ward" ? "" : "terminal"}><span><i style={{ background: historicalPartyColor(area.winner) }} /><b>{area.name}</b><em>{area.code}</em></span><span><strong>{area.winner || "No result"}</strong>{compactPartyShares(area).map(item => <small key={item.party}>{item.party} {item.percentage}%</small>)}</span></button>)}</div>}
+            {!historicalMapAnalysis.detailLoading && historicalMapAnalysis.detailMessage && <p className="historical-map-instruction">{historicalMapAnalysis.detailMessage}</p>}
+          </>}
+          <footer>Colours show the party with the most recorded votes. “Others” combines parties outside the top three in that area.</footer>
+        </aside>
       )}
       {mapLayers.length > 0 && !layerPanelOpen && (
         <button
@@ -2180,7 +2232,7 @@ function AnalyticsPanel({
   );
 }
 
-function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", onPartyMapChange, onFocusLocation, onTool, onCsv, onClear }) {
+function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", onPartyMapChange, onShowHistoricalMap, onFocusLocation, onTool, onCsv, onClear }) {
   const [view, setView] = useState("pulse");
   const [resultSourceFilter, setResultSourceFilter] = useState("");
   const [focusParty, setFocusParty] = useState(initialFocusParty);
@@ -2627,7 +2679,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
       <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>
       <main className="results-center-body">
         {view === "pulse" && <AnalyticsPanel incidents={incidents} officers={officers} mapLayers={mapLayers} selected={selected} onClose={onClose} onTool={onTool} onCsv={onCsv} onClear={onClear} embedded />}
-        {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} />}
+        {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} onShowHistoricalMap={onShowHistoricalMap} />}
         {["breakdown", "winloss", "winloss-lga"].includes(view) && <div className="wl-sub-tabs result-view-tabs"><button className={view === "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("breakdown")}>Polling Unit Breakdown</button><button className={view !== "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("winloss")}>Win / Loss Analysis</button></div>}
         {["winloss", "winloss-lga"].includes(view) && <section className="result-total-strip"><article className="result-total-card grand"><span>Current projection</span><strong>{forecast.leader || "—"}</strong><small>{forecast.confidence}% indicative confidence; not a final result</small></article><article className="result-total-card"><span>Vote margin</span><strong>{forecast.margin.toLocaleString()}</strong><small>Against second place</small></article><article className="result-total-card"><span>Units covered</span><strong>{forecast.coverage.toLocaleString()}</strong><small>Unique submitted units</small></article></section>}
         {view === "news" && <section className="result-table-card"><div className="result-table-title"><div><h2>Oyo State News</h2><p>General Oyo State coverage, including politics, INEC, elections, parties, governance, security, and major local developments.</p></div><div className="analysis-actions news-actions"><button className="primary action-btn refresh-news-btn" onClick={() => { setNews([]); setNewsSummary(""); setNewsSummaryError(""); setView("news"); }}><FaSyncAlt /> <span>Refresh</span></button><button className="secondary action-btn summary-action-btn" disabled={!news.length || newsSummaryLoading} onClick={() => { setNewsSummaryLoading(true); setNewsSummaryError(""); request("/news/summary", authToken, { method: "POST", body: JSON.stringify({ articles: news }) }).then((x) => { setNewsSummary(x.summary || "No summary available yet."); if (x.provider === "local") setNewsSummaryError("The summary service was unavailable, so a local fallback was generated."); else setNewsSummaryError(""); }).catch((error) => { setNewsSummary(""); setNewsSummaryError(error.message || "The summary request failed."); }).finally(() => setNewsSummaryLoading(false)); }}><MdFlashOn /> <span>{newsSummaryLoading ? "Working…" : "Summary"}</span></button></div></div>{newsSummary && <div className="news-summary">{cleanSummaryText(newsSummary)}</div>}{newsSummaryError && <p className="muted">{newsSummaryError}</p>}{newsLoading ? <p>Loading current headlines…</p> : <div className="news-list">{news.map(item => <article className="news-item" key={item.url}><a href={item.url} target="_blank" rel="noreferrer"><h3>{item.title}</h3></a><small>{item.source} · {item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "Recent"}</small></article>)}{!news.length && <p>No current Oyo State headlines available.</p>}</div>}</section>}
@@ -2791,6 +2843,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [resultsOpen, setResultsOpen] = useState(false);
   const [supervisorIncidentsOpen, setSupervisorIncidentsOpen] = useState(false);
   const [partyMapAnalysis, setPartyMapAnalysis] = useState(null);
+  const [historicalMapAnalysis, setHistoricalMapAnalysis] = useState(null);
   const [analysisLayers, setAnalysisLayers] = useState([]);
   const [pendingAreaAction, setPendingAreaAction] = useState(null);
   const [areaSearchResult, setAreaSearchResult] = useState(null);
@@ -2809,6 +2862,58 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [areas, setAreas] = useState(() =>
     JSON.parse(localStorage.getItem("command-areas") || "[]"),
   );
+
+  const showHistoricalMap = async (dataset) => {
+    const office = dataset?.geography?.office;
+    if (!office) return;
+    setResultsOpen(false);
+    setPartyMapAnalysis(null);
+    setShowLgaBorders(true);
+    setHistoricalMapAnalysis({ year: dataset.year, election: dataset.election, office, loading: true, byLga: {}, availableLevels: dataset.geography.levels });
+    try {
+      const data = await request(`/history/oyo/${dataset.year}/${office}`, session.token);
+      const byLga = Object.fromEntries((data.areas || []).map(area => [area.name, area]));
+      const winnerCounts = (data.areas || []).reduce((counts, area) => ({ ...counts, [area.winner || "No result"]: (counts[area.winner || "No result"] || 0) + 1 }), {});
+      setHistoricalMapAnalysis(current => current?.office === office ? { ...current, ...data, election: dataset.election, loading: false, byLga, winnerCounts } : current);
+      mapRef.current?.flyTo(OYO_CENTER, 8);
+    } catch (error) {
+      setHistoricalMapAnalysis(current => current?.office === office ? { ...current, loading: false, error: error.message || "Historical map data is unavailable." } : current);
+    }
+  };
+
+  const selectHistoricalLga = async (name) => {
+    const normalize = value => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const current = historicalMapAnalysis;
+    const lga = Object.values(current?.byLga || {}).find(area => normalize(area.name) === normalize(name));
+    if (!current || !lga) return;
+    if (!current.availableLevels?.includes("ward")) {
+      setHistoricalMapAnalysis({ ...current, selectedLga: lga, selectedWard: null, detail: null, detailMessage: "Ward and polling-unit transcriptions are not available for this election in the connected archive." });
+      return;
+    }
+    setHistoricalMapAnalysis({ ...current, selectedLga: lga, selectedWard: null, detail: null, detailMessage: "", detailLoading: true });
+    try {
+      const detail = await request(`/history/oyo/2023/presidential/lga/${lga.id}`, session.token);
+      setHistoricalMapAnalysis(latest => latest?.selectedLga?.id === lga.id ? { ...latest, detail, detailLoading: false } : latest);
+    } catch (error) {
+      setHistoricalMapAnalysis(latest => latest?.selectedLga?.id === lga.id ? { ...latest, detailLoading: false, detailMessage: error.message || "Ward history is unavailable." } : latest);
+    }
+  };
+
+  const selectHistoricalWard = async (ward) => {
+    const current = historicalMapAnalysis;
+    const lga = current?.selectedLga;
+    if (!lga || !ward?.code) return;
+    setHistoricalMapAnalysis({ ...current, selectedWard: ward, detail: null, detailMessage: "", detailLoading: true });
+    try {
+      const wardCode = ward.code.replaceAll("/", "-");
+      const detail = await request(`/history/oyo/2023/presidential/lga/${lga.id}/ward/${wardCode}`, session.token);
+      setHistoricalMapAnalysis(latest => latest?.selectedWard?.code === ward.code ? { ...latest, detail, detailLoading: false } : latest);
+    } catch (error) {
+      setHistoricalMapAnalysis(latest => latest?.selectedWard?.code === ward.code ? { ...latest, detailLoading: false, detailMessage: error.message || "Polling-unit history is unavailable." } : latest);
+    }
+  };
+
+  const backHistoricalMap = () => setHistoricalMapAnalysis(current => current ? { ...current, selectedLga: null, selectedWard: null, detail: null, detailMessage: "", detailLoading: false } : current);
 
   const clearBoundarySelection = () => {
     setSelectedBoundaryState("");
@@ -5643,6 +5748,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           showLgaBorders={showLgaBorders}
           showBoundaryNames={showBoundaryNames}
           partyMapAnalysis={partyMapAnalysis}
+          historicalMapAnalysis={historicalMapAnalysis}
+          onHistoricalLgaSelect={selectHistoricalLga}
+          onHistoricalWardSelect={selectHistoricalWard}
+          onHistoricalBack={backHistoricalMap}
+          onHistoricalClose={() => setHistoricalMapAnalysis(null)}
           selectedBoundaryState={selectedBoundaryState}
           onBoundarySelect={(id, label) => {
             setSelectedBoundaryState(id);
@@ -5973,7 +6083,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </section>
       )}
-      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} onFocusLocation={(point) => { setResultsOpen(false); mapRef.current?.flyTo([point.lat, point.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
+      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} onShowHistoricalMap={showHistoricalMap} onFocusLocation={(point) => { setResultsOpen(false); mapRef.current?.flyTo([point.lat, point.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
       {activeEmergency && (
         <div className="emergency-alert-card">
           <b>Emergency from {activeEmergency.name}</b>

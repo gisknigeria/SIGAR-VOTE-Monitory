@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { MdFlashOn } from 'react-icons/md';
+import { MdFlashOn, MdMap } from 'react-icons/md';
 import { HISTORICAL_ELECTION_DATASETS, HISTORICAL_ELECTION_RESULTS, getHistoricalDataset } from '../../../shared/historicalElectionData.js';
 
 const formatMetric = (value, metric) => `${Number(value || 0).toLocaleString()} ${metric === 'votes' ? 'votes' : metric === 'seats' ? 'seats' : 'wins'}`;
 
-export default function PreElectionAnalysis({ onAnalyze }) {
+export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) {
   const [year, setYear] = useState(2023);
   const [election, setElection] = useState('Governorship');
   const [brief, setBrief] = useState('');
@@ -53,7 +53,10 @@ export default function PreElectionAnalysis({ onAnalyze }) {
   return <section className="pre-election-dashboard">
     <div className="pre-election-head">
       <div><span className="eyebrow">BEFORE THE NEXT ELECTION</span><h2>Pre-Election Historical Analysis</h2><p>Compare previous Oyo outcomes while keeping incomplete records clearly visible.</p></div>
-      <button className="primary action-btn" disabled={loading || !result} onClick={generate}><MdFlashOn /> {loading ? 'Analyzing…' : 'Generate Brief'}</button>
+      <div className="pre-election-head-actions">
+        {dataset?.geography?.levels?.includes('lga') && <button className="secondary action-btn" onClick={() => onShowHistoricalMap?.(dataset)}><MdMap /> Show previous election history</button>}
+        <button className="primary action-btn" disabled={loading || !result} onClick={generate}><MdFlashOn /> {loading ? 'Analyzing…' : 'Generate Brief'}</button>
+      </div>
     </div>
     <p className="pre-election-caution">Historical results are a baseline, not a forecast. Missing votes remain unavailable and are never converted to zero.</p>
 
@@ -69,6 +72,7 @@ export default function PreElectionAnalysis({ onAnalyze }) {
         <header><div><h3>{year} {election}</h3><p>{result.metric === 'votes' ? 'Recorded party totals' : 'Recorded outcome distribution'}</p></div><span>{dataset.authority}</span></header>
         <div className="historical-party-bars">{result.parties.map((item) => <div key={item.party}><div><strong>{item.party}</strong><b>{formatMetric(item.value, result.metric)}</b></div><span><i style={{ width: `${(item.value / maxValue) * 100}%` }} /></span></div>)}</div>
         <p className="pre-data-note">{result.note}</p>
+        {dataset.geography && <p className="pre-map-availability"><MdMap /> Map levels: {dataset.geography.levels.map(level => level === 'lga' ? 'LGA' : level === 'polling-unit' ? 'polling unit' : level).join(' → ')}. Lower-level figures are evidence transcriptions and remain separate from the declared state totals above.</p>}
       </article>
     </div>}
 
