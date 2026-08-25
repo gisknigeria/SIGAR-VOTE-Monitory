@@ -237,13 +237,21 @@ export default function CameraPanel({
     requestedFeedsRef.current.forEach((id) => {
       if (!availableIds.has(String(id))) requestedFeedsRef.current.delete(id);
     });
+    const retryTimers = [];
     phoneFeeds.forEach((feed) => {
       const id = String(feed.userId);
       if (!remoteStreams[feed.userId] && !requestedFeedsRef.current.has(id)) {
         requestedFeedsRef.current.add(id);
         onView(feed.userId);
+        retryTimers.push(window.setTimeout(() => {
+          if (!remoteStreams[feed.userId]) {
+            requestedFeedsRef.current.delete(id);
+            onView(feed.userId);
+          }
+        }, 10000));
       }
     });
+    return () => retryTimers.forEach((timer) => window.clearTimeout(timer));
   }, [isAdmin, phoneShares, remoteStreams, onView]);
 
   const saveFeedRecording = (feed, chunks, mimeType) => {

@@ -102,7 +102,6 @@ const PollingResultForm = lazy(() => loadFieldModals().then((module) => ({ defau
 
 const API = "/api";
 const OYO_CENTER = [7.3775, 3.947];
-const ELECTION_DAY = new Date("2027-02-06T00:00:00+01:00");
 const RESULT_SOURCES = ["Agent", "Supervisor", "INEC IReV"];
 const OYO_BOUNDS = [
   [6.73, 2.67],
@@ -171,40 +170,6 @@ const layerGeometry = (layer) =>
       ? "Raster"
       : LEGACY_CATEGORY_GEOMETRY[layer?.category] || "Point";
 
-function ElectionCountdown() {
-  const getRemaining = () => Math.max(0, ELECTION_DAY.getTime() - Date.now());
-  const [remaining, setRemaining] = useState(getRemaining);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setRemaining(getRemaining()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const totalSeconds = Math.floor(remaining / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const units = [
-    [days, "DAYS"],
-    [hours, "HOURS"],
-    [minutes, "MIN"],
-    [seconds, "SEC"],
-  ];
-
-  return (
-    <div className="election-countdown" aria-label="Time remaining until election day">
-      <div className="election-countdown-units">
-        {units.map(([value, label]) => (
-          <span key={label} className="election-countdown-unit">
-            <strong>{String(value).padStart(2, "0")}</strong>
-            <small>{label}</small>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
 const LAYER_COLORS_PRESET = [
   "#38bdf8",
   "#facc15",
@@ -3130,7 +3095,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [liveIncidentsOpen, setLiveIncidentsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [gpsRequiredBlocked, setGpsRequiredBlocked] = useState(session.user.role === "Agent");
+  const [gpsRequiredBlocked, setGpsRequiredBlocked] = useState(String(session.user.role || "").trim().toLowerCase() === "agent");
   const [chatPanel, setChatPanel] = useState(false);
   const [chatRooms, setChatRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
@@ -3152,6 +3117,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const localCameraStreamRef = useRef(null);
   const cameraMicMutedRef = useRef(false);
   const rtcPeersRef = useRef({});
+  const pendingCameraSignalsRef = useRef({});
   const sharingCameraRef = useRef(false);
   const offlineRecorderRef = useRef(null);
   const offlineChunksRef = useRef([]);
@@ -3193,8 +3159,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     [users, gpsPositions],
   );
   const canAdmin = ["Admin", "Super Admin"].includes(session.user.role);
-  const isAgent = session.user.role === "Agent";
-  const isSupervisor = session.user.role === "Supervisor";
+  const userRole = String(session.user.role || "").trim();
+  const isAgent = userRole.toLowerCase() === "agent";
+  const isSupervisor = userRole.toLowerCase() === "supervisor";
   const isFieldRole = isAgent || isSupervisor;
   const canCreateCustomReportType = ["Admin", "Super Admin"].includes(
     session.user.role,
@@ -3464,11 +3431,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           });
       };
       if (remoteUserId)
-        pc.ontrack = (event) =>
-          setRemoteStreams((old) => ({
-            ...old,
-            [remoteUserId]: event.streams[0],
-          }));
+        pc.ontrack = (event) => {
+          const stream = event.streams?.[0] || new MediaStream([event.track]);
+          setRemoteStreams((old) => ({ ...old, [remoteUserId]: stream }));
+        };
       rtcPeersRef.current[key] = pc;
       return pc;
     };
@@ -3628,6 +3594,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       let pc = rtcPeersRef.current[from];
       if (data.sdp?.type === "offer") {
         pc ||= await makePeer(from, fromUserId);
+        pc.pendingIceCandidates.push(...(pendingCameraSignalsRef.current[from] || []));
+        delete pendingCameraSignalsRef.current[from];
         await pc.setRemoteDescription(data.sdp);
         for (const candidate of pc.pendingIceCandidates.splice(0))
           await pc.addIceCandidate(candidate).catch(() => {});
@@ -3637,13 +3605,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           target: from,
           data: { sdp: pc.localDescription },
         });
-      } else if (data.sdp?.type === "answer" && pc)
+      } else if (data.sdp?.type === "answer" && pc) {
+        pc.pendingIceCandidates.push(...(pendingCameraSignalsRef.current[from] || []));
+        delete pendingCameraSignalsRef.current[from];
         await pc.setRemoteDescription(data.sdp).then(async () => {
           for (const candidate of pc.pendingIceCandidates.splice(0))
             await pc.addIceCandidate(candidate).catch(() => {});
         });
-      else if (data.candidate && pc) {
-        if (pc.remoteDescription) await pc.addIceCandidate(data.candidate).catch(() => {});
+      } else if (data.candidate) {
+        if (!pc) {
+          (pendingCameraSignalsRef.current[from] ||= []).push(data.candidate);
+        } else if (pc.remoteDescription) await pc.addIceCandidate(data.candidate).catch(() => {});
         else pc.pendingIceCandidates.push(data.candidate);
       }
     });
@@ -5899,7 +5871,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </button>
           </div>
           <div className="map-top-right">
-            <ElectionCountdown />
             <NotificationCenter notifications={notifications} onOpen={openNotification} />
             {!isFieldRole && <form className="coord-jump" onSubmit={jump}>
               <span>COORD</span>
@@ -5916,14 +5887,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </div>
           </div>
         </div>
-        {!isAgent && <div className="mobile-election-countdown"><ElectionCountdown /></div>}
         {isAgent && <div className="agent-field-screen">
           <div className="agent-notification-anchor"><NotificationCenter notifications={notifications} onOpen={openNotification} /></div>
           <img className="agent-brand-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
           <span className="eyebrow">FIELD REPORTING</span>
           <h1>{session.user.pollingUnit || "Polling unit agent"}</h1>
           <p>{[session.user.lga, session.user.ward].filter(Boolean).join(" • ")}</p>
-          <ElectionCountdown />
           <div className="agent-action-grid">
             <button className="agent-action-card result" onClick={openPollingUnitResultForm}>
               <ReportIcon iconKey="POI" size={22} />
