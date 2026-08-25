@@ -2800,9 +2800,9 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
     <div className="results-center">
       <header className="results-center-head">
         <div>
-          <span className="eyebrow">INTELLIGENCE DASHBOARD</span>
-          <h1>Analytics Dashboard</h1>
-          <p>Live operational pulse, election results, actions, and news.</p>
+          <span className="eyebrow">ELECTION ANALYSIS</span>
+          <h1>{view === "pre" ? "Pre-Election Analysis" : view === "post" ? "Post-Election Analysis" : "Election Operations"}</h1>
+          <p>{view === "pre" ? "Sentiment and previous election records." : view === "post" ? "Evidence, results, and operational lessons." : "Live operational pulse, election results, actions, and news."}</p>
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
