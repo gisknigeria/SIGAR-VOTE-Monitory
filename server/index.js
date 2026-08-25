@@ -34,10 +34,21 @@ const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(24).toString('he
 const meteredDomain = normalizeMeteredDomain(process.env.METERED_DOMAIN);
 const meteredTurnApiKey = String(process.env.METERED_TURN_API_KEY || '').trim();
 const meteredTurnRegion = normalizeMeteredRegion(process.env.METERED_TURN_REGION);
+const expressTurnUrls = String(process.env.EXPRESSTURN_URLS || '')
+  .split(',').map(url => url.trim()).filter(Boolean);
+const expressTurnServers = sanitizeIceServers(expressTurnUrls.length ? [{
+  urls: expressTurnUrls,
+  username: String(process.env.EXPRESSTURN_USERNAME || '').trim(),
+  credential: String(process.env.EXPRESSTURN_PASSWORD || '').trim(),
+}] : []);
+const hasExpressTurn = expressTurnServers.some(server => {
+  const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+  return urls.some(url => /^turns?:/i.test(url));
+});
 if ((process.env.METERED_DOMAIN || process.env.METERED_TURN_API_KEY) && (!meteredDomain || !meteredTurnApiKey)) {
   console.warn('Metered TURN is not fully configured. Live video will use the STUN fallback.');
 }
-if (!meteredDomain && !meteredTurnApiKey) console.warn('Metered TURN is not configured. Live video will use the STUN fallback.');
+if (!meteredDomain && !meteredTurnApiKey && !hasExpressTurn) console.warn('No TURN provider is configured. Live video will use the STUN fallback.');
 if (!process.env.SUPER_ADMIN_PASSWORD || !process.env.ADMIN_PASSWORD) {
   console.warn('SUPER_ADMIN_PASSWORD and ADMIN_PASSWORD were not set. Generated secure random passwords for the seeded admin accounts.');
 }
@@ -872,7 +883,7 @@ let turnCredentialCache = null;
 app.get('/api/turn/credentials', auth, rateLimit, asyncRoute(async (_req, res) => {
   if (!meteredDomain || !meteredTurnApiKey) {
     res.set('Cache-Control', 'private, no-store');
-    return res.json({ iceServers: FALLBACK_ICE_SERVERS, provider: 'stun-fallback' });
+    return res.json({ iceServers: hasExpressTurn ? expressTurnServers : FALLBACK_ICE_SERVERS, provider: hasExpressTurn ? 'expressturn' : 'stun-fallback' });
   }
   res.set('Cache-Control', 'private, max-age=240');
   res.set('Vary', 'Authorization');
@@ -895,7 +906,8 @@ app.get('/api/turn/credentials', auth, rateLimit, asyncRoute(async (_req, res) =
   } catch (error) {
     console.error('[turn] Metered credential fetch failed:', error.message);
     res.set('Cache-Control', 'private, no-store');
-    return res.json({ iceServers: FALLBACK_ICE_SERVERS, provider: 'stun-fallback' });
+    console.warn(`[turn] Metered failed; ${hasExpressTurn ? 'using ExpressTURN fallback' : 'using STUN fallback'}`);
+    return res.json({ iceServers: hasExpressTurn ? expressTurnServers : FALLBACK_ICE_SERVERS, provider: hasExpressTurn ? 'expressturn' : 'stun-fallback' });
   }
 }));
 let oyoBoundaryCache = null;

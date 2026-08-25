@@ -36,6 +36,18 @@ In the Camera Feeds header:
 
 After changing Render environment values, redeploy or restart the service so the server reads them.
 
+## ExpressTURN fallback
+
+Metered is tried first. To use ExpressTURN automatically when Metered credentials fail, copy the TURN URL(s), username, and password shown in the ExpressTURN dashboard into these private Render variables:
+
+```env
+EXPRESSTURN_URLS=turn:YOUR_EXPRESSTURN_HOST:3478,turns:YOUR_EXPRESSTURN_HOST:5349
+EXPRESSTURN_USERNAME=the-username-from-expressturn
+EXPRESSTURN_PASSWORD=the-password-from-expressturn
+```
+
+Use the exact URLs and credentials supplied by ExpressTURN. Do not put dashboard credentials in frontend code or commit them. The server returns the credentials only to authenticated users through `/api/turn/credentials`. When ExpressTURN is active, the camera panel reports `ExpressTURN ready` or `Connected via ExpressTURN`.
+
 ## Neon database
 
 If `DATABASE_URL` is set, the server stores users, incidents and camera streams in Neon/PostgreSQL instead of the local JSON file. The Blueprint now requests this as a private value. You can also add it directly in Render under **Environment**:

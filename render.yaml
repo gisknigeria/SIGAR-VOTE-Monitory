@@ -33,6 +33,12 @@ services:
         sync: false
       - key: METERED_TURN_REGION
         value: standard
+      - key: EXPRESSTURN_URLS
+        sync: false
+      - key: EXPRESSTURN_USERNAME
+        sync: false
+      - key: EXPRESSTURN_PASSWORD
+        sync: false
     disk:
       name: election-monitor-data
       mountPath: /data

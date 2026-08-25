@@ -3372,6 +3372,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         return { iceServers, provider, region };
       })
       .catch((error) => {
+        console.error("[turn] Credential request failed", error);
         console.warn("[camera] TURN credentials unavailable; using STUN fallback", error);
         setTurnStatus({ provider: "stun-fallback", region: "", route: "fallback" });
         return { iceServers: fallbackIceServers, provider: "stun-fallback", region: "" };
@@ -3413,9 +3414,15 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           stopOfflineVideoRecording();
           const route = await detectIceRoute(pc);
           setTurnStatus({ provider: iceConfiguration.provider, region: iceConfiguration.region, route });
-          setNotice(route === "turn" ? "Live video connected via Metered TURN" : "Live video connected directly");
+          setNotice(route === "turn" ? `Live video connected via ${iceConfiguration.provider === "expressturn" ? "ExpressTURN" : "Metered TURN"}` : "Live video connected directly");
           setTimeout(() => setNotice(""), 2500);
         } else if (["failed", "disconnected"].includes(pc.connectionState)) {
+          console.warn("[camera] WebRTC connection issue", {
+            peer: key,
+            state: pc.connectionState,
+            iceState: pc.iceConnectionState,
+            provider: iceConfiguration.provider,
+          });
           startOfflineVideoRecording(
             pc.connectionState === "failed"
               ? "Live video could not connect"

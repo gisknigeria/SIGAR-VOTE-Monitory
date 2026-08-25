@@ -221,12 +221,15 @@ export default function CameraPanel({
     Drone: cameraFeeds.filter((x) => x.feedType === "Drone").length,
   };
 
+  const turnProviderLabel = turnStatus?.provider === "expressturn" ? "ExpressTURN" : "Metered TURN";
   const turnStatusLabel = turnStatus?.route === "turn"
-    ? "Connected via Metered TURN"
+    ? `Connected via ${turnProviderLabel}`
     : turnStatus?.provider === "metered" && turnStatus?.route === "direct"
       ? "Metered ready · direct route"
       : turnStatus?.provider === "metered"
         ? `Metered TURN ready${turnStatus?.region ? ` · ${turnStatus.region}` : ""}`
+        : turnStatus?.provider === "expressturn"
+          ? "ExpressTURN ready"
         : turnStatus?.provider === "stun-fallback"
           ? "STUN fallback only"
           : "Checking TURN";
@@ -387,7 +390,7 @@ export default function CameraPanel({
           <h2>{view === "Drone" ? "Drone view" : "Camera feeds"}</h2>
         </div>
         <div className="camera-head-actions">
-          <span className={`turn-status ${turnStatus?.route === "turn" ? "relayed" : turnStatus?.provider === "metered" ? "ready" : "fallback"}`}>
+          <span className={`turn-status ${turnStatus?.route === "turn" ? "relayed" : ["metered", "expressturn"].includes(turnStatus?.provider) ? "ready" : "fallback"}`}>
             {turnStatusLabel}
           </span>
           <button className="icon-btn" onClick={onClose}>
