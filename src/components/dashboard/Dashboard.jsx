@@ -102,6 +102,7 @@ const PollingResultForm = lazy(() => loadFieldModals().then((module) => ({ defau
 
 const API = "/api";
 const OYO_CENTER = [7.3775, 3.947];
+const ELECTION_DAY = new Date("2027-02-06T00:00:00+01:00");
 const RESULT_SOURCES = ["Agent", "Supervisor", "INEC IReV"];
 const OYO_BOUNDS = [
   [6.73, 2.67],
@@ -169,6 +170,42 @@ const layerGeometry = (layer) =>
     : layer?.type === "raster"
       ? "Raster"
       : LEGACY_CATEGORY_GEOMETRY[layer?.category] || "Point";
+
+function ElectionCountdown() {
+  const getRemaining = () => Math.max(0, ELECTION_DAY.getTime() - Date.now());
+  const [remaining, setRemaining] = useState(getRemaining);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setRemaining(getRemaining()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const totalSeconds = Math.floor(remaining / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const units = [
+    [days, "DAYS"],
+    [hours, "HOURS"],
+    [minutes, "MIN"],
+    [seconds, "SEC"],
+  ];
+
+  return (
+    <div className="election-countdown" aria-label="Time remaining until election day">
+      <span className="election-countdown-label">ELECTION DAY · 06 FEB 2027</span>
+      <div className="election-countdown-units">
+        {units.map(([value, label]) => (
+          <span key={label} className="election-countdown-unit">
+            <strong>{String(value).padStart(2, "0")}</strong>
+            <small>{label}</small>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 const LAYER_COLORS_PRESET = [
   "#38bdf8",
   "#facc15",
@@ -5855,6 +5892,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </button>
           </div>
           <div className="map-top-right">
+            <ElectionCountdown />
             <NotificationCenter notifications={notifications} onOpen={openNotification} />
             {!isFieldRole && <form className="coord-jump" onSubmit={jump}>
               <span>COORD</span>
@@ -5871,12 +5909,14 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </div>
           </div>
         </div>
+        {!isAgent && <div className="mobile-election-countdown"><ElectionCountdown /></div>}
         {isAgent && <div className="agent-field-screen">
           <div className="agent-notification-anchor"><NotificationCenter notifications={notifications} onOpen={openNotification} /></div>
           <img className="agent-brand-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
           <span className="eyebrow">FIELD REPORTING</span>
           <h1>{session.user.pollingUnit || "Polling unit agent"}</h1>
           <p>{[session.user.lga, session.user.ward].filter(Boolean).join(" • ")}</p>
+          <ElectionCountdown />
           <div className="agent-action-grid">
             <button className="agent-action-card result" onClick={openPollingUnitResultForm}>
               <ReportIcon iconKey="POI" size={22} />

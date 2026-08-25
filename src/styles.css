@@ -905,6 +905,14 @@ body{font-size:14px}
 .map-top-left{display:flex;align-items:center;gap:6px;pointer-events:auto}
 .map-top-left .home-menu{order:1}.map-top-left .map-layer-menu{order:2}.map-top-left .street-view-tool{order:3}.map-top-left .clear-tools-btn{order:4}.map-top-left .share-location-action{order:5}.map-top-left .camera-share-action{order:6}.map-top-left .result-center-open{order:7}.map-top-left .report-action{order:8}.map-top-left .camera-count{display:grid;order:9}.map-top-left .incident-menu{order:10}.map-top-left .pre-election-action{order:11}.map-top-left .post-election-action{order:12}.map-top-left .emergency-open{order:13}.map-top-left>.share-map-action{display:none}
 .map-top-right{position:relative;display:flex;align-items:center;gap:7px;pointer-events:auto}
+.election-countdown{display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid #76582a;border-radius:8px;background:#24180cf2;color:#f5dc9a;box-shadow:0 8px 24px #0007;backdrop-filter:blur(8px);white-space:nowrap}
+.election-countdown-label{font-size:9px;font-weight:800;letter-spacing:.08em}
+.election-countdown-units{display:flex;align-items:center;gap:7px}
+.election-countdown-unit{display:grid;justify-items:center;line-height:1}
+.election-countdown-unit strong{font:800 16px 'JetBrains Mono',monospace;color:#fff4ca}
+.election-countdown-unit small{margin-top:3px;font-size:7px;font-weight:800;letter-spacing:.06em;color:#c6a96b}
+.mobile-election-countdown{display:none}
+.agent-field-screen>.election-countdown{margin:2px 0 4px}
 .desktop-map-search{position:static;transform:none;width:100%;height:38px;margin:0;background:#0b1826ef;border-color:#2b4a68;box-shadow:0 8px 24px #0007;backdrop-filter:blur(8px)}
 .desktop-map-search span{font:700 9px 'JetBrains Mono';letter-spacing:.14em;color:#6aaeff;text-transform:uppercase}
 .desktop-map-search input{font-size:13px}
@@ -1145,6 +1153,10 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
   .mobile-menu-fab{display:flex}
   /* Hide lat/lng input on mobile — coords show in hint bar */
   .map-top-right{display:none}
+  .mobile-election-countdown{display:block;position:absolute;z-index:740;top:60px;left:10px;right:10px}
+  .mobile-election-countdown .election-countdown{justify-content:space-between;width:100%;box-sizing:border-box}
+  .mobile-election-countdown .election-countdown-label{font-size:8px}
+  .mobile-election-countdown .election-countdown-units{gap:5px}
   /* GPS button closer to zoom on mobile */
   .my-location-target{right:12px;bottom:110px;width:38px;height:38px}
   .my-location-target svg{font-size:14px}
