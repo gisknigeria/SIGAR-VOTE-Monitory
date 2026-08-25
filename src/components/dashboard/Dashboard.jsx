@@ -2770,7 +2770,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
-      <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>
+      <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>
       <main className="results-center-body">
         {view === "pulse" && <AnalyticsPanel incidents={incidents} officers={officers} mapLayers={mapLayers} selected={selected} onClose={onClose} onTool={onTool} onCsv={onCsv} onClear={onClear} embedded />}
         {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} onShowHistoricalMap={onShowHistoricalMap} />}
@@ -5720,9 +5720,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 setResultsInitialView("pulse");
                 setResultsOpen(true);
               }}
-              title="Actions, reports, results, forecast, and news"
+              title="Open dashboard"
+              aria-label="Open dashboard"
             >
-              Dashboard
+              <FaChartBar />
             </button>
            
            
