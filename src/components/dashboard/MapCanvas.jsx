@@ -336,12 +336,6 @@ export default function MapCanvas({
           </div>
         )}
       </div>
-      {selectedBoundaryState && showBoundaryLayer && (
-        <div className="boundary-info-card">
-          <strong>Selected</strong>
-          <span>{selectedBoundaryState}</span>
-        </div>
-      )}
       {emergencyAlerts.length > 0 && (
         <div className="emergency-alert-card">
           <b>Emergency from {emergencyAlerts[0].name}</b>

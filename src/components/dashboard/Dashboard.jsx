@@ -77,6 +77,8 @@ import {
   MdFilterHdr,
   MdCropSquare,
   MdAdjust,
+  MdAssessment,
+  MdHowToVote,
 } from "react-icons/md";
 import ProfileModal from "./ProfileModal.jsx";
 import DashboardChatPanel from "./ChatPanel.jsx";
@@ -2324,8 +2326,8 @@ function AnalyticsPanel({
   );
 }
 
-function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", onPartyMapChange, onShowHistoricalMap, onFocusLocation, onTool, onCsv, onClear }) {
-  const [view, setView] = useState("pulse");
+function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", initialView = "pulse", onPartyMapChange, onShowHistoricalMap, onFocusLocation, onTool, onCsv, onClear }) {
+  const [view, setView] = useState(initialView);
   const [resultSourceFilter, setResultSourceFilter] = useState("");
   const [focusParty, setFocusParty] = useState(initialFocusParty);
   const [outlook, setOutlook] = useState("");
@@ -2933,6 +2935,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [manageOfficers, setManageOfficers] = useState(false);
   const [mapDataPanel, setMapDataPanel] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [resultsInitialView, setResultsInitialView] = useState("pulse");
   const [supervisorIncidentsOpen, setSupervisorIncidentsOpen] = useState(false);
   const [partyMapAnalysis, setPartyMapAnalysis] = useState(null);
   const [historicalMapAnalysis, setHistoricalMapAnalysis] = useState(null);
@@ -2949,7 +2952,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [showLgaBorders, setShowLgaBorders] = useState(true);
   const [showBoundaryNames, setShowBoundaryNames] = useState(false);
   const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
-  const [selectedBoundaryLabel, setSelectedBoundaryLabel] = useState("");
   const [drawMode, setDrawMode] = useState("");
   const [areas, setAreas] = useState(() =>
     JSON.parse(localStorage.getItem("command-areas") || "[]"),
@@ -3015,7 +3017,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
 
   const clearBoundarySelection = () => {
     setSelectedBoundaryState("");
-    setSelectedBoundaryLabel("");
   };
   const [measurePoints, setMeasurePoints] = useState([]);
   const [routePoints, setRoutePoints] = useState([]);
@@ -5399,9 +5400,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     onPassword={() => { setProfileOpen(true); setOperationsOpen(false); }}
                   />
                 )}
-                <button onClick={() => setResultsOpen(true)}>
-                  <FaChartBar /> Results & Forecast
-                </button>
                 {canAdmin && (
                   <button onClick={() => setPartyManagerOpen(true)}>
                     <FaUserCog /> Political Parties
@@ -5718,7 +5716,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </button>
             <button
               className="map-action result-center-open"
-              onClick={() => setResultsOpen(true)}
+              onClick={() => {
+                setResultsInitialView("pulse");
+                setResultsOpen(true);
+              }}
               title="Actions, reports, results, forecast, and news"
             >
               Dashboard
@@ -5751,6 +5752,28 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               Result
             </button>}
             <button
+              className="map-action election-phase-action pre-election-action"
+              onClick={() => {
+                setResultsInitialView("pre");
+                setResultsOpen(true);
+              }}
+              title="Pre-Election analysis"
+              aria-label="Open Pre-Election analysis"
+            >
+              <MdHowToVote />
+            </button>
+            <button
+              className="map-action election-phase-action post-election-action"
+              onClick={() => {
+                setResultsInitialView("post");
+                setResultsOpen(true);
+              }}
+              title="Post-Election analysis"
+              aria-label="Open Post-Election analysis"
+            >
+              <MdAssessment />
+            </button>
+            <button
               className={`map-action emergency-open ${sosHolding ? "sos-holding" : ""}`}
               {...sosHoldProps}
               title="Tap for SOS form or hold 5 seconds to send immediately"
@@ -5769,12 +5792,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               />
               <button>GO</button>
             </form>}
-            {selectedBoundaryLabel && showBoundaryLayer && (
-              <div className="boundary-info-card">
-                <strong>Selected</strong>
-                <span>{selectedBoundaryLabel}</span>
-              </div>
-            )}
             <div className={`profile-menu ${profileMenuOpen ? "open" : ""}`}>
               <button className="map-action logout-btn" onClick={() => setProfileMenuOpen(value => !value)} title="Profile menu"><span>{session.user.name?.[0] || "U"}</span></button>
               <div className="profile-dropdown"><div><b>{session.user.name}</b><small>{session.user.role}</small></div><button onClick={() => setProfileOpen(true)}><FaKey /> Profile</button><button onClick={onLogout}><FaSignOutAlt /> Logout</button></div>
@@ -5853,9 +5870,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           onHistoricalBack={backHistoricalMap}
           onHistoricalClose={() => setHistoricalMapAnalysis(null)}
           selectedBoundaryState={selectedBoundaryState}
-          onBoundarySelect={(id, label) => {
+          onBoundarySelect={(id) => {
             setSelectedBoundaryState(id);
-            setSelectedBoundaryLabel(label);
           }}
           onBoundaryClear={clearBoundarySelection}
         />}
@@ -6182,7 +6198,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </section>
       )}
-      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} onShowHistoricalMap={showHistoricalMap} onFocusLocation={(point) => { setResultsOpen(false); mapRef.current?.flyTo([point.lat, point.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
+      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} initialView={resultsInitialView} onPartyMapChange={setPartyMapAnalysis} onShowHistoricalMap={showHistoricalMap} onFocusLocation={(point) => { setResultsOpen(false); mapRef.current?.flyTo([point.lat, point.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
       {activeEmergency && (
         <div className="emergency-alert-card">
           <b>Emergency from {activeEmergency.name}</b>

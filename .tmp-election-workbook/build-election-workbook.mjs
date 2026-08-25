@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { SpreadsheetFile, Workbook } from '@oai/artifact-tool';
 import { HISTORICAL_ELECTION_DATASETS, HISTORICAL_ELECTION_RESULTS } from '../shared/historicalElectionData.js';
 
-const workDir = path.resolve('..');
-const dataDir = path.join(workDir, '.tmp-election-workbook');
+const dataDir = path.dirname(fileURLToPath(import.meta.url));
+const workDir = path.dirname(dataDir);
 const outputDir = path.join(workDir, 'outputs', 'previous-election-dataset');
 const outputPath = path.join(outputDir, 'Oyo_Previous_Election_Dataset.xlsx');
 const previewDir = path.join(dataDir, 'previews');
@@ -85,7 +86,11 @@ const rawHeaders = verifiedValues[0].map(value => String(value));
 const friendlyHeaders = rawHeaders.map(value => value.replaceAll('_', ' ').replace('PU-Code', 'PU Code').replace('PU-Name', 'PU Name'));
 const verifiedRows = normalizeCsvRows(verifiedValues);
 const reviewRows = normalizeCsvRows(reviewValues);
-const missingRows = normalizeCsvRows(missingValues);
+const missingRows = normalizeCsvRows(missingValues).map(row => {
+  for (const index of [5, 6, 8, 14, 15, 16, 17]) row[index] = null;
+  row[7] = 'No';
+  return row;
+});
 
 applyTitle(verifiedSheet, 'Oyo 2023 Presidential — Crosschecked Polling Units', 'Captured result sheets validated against INEC IReV by the Nigeria 2.0 crosscheck project. Blank figures remain blank; they are not converted to zero.', 'S');
 const verifiedTable = addTable(verifiedSheet, 4, friendlyHeaders, verifiedRows, 'VerifiedPollingUnits');
@@ -112,16 +117,14 @@ missingSheet.getRange(`F5:I${missingTable.lastRow}`).format.numberFormat = '#,##
 const stateRows = [];
 for (const dataset of HISTORICAL_ELECTION_DATASETS) {
   const result = HISTORICAL_ELECTION_RESULTS[dataset.id];
+  const loadedTotal = result.parties.reduce((sum, party) => sum + (Number(party.value) || 0), 0);
   for (const party of result.parties) {
-    stateRows.push([dataset.year, dataset.election, party.party, party.value, null, null, dataset.status, result.note, dataset.source.name, dataset.source.url]);
+    const votes = Number(party.value) || 0;
+    stateRows.push([dataset.year, dataset.election, party.party, votes, loadedTotal, loadedTotal ? votes / loadedTotal : null, dataset.status, result.note, dataset.source.name, dataset.source.url]);
   }
 }
 applyTitle(stateSheet, 'Oyo Previous Elections — Declared State Summaries', 'Declared or reported state-level summaries already loaded in the application. “Share of loaded votes” uses only parties present in each loaded record.', 'J');
 const stateTable = addTable(stateSheet, 4, ['Year', 'Election', 'Party', 'Votes', 'Loaded Total', 'Share of Loaded', 'Dataset Status', 'Coverage Note', 'Source', 'Source URL'], stateRows, 'StateDeclaredResults');
-stateSheet.getRange(`E5:F${stateTable.lastRow}`).formulas = stateRows.map((_, index) => {
-  const row = index + 5;
-  return [`=SUMIFS($D$5:$D$${stateTable.lastRow},$A$5:$A$${stateTable.lastRow},A${row},$B$5:$B$${stateTable.lastRow},B${row})`, `=IF(E${row}=0,"",D${row}/E${row})`];
-});
 stateSheet.freezePanes.freezeRows(4);
 setWidths(stateSheet, [65, 110, 100, 90, 95, 95, 90, 430, 190, 320], stateTable.lastRow);
 stateSheet.getRange(`D5:E${stateTable.lastRow}`).format.numberFormat = '#,##0';
@@ -133,42 +136,40 @@ const lgaRows = [];
 for (const [officeKey, officeLabel] of [['presidential', 'Presidential'], ['governor', 'Governorship']]) {
   for (const lga of lgaPayload?.[officeKey]?.lgas || []) {
     for (const [party, votes] of Object.entries(lga.parties || {}).sort((a, b) => Number(b[1]) - Number(a[1]))) {
-      lgaRows.push([2023, officeLabel, lga.lga_id, lga.lga, party, Number(votes) || 0, Number(lga.total) || 0, null, 'Evidence transcription', 'https://api.nigeria2.com/api/v1/results/2023/nga_31']);
+      const numericVotes = Number(votes) || 0;
+      const recordedTotal = Number(lga.total) || 0;
+      lgaRows.push([2023, officeLabel, lga.lga_id, lga.lga, party, numericVotes, recordedTotal, recordedTotal ? numericVotes / recordedTotal : null, 'Evidence transcription', 'https://api.nigeria2.com/api/v1/results/2023/nga_31']);
     }
   }
 }
 applyTitle(lgaSheet, 'Oyo 2023 — LGA Party Distribution', 'Long-format LGA evidence transcriptions for Presidential and Governorship contests. These may not reconcile with INEC declared state totals.', 'J');
 const lgaTable = addTable(lgaSheet, 4, ['Year', 'Election', 'LGA ID', 'LGA', 'Party', 'Votes', 'Recorded LGA Total', 'Party Share', 'Record Type', 'Source URL'], lgaRows, 'LgaPartyDistribution');
-lgaSheet.getRange(`H5:H${lgaTable.lastRow}`).formulas = lgaRows.map((_, index) => {
-  const row = index + 5;
-  return [`=IF(G${row}=0,"",F${row}/G${row})`];
-});
 lgaSheet.freezePanes.freezeRows(4); lgaSheet.freezePanes.freezeColumns(4);
 setWidths(lgaSheet, [60, 110, 65, 135, 75, 85, 110, 85, 130, 330], lgaTable.lastRow);
 lgaSheet.getRange(`F5:G${lgaTable.lastRow}`).format.numberFormat = '#,##0';
 lgaSheet.getRange(`H5:H${lgaTable.lastRow}`).format.numberFormat = '0.00%';
 lgaSheet.getRange(`J5:J${lgaTable.lastRow}`).format.font = { color: '#1155CC', underline: true, size: 8 };
 
-const allRows = [...verifiedRows, ...reviewRows, ...missingRows];
-const wardKeys = [...new Set(allRows.map(row => `${row[1]}\u0000${row[2]}`))].sort((a, b) => a.localeCompare(b));
-const wardRows = wardKeys.map(key => {
-  const [lga, ward] = key.split('\u0000');
-  return [lga, ward, null, null, null, null, null, null, null, null, null, null];
+const wardAggregate = new Map();
+const collectWardRows = (rows, category) => rows.forEach(row => {
+  const key = `${row[1]}\u0000${row[2]}`;
+  const current = wardAggregate.get(key) || { lga: row[1], ward: row[2], verified: 0, review: 0, missing: 0, apc: 0, lp: 0, pdp: 0, nnpp: 0 };
+  current[category] += 1;
+  if (category === 'verified') {
+    current.apc += Number(row[14]) || 0; current.lp += Number(row[15]) || 0;
+    current.pdp += Number(row[16]) || 0; current.nnpp += Number(row[17]) || 0;
+  }
+  wardAggregate.set(key, current);
 });
-applyTitle(wardSheet, 'Oyo 2023 Presidential — Ward Evidence Summary', 'Formula-driven aggregation. Party votes include crosschecked polling units only; review and missing counts remain visible as separate coverage indicators.', 'L');
+collectWardRows(verifiedRows, 'verified'); collectWardRows(reviewRows, 'review'); collectWardRows(missingRows, 'missing');
+const wardRows = [...wardAggregate.values()].sort((a, b) => `${a.lga}|${a.ward}`.localeCompare(`${b.lga}|${b.ward}`)).map(item => {
+  const recordedVotes = item.apc + item.lp + item.pdp + item.nnpp;
+  const parties = [['APC', item.apc], ['LP', item.lp], ['PDP', item.pdp], ['NNPP', item.nnpp]].sort((a, b) => b[1] - a[1]);
+  const pollingUnits = item.verified + item.review + item.missing;
+  return [item.lga, item.ward, item.verified, item.review, item.missing, item.apc, item.lp, item.pdp, item.nnpp, recordedVotes, recordedVotes ? parties[0][0] : 'No recorded result', pollingUnits ? item.verified / pollingUnits : null];
+});
+applyTitle(wardSheet, 'Oyo 2023 Presidential — Ward Evidence Summary', 'Aggregated from the included raw sheets. Party votes include crosschecked polling units only; calculated values are stored directly with no Excel formulas.', 'L');
 const wardTable = addTable(wardSheet, 4, ['LGA', 'Ward', 'Verified PUs', 'Review PUs', 'Missing PUs', 'APC', 'LP', 'PDP', 'NNPP', 'Recorded Votes', 'Recorded Winner', 'Verified Coverage'], wardRows, 'WardEvidenceSummary');
-wardSheet.getRange(`C5:L${wardTable.lastRow}`).formulas = wardRows.map((_, index) => {
-  const row = index + 5;
-  const countFormula = sheet => `=COUNTIFS('${sheet}'!$B$5:$B$${sheet === 'PU Verified' ? verifiedTable.lastRow : sheet === 'PU Review' ? reviewTable.lastRow : missingTable.lastRow},A${row},'${sheet}'!$C$5:$C$${sheet === 'PU Verified' ? verifiedTable.lastRow : sheet === 'PU Review' ? reviewTable.lastRow : missingTable.lastRow},B${row})`;
-  const voteFormula = sourceColumn => `=SUMIFS('PU Verified'!$${sourceColumn}$5:$${sourceColumn}$${verifiedTable.lastRow},'PU Verified'!$B$5:$B$${verifiedTable.lastRow},A${row},'PU Verified'!$C$5:$C$${verifiedTable.lastRow},B${row})`;
-  return [
-    countFormula('PU Verified'), countFormula('PU Review'), countFormula('PU Missing'),
-    voteFormula('O'), voteFormula('P'), voteFormula('Q'), voteFormula('R'),
-    `=SUM(F${row}:I${row})`,
-    `=IF(MAX(F${row}:I${row})=0,"No recorded result",INDEX(F$4:I$4,1,MATCH(MAX(F${row}:I${row}),F${row}:I${row},0)))`,
-    `=IF(SUM(C${row}:E${row})=0,"",C${row}/SUM(C${row}:E${row}))`,
-  ];
-});
 wardSheet.freezePanes.freezeRows(4); wardSheet.freezePanes.freezeColumns(2);
 setWidths(wardSheet, [135, 190, 85, 80, 80, 80, 80, 80, 80, 100, 110, 100], wardTable.lastRow);
 wardSheet.getRange(`C5:J${wardTable.lastRow}`).format.numberFormat = '#,##0';
@@ -181,21 +182,21 @@ overview.getRange('A4:J4').format = { fill: COLORS.gold, font: { bold: true, col
 overview.getRange('A6:B6').merge(); overview.getRange('D6:E6').merge(); overview.getRange('G6:H6').merge(); overview.getRange('I6:J6').merge();
 overview.getRange('A6').values = [['Crosschecked']]; overview.getRange('D6').values = [['Manual review']]; overview.getRange('G6').values = [['Sheet not found']]; overview.getRange('I6').values = [['Total polling units']];
 overview.getRange('A7:B8').merge(); overview.getRange('D7:E8').merge(); overview.getRange('G7:H8').merge(); overview.getRange('I7:J8').merge();
-overview.getRange('A7').formulas = [[`=COUNTA('PU Verified'!$D$5:$D$${verifiedTable.lastRow})`]];
-overview.getRange('D7').formulas = [[`=COUNTA('PU Review'!$D$5:$D$${reviewTable.lastRow})`]];
-overview.getRange('G7').formulas = [[`=COUNTA('PU Missing'!$D$5:$D$${missingTable.lastRow})`]];
-overview.getRange('I7').formulas = [['=A7+D7+G7']];
+const totalPollingUnits = verifiedRows.length + reviewRows.length + missingRows.length;
+overview.getRange('A7').values = [[verifiedRows.length]];
+overview.getRange('D7').values = [[reviewRows.length]];
+overview.getRange('G7').values = [[missingRows.length]];
+overview.getRange('I7').values = [[totalPollingUnits]];
 for (const range of ['A6:B8', 'D6:E8', 'G6:H8', 'I6:J8']) overview.getRange(range).format = { fill: COLORS.pale, font: { color: COLORS.ink }, borders: { preset: 'outside', style: 'medium', color: COLORS.gold }, horizontalAlignment: 'center', verticalAlignment: 'center' };
 for (const cell of ['A7', 'D7', 'G7', 'I7']) overview.getRange(cell).format = { font: { bold: true, color: COLORS.burgundy, size: 22 }, horizontalAlignment: 'center', verticalAlignment: 'center', numberFormat: '#,##0' };
-overview.getRange('A11:B15').values = [['Quality category', 'Polling units'], ['Crosschecked', null], ['Manual review', null], ['Sheet not found', null], ['Total', null]];
-overview.getRange('B12').formulas = [['=A7']]; overview.getRange('B13').formulas = [['=D7']]; overview.getRange('B14').formulas = [['=G7']]; overview.getRange('B15').formulas = [['=I7']];
+overview.getRange('A11:B15').values = [['Quality category', 'Polling units'], ['Crosschecked', verifiedRows.length], ['Manual review', reviewRows.length], ['Sheet not found', missingRows.length], ['Total', totalPollingUnits]];
 styleHeader(overview.getRange('A11:B11')); styleBody(overview.getRange('A12:B15')); overview.getRange('B12:B15').format.numberFormat = '#,##0';
 overview.getRange('A18:J18').merge(); overview.getRange('A18').values = [['WORKBOOK CONTENTS']]; overview.getRange('A18:J18').format = { fill: COLORS.burgundy, font: { bold: true, color: COLORS.cream } };
 overview.getRange('A20:J27').values = [
   ['Sheet', 'Purpose', '', '', '', '', '', '', '', ''],
   ['State Declared', '2019 and 2023 state-level party totals loaded in the application.', '', '', '', '', '', '', '', ''],
   ['LGA 2023', 'Long-format Presidential and Governorship evidence transcriptions for all 33 LGAs.', '', '', '', '', '', '', '', ''],
-  ['Ward Summary', 'Formula-driven ward totals and coverage, using crosschecked presidential polling units.', '', '', '', '', '', '', '', ''],
+  ['Ward Summary', 'Ward totals and coverage calculated from crosschecked presidential polling units.', '', '', '', '', '', '', '', ''],
   ['PU Verified', '3,899 polling units crosschecked against IReV.', '', '', '', '', '', '', '', ''],
   ['PU Review', '2,252 polling units flagged for manual review.', '', '', '', '', '', '', '', ''],
   ['PU Missing', '239 polling units where the source did not find a result sheet.', '', '', '', '', '', '', '', ''],
