@@ -940,28 +940,30 @@ app.get('/api/boundaries/oyo', rateLimit, asyncRoute(async (_req, res) => {
 }));
 app.get('/api/boundaries/oyo/wards', rateLimit, asyncRoute(async (req, res) => {
   const lga = String(req.query.lga || '').trim();
-  if (!/^[A-Za-z][A-Za-z .'-]{1,60}$/.test(lga)) return res.status(400).json({ message: 'A valid Oyo LGA name is required.' });
-  const cacheKey = lga.toLowerCase();
+  if (lga && !/^[A-Za-z][A-Za-z .'-]{1,60}$/.test(lga)) return res.status(400).json({ message: 'A valid Oyo LGA name is required.' });
+  const cacheKey = lga.toLowerCase() || 'all-oyo';
   const cached = oyoWardBoundaryCache.get(cacheKey);
   if (cached?.expiresAt > Date.now()) return res.json(cached.data);
   const params = new URLSearchParams({
-    where: `state = 'Oyo' AND lga = '${lga.replaceAll("'", "''")}'`,
+    where: lga ? `state = 'Oyo' AND lga = '${lga.replaceAll("'", "''")}'` : "state = 'Oyo'",
     outFields: 'OBJECTID,state,lga,lga_alt_names,ward,ward_alt_names,source,date',
     returnGeometry: 'true',
     outSR: '4326',
+    maxAllowableOffset: '0.0005',
+    geometryPrecision: '5',
     f: 'geojson',
   });
   try {
     const response = await fetch(`https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/GRID3_NGA_operational_wards_v3_0/FeatureServer/0/query?${params}`, {
       headers: { 'User-Agent': 'Election-Monitor/1.0 GRID3 ward boundary service' },
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(35_000),
     });
     if (!response.ok) throw new Error(`GRID3 returned ${response.status}`);
     const geojson = await response.json();
     if (!Array.isArray(geojson.features)) throw new Error('GRID3 returned invalid GeoJSON');
     const data = {
       wards: geojson,
-      lga,
+      lga: lga || 'Oyo State',
       attribution: 'GRID3 NGA - Operational Wards v3.0, CIESIN Columbia University (CC BY-SA 4.0)',
       notice: 'Operational ward boundaries are not authoritative and have not been fully validated by government officials.',
       fetchedAt: new Date().toISOString(),

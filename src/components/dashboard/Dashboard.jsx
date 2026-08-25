@@ -782,7 +782,7 @@ function MapView({
   const [oyoBoundaries, setOyoBoundaries] = useState({ state: null, lgas: null });
   const [oyoWardBoundaries, setOyoWardBoundaries] = useState({ lga: "", wards: null, notice: "" });
   const [selectedWardBoundaryLga, setSelectedWardBoundaryLga] = useState("");
-  const renderLgaSelectionLayer = showLgaBorders || (showWardBorders && !selectedWardBoundaryLga);
+  const renderLgaSelectionLayer = showLgaBorders;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1552,13 +1552,29 @@ function MapView({
 
   useEffect(() => {
     const lga = historicalMapAnalysis?.selectedLga?.name || (showWardBorders ? selectedWardBoundaryLga : "");
-    if (!lga) {
+    if (!lga && !showWardBorders) {
       setOyoWardBoundaries({ lga: "", wards: null, notice: "" });
       return undefined;
     }
     const controller = new AbortController();
-    fetch(`${API}/boundaries/oyo/wards?lga=${encodeURIComponent(lga)}`, { signal: controller.signal })
-      .then(response => response.ok ? response.json() : Promise.reject(new Error("Ward boundary service unavailable")))
+    const appUrl = `${API}/boundaries/oyo/wards${lga ? `?lga=${encodeURIComponent(lga)}` : ""}`;
+    const providerParams = new URLSearchParams({
+      where: lga ? `state = 'Oyo' AND lga = '${String(lga).replaceAll("'", "''")}'` : "state = 'Oyo'",
+      outFields: "OBJECTID,state,lga,lga_alt_names,ward,ward_alt_names,source,date",
+      returnGeometry: "true",
+      outSR: "4326",
+      maxAllowableOffset: "0.0005",
+      geometryPrecision: "5",
+      f: "geojson",
+    });
+    fetch(appUrl, { signal: controller.signal })
+      .then(async response => {
+        if (response.ok) return response.json();
+        const providerResponse = await fetch(`https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/GRID3_NGA_operational_wards_v3_0/FeatureServer/0/query?${providerParams}`, { signal: controller.signal });
+        if (!providerResponse.ok) throw new Error("Ward boundary service unavailable");
+        const wards = await providerResponse.json();
+        return { wards, lga: lga || "Oyo State", notice: "Operational GRID3 ward boundaries; not authoritative." };
+      })
       .then(data => setOyoWardBoundaries({ lga, wards: data.wards || null, notice: data.notice || "" }))
       .catch(error => {
         if (error.name !== "AbortError") setOyoWardBoundaries({ lga, wards: null, notice: error.message || "Ward boundaries unavailable" });
@@ -5620,11 +5636,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     setShowWardBorders(next);
                     if (next) {
                       setShowLgaBorders(false);
-                      setNotice("Ward border mode: select an LGA on the map.");
+                      setNotice("Loading ward borders for Oyo State.");
                     }
                     setMapMenu("");
                   }}
-                  title={showWardBorders ? "Hide ward borders" : "Show ward borders after selecting an LGA"}
+                  title={showWardBorders ? "Hide ward borders" : "Show Oyo ward borders"}
                 >
                   Ward Borders <span>{showWardBorders ? "Hide" : "Show"}</span>
                 </button>
