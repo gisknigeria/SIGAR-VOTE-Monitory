@@ -1,4 +1,4 @@
-const CACHE_NAME = 'election-monitor-command-v24-fast-ward-geometry';
+const CACHE_NAME = 'election-monitor-command-v25-historical-map-drilldown';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/bsa-logo.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-192.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png'];
 
 self.addEventListener('install', event => {
