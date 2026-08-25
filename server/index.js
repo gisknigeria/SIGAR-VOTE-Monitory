@@ -898,6 +898,7 @@ app.get('/api/turn/credentials', auth, rateLimit, asyncRoute(async (_req, res) =
   }
 }));
 let oyoBoundaryCache = null;
+const oyoWardBoundaryCache = new Map();
 app.get('/api/boundaries/oyo', rateLimit, asyncRoute(async (_req, res) => {
   if (oyoBoundaryCache?.expiresAt > Date.now()) return res.json(oyoBoundaryCache.data);
   const base = 'https://services3.arcgis.com/7J7WB6yJX0pYke9q/ArcGIS/rest/services/NCO_Security_Database_WFL1/FeatureServer';
@@ -935,6 +936,42 @@ app.get('/api/boundaries/oyo', rateLimit, asyncRoute(async (_req, res) => {
   } catch (error) {
     console.error('[boundaries] Oyo boundary fetch failed:', error.message);
     return res.status(503).json({ message: 'Oyo boundary data is temporarily unavailable.' });
+  }
+}));
+app.get('/api/boundaries/oyo/wards', rateLimit, asyncRoute(async (req, res) => {
+  const lga = String(req.query.lga || '').trim();
+  if (!/^[A-Za-z][A-Za-z .'-]{1,60}$/.test(lga)) return res.status(400).json({ message: 'A valid Oyo LGA name is required.' });
+  const cacheKey = lga.toLowerCase();
+  const cached = oyoWardBoundaryCache.get(cacheKey);
+  if (cached?.expiresAt > Date.now()) return res.json(cached.data);
+  const params = new URLSearchParams({
+    where: `state = 'Oyo' AND lga = '${lga.replaceAll("'", "''")}'`,
+    outFields: 'OBJECTID,state,lga,lga_alt_names,ward,ward_alt_names,source,date',
+    returnGeometry: 'true',
+    outSR: '4326',
+    f: 'geojson',
+  });
+  try {
+    const response = await fetch(`https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/GRID3_NGA_operational_wards_v3_0/FeatureServer/0/query?${params}`, {
+      headers: { 'User-Agent': 'Election-Monitor/1.0 GRID3 ward boundary service' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`GRID3 returned ${response.status}`);
+    const geojson = await response.json();
+    if (!Array.isArray(geojson.features)) throw new Error('GRID3 returned invalid GeoJSON');
+    const data = {
+      wards: geojson,
+      lga,
+      attribution: 'GRID3 NGA - Operational Wards v3.0, CIESIN Columbia University (CC BY-SA 4.0)',
+      notice: 'Operational ward boundaries are not authoritative and have not been fully validated by government officials.',
+      fetchedAt: new Date().toISOString(),
+    };
+    oyoWardBoundaryCache.set(cacheKey, { data, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+    res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+    return res.json(data);
+  } catch (error) {
+    console.error('[boundaries] Oyo ward boundary fetch failed:', error.message);
+    return res.status(503).json({ message: 'Oyo ward boundaries are temporarily unavailable.' });
   }
 }));
 const HISTORICAL_RESULTS_ORIGIN = 'https://api.nigeria2.com';

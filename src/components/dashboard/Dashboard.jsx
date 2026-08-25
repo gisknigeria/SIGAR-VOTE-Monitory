@@ -751,6 +751,7 @@ function MapView({
   historicalMapAnalysis,
   onHistoricalLgaSelect,
   onHistoricalWardSelect,
+  onHistoricalPollingUnitSelect,
   onHistoricalBack,
   onHistoricalClose,
   selectedBoundaryState,
@@ -768,11 +769,14 @@ function MapView({
   const lgaOverlay = useRef(null);
   const nigeriaStateOverlay = useRef(null);
   const nigeriaLgaOverlay = useRef(null);
+  const wardOverlay = useRef(null);
   const nigeriaStateLabels = useRef([]);
   const nigeriaLgaLabels = useRef([]);
+  const wardLabels = useRef([]);
   const hoverBoundaryLayer = useRef(null);
   const [layerPanelOpen, setLayerPanelOpen] = useState(false);
   const [oyoBoundaries, setOyoBoundaries] = useState({ state: null, lgas: null });
+  const [oyoWardBoundaries, setOyoWardBoundaries] = useState({ lga: "", wards: null, notice: "" });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -799,6 +803,10 @@ function MapView({
     () => Object.fromEntries(Object.entries(historicalMapAnalysis?.byLga || {}).map(([name, result]) => [normalizeLgaMatch(name), result])),
     [historicalMapAnalysis],
   );
+  const historicalWardResults = useMemo(
+    () => Object.fromEntries((historicalMapAnalysis?.wardDetail?.areas || []).map(result => [normalizeLgaMatch(result.name), result])),
+    [historicalMapAnalysis?.wardDetail],
+  );
   const historicalPartyColor = (party) => ({
     APC: '#2563eb', PDP: '#dc2626', LP: '#16a34a', NNPP: '#7c3aed', ACCORD: '#f59e0b', A: '#f59e0b', ADC: '#0891b2', SDP: '#ea580c',
   })[String(party || '').toUpperCase()] || '#64748b';
@@ -806,6 +814,11 @@ function MapView({
     const listed = (area?.parties || []).slice(0, 3);
     const otherPercentage = (area?.parties || []).slice(3).reduce((sum, item) => sum + Number(item.percentage || 0), 0);
     return [...listed, ...(otherPercentage > 0 ? [{ party: 'Others', percentage: Number(otherPercentage.toFixed(2)) }] : [])];
+  };
+  const historicalWardForFeature = feature => {
+    const properties = feature?.properties || {};
+    const names = [properties.ward, ...String(properties.ward_alt_names || "").split(",")].map(normalizeLgaMatch).filter(Boolean);
+    return names.map(name => historicalWardResults[name]).find(Boolean);
   };
 
   const getStateKey = (feature) =>
@@ -1526,6 +1539,75 @@ function MapView({
   }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults, historicalMapAnalysis, historicalLgaResults, onHistoricalLgaSelect]);
 
   useEffect(() => {
+    const lga = historicalMapAnalysis?.selectedLga?.name;
+    if (!lga) {
+      setOyoWardBoundaries({ lga: "", wards: null, notice: "" });
+      return undefined;
+    }
+    const controller = new AbortController();
+    fetch(`${API}/boundaries/oyo/wards?lga=${encodeURIComponent(lga)}`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error("Ward boundary service unavailable")))
+      .then(data => setOyoWardBoundaries({ lga, wards: data.wards || null, notice: data.notice || "" }))
+      .catch(error => {
+        if (error.name !== "AbortError") setOyoWardBoundaries({ lga, wards: null, notice: error.message || "Ward boundaries unavailable" });
+      });
+    return () => controller.abort();
+  }, [historicalMapAnalysis?.selectedLga?.name]);
+
+  useEffect(() => {
+    const map = leaflet.current;
+    if (!map) return;
+    wardOverlay.current?.remove();
+    wardOverlay.current = null;
+    wardLabels.current.forEach(label => label.remove());
+    wardLabels.current = [];
+    const features = oyoWardBoundaries.wards?.features || [];
+    if (!historicalMapAnalysis?.selectedLga || !features.length) return;
+    const layer = L.geoJSON({ type: "FeatureCollection", features }, {
+      pane: "overlayPane",
+      style: feature => {
+        const name = feature.properties?.ward || "";
+        const result = historicalWardForFeature(feature);
+        const color = result ? historicalPartyColor(result.winner) : "#d9aa4b";
+        return { color, weight: 2.2, dashArray: result ? "" : "5 4", fillColor: color, fillOpacity: result ? 0.26 : 0.04, opacity: 1 };
+      },
+      onEachFeature: (feature, wardLayer) => {
+        const name = feature.properties?.ward || feature.properties?.ward_alt_names || "Ward";
+        const result = historicalWardForFeature(feature);
+        const shares = compactPartyShares(result).map(item => `${escapeMapText(item.party)} ${escapeMapText(item.percentage)}%`).join(" · ");
+        wardLayer.bindTooltip(`<strong>${escapeMapText(name)}</strong><br>${result ? `Winner: ${escapeMapText(result.winner)}<br>${shares}` : "Historical result not matched"}`, { sticky: true, className: "nigeria-lga-tooltip" });
+        wardLayer.on({
+          mouseover: event => {
+            event.target.setStyle({ weight: 3.5, fillOpacity: 0.38 });
+            event.target.bringToFront();
+          },
+          mouseout: event => layer.resetStyle(event.target),
+          click: event => {
+            L.DomEvent.stopPropagation(event);
+            const selectedWard = historicalWardForFeature(feature);
+            if (selectedWard) onHistoricalWardSelect?.(selectedWard);
+          },
+        });
+        if (showBoundaryNames) {
+          const center = wardLayer.getBounds().getCenter();
+          wardLabels.current.push(L.marker(center, {
+            icon: L.divIcon({ className: "ward-name-label", html: `<div class="ward-label-text">${escapeMapText(name)}</div>`, iconSize: [110, 26], iconAnchor: [55, 13] }),
+            interactive: false,
+            pane: "overlayPane",
+          }).addTo(map));
+        }
+      },
+    }).addTo(map);
+    wardOverlay.current = layer;
+    layer.bringToFront();
+    return () => {
+      layer.remove();
+      wardLabels.current.forEach(label => label.remove());
+      wardLabels.current = [];
+    };
+  }, [oyoWardBoundaries.wards, historicalMapAnalysis?.selectedLga, historicalMapAnalysis?.wardDetail, historicalWardResults, showBoundaryNames, onHistoricalWardSelect]);
+
+  useEffect(() => {
     const map = leaflet.current;
     if (!map) return;
 
@@ -1766,11 +1848,21 @@ function MapView({
             <div className="historical-winner-legend">{Object.entries(historicalMapAnalysis.winnerCounts || {}).map(([party, count]) => <span key={party}><i style={{ background: historicalPartyColor(party) }} /> {party}: {count} LGA{count === 1 ? "" : "s"}</span>)}</div>
           </>}
           {historicalMapAnalysis.selectedLga && <>
-            <div className="historical-breadcrumb"><button type="button" onClick={onHistoricalBack}>Oyo LGAs</button><span>›</span><b>{historicalMapAnalysis.selectedLga.name}</b>{historicalMapAnalysis.selectedWard && <><span>›</span><b>{historicalMapAnalysis.selectedWard.name}</b></>}</div>
-            <div className="historical-selected-summary"><strong>{historicalMapAnalysis.selectedWard?.name || historicalMapAnalysis.selectedLga.name}</strong><span>Winner: <b>{historicalMapAnalysis.selectedWard?.winner || historicalMapAnalysis.selectedLga.winner || "No result"}</b></span><div>{compactPartyShares(historicalMapAnalysis.selectedWard || historicalMapAnalysis.selectedLga).map(item => <small key={item.party}>{item.party} {item.percentage}%</small>)}</div></div>
+            <div className="historical-breadcrumb">
+              <button type="button" onClick={() => onHistoricalBack?.("lgas")}>Oyo LGAs</button><span>›</span>
+              {historicalMapAnalysis.selectedWard ? <button type="button" onClick={() => onHistoricalBack?.("wards")}>{historicalMapAnalysis.selectedLga.name}</button> : <b>{historicalMapAnalysis.selectedLga.name}</b>}
+              {historicalMapAnalysis.selectedWard && <><span>›</span>{historicalMapAnalysis.selectedPollingUnit ? <button type="button" onClick={() => onHistoricalBack?.("polling-units")}>{historicalMapAnalysis.selectedWard.name}</button> : <b>{historicalMapAnalysis.selectedWard.name}</b>}</>}
+            </div>
+            <div className="historical-selected-summary">
+              <strong>{historicalMapAnalysis.selectedPollingUnit?.name || historicalMapAnalysis.selectedWard?.name || historicalMapAnalysis.selectedLga.name}</strong>
+              <span>Winner: <b>{historicalMapAnalysis.selectedPollingUnit?.winner || historicalMapAnalysis.selectedWard?.winner || historicalMapAnalysis.selectedLga.winner || "No result"}</b></span>
+              <div>{compactPartyShares(historicalMapAnalysis.selectedPollingUnit || historicalMapAnalysis.selectedWard || historicalMapAnalysis.selectedLga).map(item => <small key={item.party}>{item.party} {item.percentage}%</small>)}</div>
+              {historicalMapAnalysis.selectedPollingUnit && <div className="historical-pu-meta"><small>Registered: {historicalMapAnalysis.selectedPollingUnit.registeredVoters?.toLocaleString?.() ?? "Unavailable"}</small><small>Accredited: {historicalMapAnalysis.selectedPollingUnit.accreditedVoters?.toLocaleString?.() ?? "Unavailable"}</small><small>Recorded votes: {historicalMapAnalysis.selectedPollingUnit.totalVotes?.toLocaleString?.() ?? "Unavailable"}</small>{historicalMapAnalysis.selectedPollingUnit.confidence != null && <small>Transcription confidence: {historicalMapAnalysis.selectedPollingUnit.confidence}%</small>}</div>}
+            </div>
             {historicalMapAnalysis.detailLoading && <p className="historical-map-loading">Loading the next level…</p>}
-            {!historicalMapAnalysis.detailLoading && historicalMapAnalysis.detail?.areas?.length > 0 && <div className="historical-area-list">{historicalMapAnalysis.detail.areas.map(area => <button type="button" key={area.id} onClick={() => historicalMapAnalysis.detail.level === "ward" && onHistoricalWardSelect?.(area)} className={historicalMapAnalysis.detail.level === "ward" ? "" : "terminal"}><span><i style={{ background: historicalPartyColor(area.winner) }} /><b>{area.name}</b><em>{area.code}</em></span><span><strong>{area.winner || "No result"}</strong>{compactPartyShares(area).map(item => <small key={item.party}>{item.party} {item.percentage}%</small>)}</span></button>)}</div>}
+            {!historicalMapAnalysis.detailLoading && !historicalMapAnalysis.selectedPollingUnit && historicalMapAnalysis.detail?.areas?.length > 0 && <div className="historical-area-list">{historicalMapAnalysis.detail.areas.map(area => <button type="button" key={area.id} onClick={() => historicalMapAnalysis.detail.level === "ward" ? onHistoricalWardSelect?.(area) : onHistoricalPollingUnitSelect?.(area)}><span><i style={{ background: historicalPartyColor(area.winner) }} /><b>{area.name}</b><em>{area.code}</em></span><span><strong>{area.winner || "No result"}</strong><small>View</small></span></button>)}</div>}
             {!historicalMapAnalysis.detailLoading && historicalMapAnalysis.detailMessage && <p className="historical-map-instruction">{historicalMapAnalysis.detailMessage}</p>}
+            {oyoWardBoundaries.notice && !historicalMapAnalysis.selectedWard && <p className="historical-boundary-note">Ward outlines: GRID3 operational boundaries; not authoritative.</p>}
           </>}
           <footer>Colours show the party with the most recorded votes. “Others” combines parties outside the top three in that area.</footer>
         </aside>
@@ -2855,7 +2947,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
   const [showStateBorders, setShowStateBorders] = useState(true);
   const [showLgaBorders, setShowLgaBorders] = useState(true);
-  const [showBoundaryNames, setShowBoundaryNames] = useState(true);
+  const [showBoundaryNames, setShowBoundaryNames] = useState(false);
   const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
   const [selectedBoundaryLabel, setSelectedBoundaryLabel] = useState("");
   const [drawMode, setDrawMode] = useState("");
@@ -2887,13 +2979,13 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     const lga = Object.values(current?.byLga || {}).find(area => normalize(area.name) === normalize(name));
     if (!current || !lga) return;
     if (!current.availableLevels?.includes("ward")) {
-      setHistoricalMapAnalysis({ ...current, selectedLga: lga, selectedWard: null, detail: null, detailMessage: "Ward and polling-unit transcriptions are not available for this election in the connected archive." });
+      setHistoricalMapAnalysis({ ...current, selectedLga: lga, selectedWard: null, selectedPollingUnit: null, detail: null, wardDetail: null, pollingUnitDetail: null, detailMessage: "Ward and polling-unit transcriptions are not available for this election in the connected archive." });
       return;
     }
-    setHistoricalMapAnalysis({ ...current, selectedLga: lga, selectedWard: null, detail: null, detailMessage: "", detailLoading: true });
+    setHistoricalMapAnalysis({ ...current, selectedLga: lga, selectedWard: null, selectedPollingUnit: null, detail: null, wardDetail: null, pollingUnitDetail: null, detailMessage: "", detailLoading: true });
     try {
       const detail = await request(`/history/oyo/2023/presidential/lga/${lga.id}`, session.token);
-      setHistoricalMapAnalysis(latest => latest?.selectedLga?.id === lga.id ? { ...latest, detail, detailLoading: false } : latest);
+      setHistoricalMapAnalysis(latest => latest?.selectedLga?.id === lga.id ? { ...latest, detail, wardDetail: detail, detailLoading: false } : latest);
     } catch (error) {
       setHistoricalMapAnalysis(latest => latest?.selectedLga?.id === lga.id ? { ...latest, detailLoading: false, detailMessage: error.message || "Ward history is unavailable." } : latest);
     }
@@ -2903,17 +2995,23 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     const current = historicalMapAnalysis;
     const lga = current?.selectedLga;
     if (!lga || !ward?.code) return;
-    setHistoricalMapAnalysis({ ...current, selectedWard: ward, detail: null, detailMessage: "", detailLoading: true });
+    setHistoricalMapAnalysis({ ...current, selectedWard: ward, selectedPollingUnit: null, detail: null, pollingUnitDetail: null, detailMessage: "", detailLoading: true });
     try {
       const wardCode = ward.code.replaceAll("/", "-");
       const detail = await request(`/history/oyo/2023/presidential/lga/${lga.id}/ward/${wardCode}`, session.token);
-      setHistoricalMapAnalysis(latest => latest?.selectedWard?.code === ward.code ? { ...latest, detail, detailLoading: false } : latest);
+      setHistoricalMapAnalysis(latest => latest?.selectedWard?.code === ward.code ? { ...latest, detail, pollingUnitDetail: detail, detailLoading: false } : latest);
     } catch (error) {
       setHistoricalMapAnalysis(latest => latest?.selectedWard?.code === ward.code ? { ...latest, detailLoading: false, detailMessage: error.message || "Polling-unit history is unavailable." } : latest);
     }
   };
 
-  const backHistoricalMap = () => setHistoricalMapAnalysis(current => current ? { ...current, selectedLga: null, selectedWard: null, detail: null, detailMessage: "", detailLoading: false } : current);
+  const selectHistoricalPollingUnit = pollingUnit => setHistoricalMapAnalysis(current => current ? { ...current, selectedPollingUnit: pollingUnit } : current);
+  const backHistoricalMap = level => setHistoricalMapAnalysis(current => {
+    if (!current) return current;
+    if (level === "polling-units") return { ...current, selectedPollingUnit: null, detail: current.pollingUnitDetail, detailMessage: "", detailLoading: false };
+    if (level === "wards") return { ...current, selectedWard: null, selectedPollingUnit: null, detail: current.wardDetail, detailMessage: "", detailLoading: false };
+    return { ...current, selectedLga: null, selectedWard: null, selectedPollingUnit: null, detail: null, wardDetail: null, pollingUnitDetail: null, detailMessage: "", detailLoading: false };
+  });
 
   const clearBoundarySelection = () => {
     setSelectedBoundaryState("");
@@ -5751,6 +5849,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           historicalMapAnalysis={historicalMapAnalysis}
           onHistoricalLgaSelect={selectHistoricalLga}
           onHistoricalWardSelect={selectHistoricalWard}
+          onHistoricalPollingUnitSelect={selectHistoricalPollingUnit}
           onHistoricalBack={backHistoricalMap}
           onHistoricalClose={() => setHistoricalMapAnalysis(null)}
           selectedBoundaryState={selectedBoundaryState}
