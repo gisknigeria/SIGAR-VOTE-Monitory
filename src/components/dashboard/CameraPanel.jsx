@@ -418,7 +418,7 @@ export default function CameraPanel({
             >
               <div className="video-shell">
                 {remoteStreams[feed.userId] ? (
-                  <StreamVideo stream={remoteStreams[feed.userId]} watermark={feed} />
+                  <StreamVideo stream={remoteStreams[feed.userId]} muted watermark={feed} />
                 ) : (
                   <button
                     className="connect-feed"

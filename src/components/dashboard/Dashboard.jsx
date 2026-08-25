@@ -3436,6 +3436,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       const pc = new RTCPeerConnection({
         iceServers: iceConfiguration.iceServers,
       });
+      pc.pendingIceCandidates = [];
       const connectionTimer = setTimeout(() => {
         if (pc.connectionState !== "connected" && localCameraStreamRef.current)
           startOfflineVideoRecording("Live video could not connect");
@@ -3629,6 +3630,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       if (data.sdp?.type === "offer") {
         pc ||= await makePeer(from, fromUserId);
         await pc.setRemoteDescription(data.sdp);
+        for (const candidate of pc.pendingIceCandidates.splice(0))
+          await pc.addIceCandidate(candidate).catch(() => {});
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit("camera:signal", {
@@ -3636,9 +3639,14 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           data: { sdp: pc.localDescription },
         });
       } else if (data.sdp?.type === "answer" && pc)
-        await pc.setRemoteDescription(data.sdp);
-      else if (data.candidate && pc)
-        await pc.addIceCandidate(data.candidate).catch(() => {});
+        await pc.setRemoteDescription(data.sdp).then(async () => {
+          for (const candidate of pc.pendingIceCandidates.splice(0))
+            await pc.addIceCandidate(candidate).catch(() => {});
+        });
+      else if (data.candidate && pc) {
+        if (pc.remoteDescription) await pc.addIceCandidate(data.candidate).catch(() => {});
+        else pc.pendingIceCandidates.push(data.candidate);
+      }
     });
     // Restart camera stream when app returns to foreground after being backgrounded
     const handleVisibilityChange = async () => {
