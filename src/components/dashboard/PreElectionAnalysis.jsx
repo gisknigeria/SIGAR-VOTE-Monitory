@@ -55,7 +55,7 @@ export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) 
         },
         selectedView: { dataset, result: sentimentResult(result) },
         historicalDatasets: election2023Results.map((item) => ({ dataset: item.dataset, result: sentimentResult(item.result) })),
-        objective: 'Produce a neutral pre-election sentiment analysis using only the 2023 election dataset. Treat every PDP label as APM in the analysis and output. Describe evidence and uncertainty, and do not target voters or recommend political persuasion.',
+        objective: 'Produce a neutral pre-election sentiment analysis using only the 2023 election dataset. Use APM wherever the source data labels PDP. Describe evidence and uncertainty, and do not target voters or recommend political persuasion.',
       });
       const analysis = String(response.analysis || '').trim();
       if (!analysis) throw new Error('The analysis service returned an empty brief. Please try again.');

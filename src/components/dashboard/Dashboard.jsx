@@ -816,8 +816,9 @@ function MapView({
     () => Object.fromEntries((historicalMapAnalysis?.wardDetail?.areas || []).map(result => [normalizeLgaMatch(result.name), result])),
     [historicalMapAnalysis?.wardDetail],
   );
+  const displayParty = (party) => party === "PDP" ? "APM" : party;
   const historicalPartyColor = (party) => ({
-    APC: '#2563eb', PDP: '#dc2626', LP: '#16a34a', NNPP: '#7c3aed', ACCORD: '#f59e0b', A: '#f59e0b', ADC: '#0891b2', SDP: '#ea580c',
+    APC: '#2563eb', PDP: '#dc2626', APM: '#dc2626', LP: '#16a34a', NNPP: '#7c3aed', ACCORD: '#f59e0b', A: '#f59e0b', ADC: '#0891b2', SDP: '#ea580c',
   })[String(party || '').toUpperCase()] || '#64748b';
   const compactPartyShares = (area) => {
     return (area?.parties || [])
@@ -1874,16 +1875,15 @@ function MapView({
       {historicalMapAnalysis && (
         <aside className="historical-map-panel" aria-label="Previous election history">
           <header>
-            <div><span>PREVIOUS ELECTION HISTORY</span><strong>{historicalMapAnalysis.year} {historicalMapAnalysis.election}</strong></div>
+            <div><span>REAL TIME FEEDBACK</span><strong>{historicalMapAnalysis.year} {historicalMapAnalysis.election}</strong></div>
             <button type="button" onClick={onHistoricalClose} aria-label="Close previous election history">×</button>
           </header>
-          <p className="historical-map-notice">{historicalMapAnalysis.notice || "Geographic figures are evidence transcriptions and may not reconcile with declared totals."}</p>
           {historicalMapAnalysis.error && <p className="historical-map-error">{historicalMapAnalysis.error}</p>}
           {historicalMapAnalysis.loading && <p className="historical-map-loading">Loading historical distribution…</p>}
           {!historicalMapAnalysis.loading && !historicalMapAnalysis.selectedLga && <>
             <div className="historical-level-heading"><span>LEVEL 1</span><strong>Local governments</strong><small>Select an LGA to review it and open its wards.</small></div>
-            <div className="historical-winner-legend">{Object.entries(historicalMapAnalysis.winnerCounts || {}).map(([party, count]) => <span key={party}><i style={{ background: historicalPartyColor(party) }} /> {party}: {count} LGA{count === 1 ? "" : "s"}</span>)}</div>
-            <div className="historical-area-list historical-lga-list">{(historicalMapAnalysis.areas || Object.values(historicalMapAnalysis.byLga || {})).map(area => <button type="button" className="historical-result-row" key={area.id || area.name} onClick={() => onHistoricalLgaSelect?.(area.name)}><span className="historical-row-heading"><span><i style={{ background: historicalPartyColor(area.winner) }} /><b>{area.name}</b></span><strong>{area.winner || "No result"}</strong></span><span className="historical-share-strip">{compactPartyShares(area).map(item => <small className="historical-share-chip" key={item.party}><i style={{ background: historicalPartyColor(item.party) }} /><b>{item.party}</b><em>{item.percentage}%</em></small>)}</span><span className="historical-row-action">Select LGA <b>→</b></span></button>)}</div>
+            <div className="historical-winner-legend">{Object.entries(historicalMapAnalysis.winnerCounts || {}).map(([party, count]) => <span key={party}><i style={{ background: historicalPartyColor(party) }} /> {displayParty(party)}: {count} LGA{count === 1 ? "" : "s"}</span>)}</div>
+            <div className="historical-area-list historical-lga-list">{(historicalMapAnalysis.areas || Object.values(historicalMapAnalysis.byLga || {})).map(area => <button type="button" className="historical-result-row" key={area.id || area.name} onClick={() => onHistoricalLgaSelect?.(area.name)}><span className="historical-row-heading"><span><i style={{ background: historicalPartyColor(area.winner) }} /><b>{area.name}</b></span><strong>{displayParty(area.winner) || "No result"}</strong></span><span className="historical-share-strip">{compactPartyShares(area).map(item => <small className="historical-share-chip" key={item.party}><i style={{ background: historicalPartyColor(item.party) }} /><b>{displayParty(item.party)}</b><em>{item.percentage}%</em></small>)}</span><span className="historical-row-action">Select LGA <b>→</b></span></button>)}</div>
           </>}
           {historicalMapAnalysis.selectedLga && <>
             <div className="historical-breadcrumb">
