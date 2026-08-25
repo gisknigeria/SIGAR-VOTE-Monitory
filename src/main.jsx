@@ -4,6 +4,7 @@ import './styles.css';
 import './admin.css';
 import './controls.css';
 import './cameras.css';
+import './feature-parity.css';
 import App from './App.jsx';
 
 createRoot(document.getElementById('root')).render(<App />);

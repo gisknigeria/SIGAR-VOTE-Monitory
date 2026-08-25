@@ -87,6 +87,8 @@ import Toast from "../ui/Toast.jsx";
 import NotificationCenter from "./NotificationCenter.jsx";
 import AssignIncidentModal from "./AssignIncidentModal.jsx";
 import IncidentNotificationModal from "./IncidentNotificationModal.jsx";
+import SupervisorIncidentListModal from "./SupervisorIncidentListModal.jsx";
+import PreElectionAnalysis from "./PreElectionAnalysis.jsx";
 
 const loadFieldModals = () => import("./FieldModals.jsx");
 const DashboardCameraPanel = lazy(() => import("./CameraPanel.jsx"));
@@ -1743,7 +1745,19 @@ function MapView({
   );
 }
 
-function StreamVideo({ src, stream, muted = false, showControls = true }) {
+const cameraWatermarkLines = (feed = {}) => {
+  const location = feed.location || {};
+  const primary = location.label || (Number.isFinite(Number(feed.lat)) && Number.isFinite(Number(feed.lng)) ? `${Number(feed.lat).toFixed(5)}, ${Number(feed.lng).toFixed(5)}` : "Location awaiting GPS");
+  return [
+    primary,
+    location.street && location.street !== primary ? location.street : "",
+    `Polling Unit: ${feed.pollingUnit || feed.station || "Not assigned"}`,
+    `Ward: ${feed.ward || "Not assigned"}  •  LGA: ${feed.lga || "Not assigned"}`,
+    Number(feed.accuracy) > 0 ? `GPS accuracy ±${Math.round(Number(feed.accuracy))} m` : "",
+  ].filter(Boolean);
+};
+
+function StreamVideo({ src, stream, muted = false, showControls = true, watermark }) {
   const ref = useRef(null);
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -1837,6 +1851,7 @@ function StreamVideo({ src, stream, muted = false, showControls = true }) {
   return (
     <div className="recordable-video">
       <video ref={ref} controls={showControls} autoPlay playsInline muted={soundMuted} />
+      {watermark && <div className="video-location-watermark">{cameraWatermarkLines(watermark).map((line, index) => index === 0 ? <strong key={line}>{line}</strong> : <span key={`${line}-${index}`}>{line}</span>)}<small>© OpenStreetMap contributors</small></div>}
       {showControls && (
         <>
           <div className="stream-audio-controls">
@@ -2164,22 +2179,113 @@ function AnalyticsPanel({
   );
 }
 
-function ResultsCenter({ incidents, parties = [], officers = [], mapLayers = [], selected, onClose, authToken, initialFocusParty = "", onPartyMapChange, onTool, onCsv, onClear }) {
+function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", onPartyMapChange, onFocusLocation, onTool, onCsv, onClear }) {
   const [view, setView] = useState("pulse");
+  const [resultSourceFilter, setResultSourceFilter] = useState("");
   const [focusParty, setFocusParty] = useState(initialFocusParty);
   const [outlook, setOutlook] = useState("");
   const [outlookLoading, setOutlookLoading] = useState(false);
+  const [postElectionBrief, setPostElectionBrief] = useState("");
+  const [postElectionLoading, setPostElectionLoading] = useState(false);
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState("");
   const [newsSummary, setNewsSummary] = useState("");
   const [newsSummaryError, setNewsSummaryError] = useState("");
   const [newsSummaryLoading, setNewsSummaryLoading] = useState(false);
+  const [irevPilot, setIrevPilot] = useState(null);
+  const [irevLoading, setIrevLoading] = useState(false);
+  const [irevError, setIrevError] = useState("");
+  const [irevDrafts, setIrevDrafts] = useState({});
+  const [irevExtractingIds, setIrevExtractingIds] = useState(() => new Set());
+  const [irevFailedIds, setIrevFailedIds] = useState(() => new Set());
+  const [irevAutoStopped, setIrevAutoStopped] = useState(false);
+  const [irevAiStoppedReason, setIrevAiStoppedReason] = useState("");
+  const irevResumeTimerRef = useRef(null);
+  const [irevSection, setIrevSection] = useState("uploads");
+  const [irevSearch, setIrevSearch] = useState("");
+  const [irevPreview, setIrevPreview] = useState(null);
+  const [compareWithIrev, setCompareWithIrev] = useState(false);
+  const [irevCompareLoading, setIrevCompareLoading] = useState(false);
+  const [fieldMismatchDetail, setFieldMismatchDetail] = useState(null);
   useEffect(() => {
     if (view !== "news" || news.length) return;
     setNewsLoading(true);
-    request("/news?q=Oyo State", authToken).then(data => setNews(data.articles || [])).catch(error => { setNews([]); setNewsError(error.message || "News service unavailable"); }).finally(() => setNewsLoading(false));
+    request("/news?q=Oyo State politics INEC elections parties security SBK PDP governorship 2027", authToken).then(data => setNews(data.articles || [])).catch(error => { setNews([]); setNewsError(error.message || "News service unavailable"); }).finally(() => setNewsLoading(false));
   }, [view, news.length]);
+  const loadIrevPilot = async (force = false) => {
+    setIrevLoading(true);
+    setIrevError("");
+    try {
+      const pilot = await request(`/irev/oyo${force ? "?refresh=1" : ""}`, authToken);
+      setIrevPilot(pilot);
+      setIrevDrafts((current) => ({
+        ...Object.fromEntries((pilot.uploads || []).filter((upload) => upload.extraction?.provider === "gemini").map((upload) => [upload.id, upload.extraction])),
+        ...Object.fromEntries(Object.entries(current).filter(([, extraction]) => extraction?.provider === "gemini")),
+      }));
+      return pilot;
+    } catch (error) {
+      setIrevError(error.message || "The official IReV feed is unavailable.");
+      return null;
+    } finally {
+      setIrevLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (!["irev", "post"].includes(view)) return undefined;
+    let stopped = false;
+    let timer = null;
+    const poll = async () => {
+      const pilot = await loadIrevPilot();
+      if (!stopped) timer = window.setTimeout(poll, Math.max(60_000, Number(pilot?.refreshIntervalMs) || 300_000));
+    };
+    poll();
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, [view, authToken]);
+  const extractIrevText = async (uploadId) => {
+    setIrevExtractingIds((current) => new Set(current).add(uploadId));
+    setIrevError("");
+    try {
+      const result = await request("/irev/oyo/ocr", authToken, { method: "POST", body: JSON.stringify({ uploadId }) });
+      setIrevDrafts((current) => ({ ...current, [uploadId]: result }));
+    } catch (error) {
+      if (["IREV_IMAGE_RATE_LIMITED", "OCR_QUEUE_RATE_LIMITED"].includes(error.code) || (error.status === 429 && !["AI_QUOTA_EXHAUSTED", "AI_RATE_LIMITED"].includes(error.code))) {
+        setIrevError("");
+        setIrevAutoStopped(true);
+        setIrevAiStoppedReason(error.message || "OCR is temporarily paused and will resume automatically.");
+        window.clearTimeout(irevResumeTimerRef.current);
+        irevResumeTimerRef.current = window.setTimeout(() => { setIrevAutoStopped(false); setIrevAiStoppedReason(""); }, 60_000);
+      } else if (["AI_QUOTA_EXHAUSTED", "AI_RATE_LIMITED"].includes(error.code)) {
+        setIrevFailedIds((current) => new Set(current).add(uploadId));
+        setIrevError("");
+        setIrevAutoStopped(true);
+        setIrevAiStoppedReason(error.message);
+      } else if (/configure|not configured|service unavailable|api key/i.test(error.message || "")) {
+        setIrevFailedIds((current) => new Set(current).add(uploadId));
+        setIrevError("");
+        setIrevAutoStopped(true);
+        setIrevAiStoppedReason(error.message);
+      } else {
+        setIrevFailedIds((current) => new Set(current).add(uploadId));
+        setIrevError(error.message || "Image-to-text extraction failed.");
+      }
+    } finally {
+      setIrevExtractingIds((current) => { const next = new Set(current); next.delete(uploadId); return next; });
+    }
+  };
+  useEffect(() => () => window.clearTimeout(irevResumeTimerRef.current), []);
+  const openIrevPreview = (upload) => {
+    setIrevPreview(upload);
+    if (canAdmin && !irevDrafts[upload.id] && !irevExtractingIds.has(upload.id)) extractIrevText(upload.id);
+  };
+  useEffect(() => {
+    if ((!['irev', 'post'].includes(view) && !compareWithIrev) || !canAdmin || irevAutoStopped || !irevPilot?.uploads?.length) return undefined;
+    const availableSlots = Math.max(0, 2 - irevExtractingIds.size);
+    const nextUploads = irevPilot.uploads.filter((upload) => !irevDrafts[upload.id] && !irevFailedIds.has(upload.id) && !irevExtractingIds.has(upload.id)).slice(0, availableSlots);
+    if (!nextUploads.length) return undefined;
+    const timer = window.setTimeout(() => nextUploads.forEach((upload) => extractIrevText(upload.id)), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [view, compareWithIrev, canAdmin, irevAutoStopped, irevPilot, irevDrafts, irevExtractingIds, irevFailedIds]);
   const reports = useMemo(
     () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
     [incidents],
@@ -2188,7 +2294,9 @@ function ResultsCenter({ incidents, parties = [], officers = [], mapLayers = [],
     const rows = reports.map((report) => {
       let results = [];
       try { const parsed = JSON.parse(report.resultCount || "[]"); if (Array.isArray(parsed)) results = parsed; } catch { results = parseResultEntries(report.resultCount).map(item => ({ party: item.label, votes: item.value })); }
-      return { ...report, results };
+      const creatorRole = personnel.find((person) => person.id === report.createdBy)?.role || officers.find((officer) => officer.id === report.createdBy)?.role;
+      const resultSource = report.style?.resultSource || (creatorRole === "Supervisor" ? "Supervisor" : creatorRole === "Admin" || creatorRole === "Super Admin" ? "INEC IReV" : "Agent");
+      return { ...report, results, resultSource };
     });
     const historicalParties = rows.flatMap(row => row.results.map(item => item.party));
     const partyNames = [...new Set([...parties, ...historicalParties].filter(Boolean))];
@@ -2197,8 +2305,51 @@ function ResultsCenter({ incidents, parties = [], officers = [], mapLayers = [],
       partyNames, totals,
       rows: rows.sort((a, b) => `${a.lga}${a.ward}${a.pollingUnit}`.localeCompare(`${b.lga}${b.ward}${b.pollingUnit}`)),
     };
-  }, [reports, parties]);
-  const top6 = useMemo(() => summary.partyNames.slice().sort((a,b) => summary.totals[b]-summary.totals[a]).slice(0,6), [summary]);
+  }, [reports, parties, personnel, officers]);
+  const sourceStats = useMemo(() => RESULT_SOURCES.map((source) => {
+    const rows = summary.rows.filter((row) => row.resultSource === source);
+    const liveIrevUploads = source === "INEC IReV" ? Number(irevPilot?.submitted || 0) : 0;
+    return {
+      source,
+      submissions: Math.max(rows.length, liveIrevUploads),
+      units: new Set(rows.map((row) => `${row.lga}|${row.ward}|${row.pollingUnit}`)).size,
+      votes: rows.reduce((total, row) => total + row.results.reduce((sum, item) => sum + Number(item.votes || 0), 0), 0),
+      liveIrevUploads,
+    };
+  }), [summary.rows, irevPilot]);
+  const fieldResultRows = useMemo(() => summary.rows.filter((row) => row.resultSource !== "INEC IReV"), [summary.rows]);
+  const fieldResultTotals = useMemo(() => Object.fromEntries(summary.partyNames.map((party) => [party, fieldResultRows.reduce((total, row) => total + Number(row.results.find((item) => item.party === party)?.votes || 0), 0)])), [fieldResultRows, summary.partyNames]);
+  const fieldTopParties = useMemo(() => Object.keys(fieldResultTotals).filter((party) => fieldResultTotals[party] > 0).sort((a, b) => fieldResultTotals[b] - fieldResultTotals[a]).slice(0, 6), [fieldResultTotals]);
+  const displayedResultRows = useMemo(
+    () => resultSourceFilter ? fieldResultRows.filter((row) => row.resultSource === resultSourceFilter) : fieldResultRows,
+    [fieldResultRows, resultSourceFilter],
+  );
+  const normalizeResultKeyPart = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const resultUnitKey = (row) => [row.lga, row.ward, row.pollingUnit].map(normalizeResultKeyPart).join("|");
+  const fieldRowsByUnit = useMemo(() => {
+    const units = new Map();
+    fieldResultRows.forEach((row) => {
+      const key = resultUnitKey(row);
+      if (!units.has(key)) units.set(key, {});
+      const current = units.get(key)[row.resultSource];
+      if (!current || new Date(row.createdAt).getTime() >= new Date(current.createdAt).getTime()) units.get(key)[row.resultSource] = row;
+    });
+    return units;
+  }, [fieldResultRows]);
+  const filteredIrevUploads = useMemo(() => {
+    const query = irevSearch.trim().toLowerCase();
+    const uploads = irevPilot?.uploads || [];
+    if (!query) return uploads;
+    return uploads.filter((upload) => [upload.puCode, upload.pollingUnit, upload.ward, upload.lga].some((value) => String(value || "").toLowerCase().includes(query)));
+  }, [irevPilot, irevSearch]);
+  const irevResultRows = useMemo(() => (irevPilot?.uploads || []).map((upload) => ({ ...upload, results: irevDrafts[upload.id]?.results || [] })).filter((upload) => upload.results.length), [irevPilot, irevDrafts]);
+  const irevRowsByUnit = useMemo(() => new Map(irevResultRows.map((row) => [resultUnitKey(row), row])), [irevResultRows]);
+  const irevOnlyTotals = useMemo(() => irevResultRows.reduce((totals, upload) => {
+    upload.results.forEach(({ party, votes }) => { totals[party] = (totals[party] || 0) + Number(votes || 0); });
+    return totals;
+  }, {}), [irevResultRows]);
+  const irevTopParties = useMemo(() => Object.keys(irevOnlyTotals).filter((party) => irevOnlyTotals[party] > 0).sort((a, b) => irevOnlyTotals[b] - irevOnlyTotals[a]).slice(0, 5), [irevOnlyTotals]);
+  const top6 = useMemo(() => summary.partyNames.filter((party) => summary.totals[party] > 0).sort((a,b) => summary.totals[b]-summary.totals[a]).slice(0,6), [summary]);
   const winLoss = useMemo(() => {
     const groups = (key) => {
       const map = new Map();
@@ -2252,18 +2403,216 @@ function ResultsCenter({ incidents, parties = [], officers = [], mapLayers = [],
     partyAnalysis.tiedLgas.forEach(name => { byLga[name] = { name, status: "tied" }; });
     onPartyMapChange({ party: focusParty, byLga });
   }, [focusParty, partyAnalysis, onPartyMapChange]);
-  const actions = useMemo(() => {
+  const actionableIntel = useMemo(() => {
     const critical = incidents.filter(i => i.severity === "Critical" || i.reportType === "SOS-Emergency").length;
     const open = incidents.filter(i => !["Resolved", "Submitted"].includes(i.status)).length;
-    const actions = [];
-    if (critical) actions.push(`Prioritize ${critical} critical/SOS item${critical === 1 ? "" : "s"} for response verification.`);
-    if (open > critical) actions.push(`Review ${open - critical} other open incident${open - critical === 1 ? "" : "s"} before the next reporting cycle.`);
-    if (forecast.coverage < 10) actions.push("Increase polling-unit reporting coverage before treating the forecast as reliable.");
-    if (forecast.margin === 0 && forecast.leader) actions.push("Treat the race as too close to call; validate submitted totals and missing units.");
-    if (!actions.length) actions.push("Continue verification and monitor new submissions; no exceptional operational signal detected.");
-    return actions;
-  }, [incidents, forecast]);
+    return { critical, otherOpen: Math.max(0, open - critical) };
+  }, [incidents]);
+  const postElection = useMemo(() => {
+    const unitKey = (row) => `${row.lga || ""}|${row.ward || ""}|${row.pollingUnit || ""}`;
+    const compareResults = (left, right) => summary.partyNames.every((party) => {
+      const partyKey = normalizeResultKeyPart(party);
+      const leftVotes = Number(left?.results?.find((item) => normalizeResultKeyPart(item.party) === partyKey)?.votes || 0);
+      const rightVotes = Number(right?.results?.find((item) => normalizeResultKeyPart(item.party) === partyKey)?.votes || 0);
+      return leftVotes === rightVotes;
+    });
+    const fieldMismatches = [...fieldRowsByUnit.entries()].filter(([, pair]) => pair.Agent && pair.Supervisor && !compareResults(pair.Agent, pair.Supervisor));
+    const irevMismatches = [...fieldRowsByUnit.entries()].filter(([key, pair]) => {
+      const official = irevRowsByUnit.get(key);
+      const field = pair.Supervisor || pair.Agent;
+      return official && field && !compareResults(field, official);
+    });
+    const uniqueSourceUnits = new Set(summary.rows.map((row) => `${unitKey(row)}|${row.resultSource}`));
+    const duplicates = Math.max(0, summary.rows.length - uniqueSourceUnits.size);
+    const missingEvidence = fieldResultRows.filter((row) => !Array.isArray(row.media) || row.media.length === 0);
+    const zeroVoteSheets = fieldResultRows.filter((row) => row.results.reduce((sum, item) => sum + Number(item.votes || 0), 0) === 0);
+    const fieldPairCount = [...fieldRowsByUnit.values()].filter((pair) => pair.Agent && pair.Supervisor).length;
+    const irevComparableCount = [...fieldRowsByUnit.keys()].filter((key) => irevRowsByUnit.has(key)).length;
+    const readinessPenalty = (missingEvidence.length / Math.max(1, fieldResultRows.length)) * 35
+      + (fieldMismatches.length / Math.max(1, fieldPairCount)) * 25
+      + (irevMismatches.length / Math.max(1, irevComparableCount)) * 25
+      + (duplicates / Math.max(1, summary.rows.length)) * 10
+      + (zeroVoteSheets.length / Math.max(1, fieldResultRows.length)) * 5;
+    const readinessScore = summary.rows.length ? Math.max(0, Math.min(100, 100 - Math.round(readinessPenalty))) : 0;
+
+    const canonicalRows = [...fieldRowsByUnit.values()].map((pair) => pair.Supervisor || pair.Agent).filter(Boolean);
+    const spatialGroups = new Map();
+    canonicalRows.forEach((row) => {
+      const label = `${row.lga || "Unknown LGA"} / ${row.ward || "Unknown Ward"}`;
+      if (!spatialGroups.has(label)) spatialGroups.set(label, []);
+      spatialGroups.get(label).push(row);
+    });
+    const wardSpatial = [...spatialGroups.entries()].map(([label, rows]) => {
+      const votes = Object.fromEntries(summary.partyNames.map((party) => [party, rows.reduce((sum, row) => sum + Number(row.results.find((item) => item.party === party)?.votes || 0), 0)]));
+      const max = Math.max(0, ...Object.values(votes));
+      const leaders = max ? summary.partyNames.filter((party) => votes[party] === max) : [];
+      const group = { label, rows, votes, winner: leaders.length === 1 ? leaders[0] : null };
+      const totalVotes = Object.values(group.votes).reduce((sum, value) => sum + Number(value || 0), 0);
+      const ranked = Object.entries(group.votes).sort((a, b) => b[1] - a[1]);
+      const margin = Number(ranked[0]?.[1] || 0) - Number(ranked[1]?.[1] || 0);
+      const [lga, ward] = group.label.split(" / ");
+      const relatedIncidents = incidents.filter((item) => item.reportType !== POLLING_RESULT_TYPE && normalizeResultKeyPart(item.lga) === normalizeResultKeyPart(lga) && normalizeResultKeyPart(item.ward) === normalizeResultKeyPart(ward));
+      const point = group.rows.find((row) => Number.isFinite(Number(row.lat)) && Number.isFinite(Number(row.lng)));
+      return { ...group, lga, ward, totalVotes, margin, reports: group.rows.length, incidentCount: relatedIncidents.length, criticalCount: relatedIncidents.filter((item) => item.severity === "Critical" || item.reportType === "SOS-Emergency").length, lat: Number(point?.lat), lng: Number(point?.lng) };
+    }).sort((a, b) => b.totalVotes - a.totalVotes);
+
+    const chronological = canonicalRows.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const trendParties = top6.slice(0, 4);
+    const running = Object.fromEntries(trendParties.map((party) => [party, 0]));
+    let runningAllVotes = 0;
+    const trendPoints = chronological.map((row, index) => {
+      trendParties.forEach((party) => { running[party] += Number(row.results.find((item) => item.party === party)?.votes || 0); });
+      runningAllVotes += row.results.reduce((sum, item) => sum + Number(item.votes || 0), 0);
+      return { index, shares: Object.fromEntries(trendParties.map((party) => [party, runningAllVotes ? (running[party] / runningAllVotes) * 100 : 0])) };
+    });
+    const trendSeries = trendParties.map((party) => ({
+      party,
+      points: trendPoints.map((point, index) => `${trendPoints.length < 2 ? 0 : (index / (trendPoints.length - 1)) * 320},${96 - point.shares[party] * 0.9}`).join(" "),
+      share: trendPoints.at(-1)?.shares?.[party] || 0,
+      movement: (trendPoints.at(-1)?.shares?.[party] || 0) - (trendPoints[Math.max(0, Math.floor(trendPoints.length / 2) - 1)]?.shares?.[party] || 0),
+    }));
+
+    const people = new Map(personnel.map((person) => [person.id, person]));
+    const creatorIds = [...new Set(fieldResultRows.map((row) => row.createdBy).filter(Boolean))];
+    const performance = creatorIds.map((creatorId) => {
+      const rows = fieldResultRows.filter((row) => row.createdBy === creatorId);
+      const evidenceRate = rows.length ? rows.filter((row) => Array.isArray(row.media) && row.media.length > 0).length / rows.length : 0;
+      let comparable = 0; let matching = 0;
+      rows.forEach((row) => {
+        const pair = fieldRowsByUnit.get(resultUnitKey(row)) || {};
+        const counterpart = row.resultSource === "Agent" ? pair.Supervisor : pair.Agent;
+        if (counterpart) { comparable += 1; if (compareResults(row, counterpart)) matching += 1; }
+      });
+      const consistencyRate = comparable ? matching / comparable : 0.5;
+      const authoredIncidents = incidents.filter((item) => item.createdBy === creatorId && item.reportType !== POLLING_RESULT_TYPE);
+      const closureRate = authoredIncidents.length ? authoredIncidents.filter((item) => item.status === "Resolved").length / authoredIncidents.length : 1;
+      return { id: creatorId, name: people.get(creatorId)?.name || creatorId, role: people.get(creatorId)?.role || rows[0]?.resultSource || "Field", submissions: rows.length, evidenceRate, consistencyRate, closureRate };
+    });
+    const maxSubmissions = Math.max(1, ...performance.map((item) => item.submissions));
+    performance.forEach((item) => { item.score = Math.round(item.evidenceRate * 35 + item.consistencyRate * 35 + item.closureRate * 10 + (item.submissions / maxSubmissions) * 20); });
+    performance.sort((a, b) => b.score - a.score || b.submissions - a.submissions);
+
+    return { readinessScore, fieldMismatches, irevMismatches, duplicates, missingEvidence, zeroVoteSheets, wardSpatial, trendSeries, performance };
+  }, [summary, fieldRowsByUnit, fieldResultRows, irevRowsByUnit, winLoss, incidents, top6, personnel]);
+  const actions = useMemo(() => [
+    `Prioritize: ${actionableIntel.critical} critical/SOS item${actionableIntel.critical === 1 ? "" : "s"} for response verification.`,
+    `Review: ${actionableIntel.otherOpen} other open incident${actionableIntel.otherOpen === 1 ? "" : "s"}.`,
+  ], [actionableIntel]);
   const cleanSummaryText = (value) => String(value || "").replace(/\*\*/g, "").trim();
+  const aiBriefingSections = useMemo(() => {
+    const text = cleanSummaryText(outlook);
+    if (!text) return [];
+    const knownHeadings = ["EXECUTIVE ASSESSMENT", "EVIDENCE & PATTERNS", "RISKS & UNCERTAINTIES", "ACTIONABLE NEXT STEPS", "CONFIDENCE"];
+    const sections = [];
+    let current = null;
+    text.split(/\r?\n/).map(line => line.trim()).filter(Boolean).forEach(line => {
+      const normalized = line.replace(/:$/, "").toUpperCase();
+      if (knownHeadings.includes(normalized)) {
+        current = { title: normalized, lines: [] };
+        sections.push(current);
+        return;
+      }
+      if (!current) {
+        current = { title: "OPERATIONAL BRIEFING", lines: [] };
+        sections.push(current);
+      }
+      current.lines.push(line.replace(/^[-•]\s*/, ""));
+    });
+    return sections;
+  }, [outlook]);
+  const runOperationalAnalysis = async () => {
+    const safeIncidents = incidents.slice(0, 100).map(item => ({
+      id: item.id,
+      title: item.title,
+      description: String(item.description || "").slice(0, 500),
+      reportType: item.reportType,
+      severity: item.severity,
+      status: item.status,
+      lga: item.lga,
+      ward: item.ward,
+      pollingUnit: item.pollingUnit,
+      assignedTo: item.assignedTo,
+      mediaCount: Array.isArray(item.media) ? item.media.length : 0,
+      createdAt: item.createdAt,
+    }));
+    const severityCounts = incidents.reduce((counts, item) => ({ ...counts, [item.severity || "Unknown"]: (counts[item.severity || "Unknown"] || 0) + 1 }), {});
+    const statusCounts = incidents.reduce((counts, item) => ({ ...counts, [item.status || "Unknown"]: (counts[item.status || "Unknown"] || 0) + 1 }), {});
+    setOutlookLoading(true);
+    setOutlook("");
+    try {
+      const response = await request("/analysis/ai", authToken, {
+        method: "POST",
+        body: JSON.stringify({ context: {
+          generatedAt: new Date().toISOString(),
+          projection: forecast,
+          resultSummary: { submissions: reports.length, partyTotals: summary.totals, assessedWards: winLoss.wards.length, assessedLgas: winLoss.lgas.length },
+          selectedParty: focusParty || null,
+          partyAnalysis,
+          incidentSummary: { total: incidents.length, severityCounts, statusCounts, actionableIntel },
+          incidents: safeIncidents,
+          currentActions: actions,
+        } }),
+      });
+      setOutlook(response.analysis || "No operational analysis returned.");
+    } catch (error) {
+      setOutlook(error.message || "Operational analysis unavailable.");
+    } finally {
+      setOutlookLoading(false);
+    }
+  };
+  const runPostElectionAnalysis = async () => {
+    setPostElectionLoading(true);
+    setPostElectionBrief("");
+    try {
+      const response = await request("/analysis/ai", authToken, {
+        method: "POST",
+        body: JSON.stringify({ context: {
+          analysisMode: "POST_ELECTION",
+          generatedAt: new Date().toISOString(),
+          projection: forecast,
+          resultSummary: { submissions: reports.length, partyTotals: summary.totals, assessedWards: winLoss.wards.length, assessedLgas: winLoss.lgas.length },
+          evidenceAndLitigation: { readinessScore: postElection.readinessScore, missingEvidence: postElection.missingEvidence.length, fieldMismatches: postElection.fieldMismatches.length, irevMismatches: postElection.irevMismatches.length, duplicateSubmissions: postElection.duplicates, zeroVoteSheets: postElection.zeroVoteSheets.length },
+          spatialConcentrations: postElection.wardSpatial.slice(0, 10).map((item) => ({ ward: item.label, submittedVotes: item.totalVotes, leader: item.winner, margin: item.margin, incidents: item.incidentCount, criticalIncidents: item.criticalCount })),
+          reportingPerformance: postElection.performance.slice(0, 12).map((item) => ({ name: item.name, role: item.role, score: item.score, submissions: item.submissions, evidenceRate: Math.round(item.evidenceRate * 100), consistencyRate: Math.round(item.consistencyRate * 100) })),
+          objective: "Assess evidence preservation for possible litigation, operational lessons for the next election cycle, and objective field-team performance. Keep all recommendations neutral and evidence-based.",
+        } }),
+      });
+      setPostElectionBrief(response.analysis || "No post-election briefing returned.");
+    } catch (error) {
+      setPostElectionBrief(error.message || "Post-election AI analysis is unavailable.");
+    } finally {
+      setPostElectionLoading(false);
+    }
+  };
+  const toggleIrevComparison = async () => {
+    if (compareWithIrev) return setCompareWithIrev(false);
+    setIrevCompareLoading(true);
+    const pilot = await loadIrevPilot();
+    setIrevCompareLoading(false);
+    if (pilot?.configured && pilot.uploads?.length) setCompareWithIrev(true);
+    else setIrevError("Oyo 2027 IReV results are not available yet.");
+  };
+  const partyVoteFor = (row, party) => Number(row?.results?.find((result) => normalizeResultKeyPart(result.party) === normalizeResultKeyPart(party))?.votes || 0);
+  const renderFieldVote = (row, party) => {
+    const ownVotes = partyVoteFor(row, party);
+    const pair = fieldRowsByUnit.get(resultUnitKey(row)) || {};
+    const hasBothFieldSources = Boolean(pair.Agent && pair.Supervisor);
+    const agentVotes = partyVoteFor(pair.Agent, party);
+    const supervisorVotes = partyVoteFor(pair.Supervisor, party);
+    const fieldMismatch = hasBothFieldSources && agentVotes !== supervisorVotes;
+    const irevRow = irevRowsByUnit.get(resultUnitKey(row));
+    const irevParty = irevRow?.results?.find((result) => normalizeResultKeyPart(result.party) === normalizeResultKeyPart(party));
+    const irevVotes = Number(irevParty?.votes || 0);
+    const irevMismatch = compareWithIrev && irevParty && ownVotes !== irevVotes;
+    const count = <><strong>{ownVotes.toLocaleString()}</strong>{irevMismatch && <small className="irev-count-mismatch">IReV: {irevVotes.toLocaleString()}</small>}</>;
+    return fieldMismatch
+      ? <button type="button" className="field-count-mismatch" onClick={() => setFieldMismatchDetail({ pollingUnit: row.pollingUnit, lga: row.lga, ward: row.ward, party, agentVotes, supervisorVotes })}>{count}</button>
+      : <span className="field-count-match">{count}</span>;
+  };
+  const runPreElectionAnalysis = (context) => request("/analysis/ai", authToken, {
+    method: "POST",
+    body: JSON.stringify({ context }),
+  });
   return (
     <div className="results-center">
       <header className="results-center-head">
@@ -2274,35 +2623,143 @@ function ResultsCenter({ incidents, parties = [], officers = [], mapLayers = [],
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
-      <div className="rc-tab-bar"><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>
+      <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>
       <main className="results-center-body">
         {view === "pulse" && <AnalyticsPanel incidents={incidents} officers={officers} mapLayers={mapLayers} selected={selected} onClose={onClose} onTool={onTool} onCsv={onCsv} onClear={onClear} embedded />}
+        {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} />}
         {["breakdown", "winloss", "winloss-lga"].includes(view) && <div className="wl-sub-tabs result-view-tabs"><button className={view === "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("breakdown")}>Polling Unit Breakdown</button><button className={view !== "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("winloss")}>Win / Loss Analysis</button></div>}
         {["winloss", "winloss-lga"].includes(view) && <section className="result-total-strip"><article className="result-total-card grand"><span>Current projection</span><strong>{forecast.leader || "—"}</strong><small>{forecast.confidence}% indicative confidence; not a final result</small></article><article className="result-total-card"><span>Vote margin</span><strong>{forecast.margin.toLocaleString()}</strong><small>Against second place</small></article><article className="result-total-card"><span>Units covered</span><strong>{forecast.coverage.toLocaleString()}</strong><small>Unique submitted units</small></article></section>}
         {view === "news" && <section className="result-table-card"><div className="result-table-title"><div><h2>Oyo State News</h2><p>General Oyo State coverage, including politics, INEC, elections, parties, governance, security, and major local developments.</p></div><div className="analysis-actions news-actions"><button className="primary action-btn refresh-news-btn" onClick={() => { setNews([]); setNewsSummary(""); setNewsSummaryError(""); setView("news"); }}><FaSyncAlt /> <span>Refresh</span></button><button className="secondary action-btn summary-action-btn" disabled={!news.length || newsSummaryLoading} onClick={() => { setNewsSummaryLoading(true); setNewsSummaryError(""); request("/news/summary", authToken, { method: "POST", body: JSON.stringify({ articles: news }) }).then((x) => { setNewsSummary(x.summary || "No summary available yet."); if (x.provider === "local") setNewsSummaryError("The summary service was unavailable, so a local fallback was generated."); else setNewsSummaryError(""); }).catch((error) => { setNewsSummary(""); setNewsSummaryError(error.message || "The summary request failed."); }).finally(() => setNewsSummaryLoading(false)); }}><MdFlashOn /> <span>{newsSummaryLoading ? "Working…" : "Summary"}</span></button></div></div>{newsSummary && <div className="news-summary">{cleanSummaryText(newsSummary)}</div>}{newsSummaryError && <p className="muted">{newsSummaryError}</p>}{newsLoading ? <p>Loading current headlines…</p> : <div className="news-list">{news.map(item => <article className="news-item" key={item.url}><a href={item.url} target="_blank" rel="noreferrer"><h3>{item.title}</h3></a><small>{item.source} · {item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "Recent"}</small></article>)}{!news.length && <p>No current Oyo State headlines available.</p>}</div>}</section>}
-        {view === "action" && <section className="result-table-card" style={{ marginBottom: 16 }}><div className="result-table-title"><div><h2>Party performance & operational outlook</h2><p>Neutral analysis based only on submitted results and operational reports.</p></div><div className="analysis-actions"><label className="party-focus-field"><span>Party focus</span><select value={focusParty} onChange={e => setFocusParty(e.target.value)} aria-label="Select party for operational analysis"><option value="">All parties</option>{summary.partyNames.map(p => <option key={p} value={p}>{p}</option>)}</select></label><button className="primary action-btn summary-action-btn" disabled={outlookLoading} onClick={() => { const safeIncidents = incidents.slice(0, 100).map(item => ({ id: item.id, title: item.title, description: String(item.description || "").slice(0, 500), reportType: item.reportType, severity: item.severity, status: item.status, lga: item.lga, ward: item.ward, pollingUnit: item.pollingUnit, createdAt: item.createdAt })); setOutlookLoading(true); request("/analysis/ai", authToken, { method: "POST", body: JSON.stringify({ context: { projection: forecast, selectedParty: focusParty, partyAnalysis, incidents: safeIncidents, actions } }) }).then(x => setOutlook(x.analysis || "No operational analysis returned.")).catch(e => setOutlook(e.message || "Operational analysis unavailable.")).finally(() => setOutlookLoading(false)); }}><MdFlashOn /> <span>{outlookLoading ? "Analyzing…" : "Operational Analysis"}</span></button></div></div>{partyAnalysis && <p>{focusParty}: <b>{partyAnalysis.votes.toLocaleString()}</b> votes, leading in <b>{partyAnalysis.wards}</b> wards and <b>{partyAnalysis.lgas}</b> LGAs. Related incident mentions: <b>{partyAnalysis.incidents}</b>.</p>}{outlook && <div className="news-summary">{cleanSummaryText(outlook)}</div>}<ul>{actions.map(action => <li key={action}>{action}</li>)}</ul></section>}
-        {partyAnalysis && view !== "breakdown" && view !== "news" && <section className="party-lga-analysis"><div className="party-lga-summary"><div><span>Selected party</span><strong>{focusParty}</strong></div><div className="winning"><span>LGAs winning</span><strong>{partyAnalysis.winningLgas.length}</strong></div><div className="losing"><span>LGAs losing</span><strong>{partyAnalysis.losingLgas.length}</strong></div><div><span>Total votes</span><strong>{partyAnalysis.votes.toLocaleString()}</strong></div></div><div className="party-lga-columns"><section className="party-lga-column winning"><header><div><span className="performance-dot" />Winning LGAs</div><b>{partyAnalysis.winningLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.winningLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Ahead of {item.opponent}</small></div><div><b>+{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.winningLgas.length && <p>No confirmed LGA lead for {focusParty} yet.</p>}</div></section><section className="party-lga-column losing"><header><div><span className="performance-dot" />Losing LGAs</div><b>{partyAnalysis.losingLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.losingLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Behind {item.opponent}</small></div><div><b>-{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.losingLgas.length && <p>No confirmed LGA loss for {focusParty} yet.</p>}</div></section></div>{partyAnalysis.tiedLgas.length > 0 && <p className="party-tied-note">Tied in: {partyAnalysis.tiedLgas.join(", ")}.</p>}<p className="party-analysis-note">Leading in {partyAnalysis.wards} wards. Related incident mentions: {partyAnalysis.incidents}. Based only on submitted polling-unit results.</p></section>}
+        {view === "action" && <section className="result-table-card" style={{ marginBottom: 16 }}>
+          <div className="result-table-title">
+            <div><h2>Insight</h2><p>Realtime analysis of performance, insight &amp; operational intelligence</p></div>
+            <div className="analysis-actions"><button className="primary action-btn summary-action-btn" disabled={outlookLoading} onClick={runOperationalAnalysis}><MdFlashOn /> <span>{outlookLoading ? "Analyzing…" : "Operational Analysis"}</span></button></div>
+          </div>
+          <div className="actionable-intel">
+            <h3>Actionable Intel</h3>
+            <div className={`actionable-intel-grid ${focusParty ? "party-only" : ""}`}>
+              {!focusParty && <article className="actionable-intel-card prioritize"><span>Prioritize</span><p><strong>{actionableIntel.critical}</strong> critical/SOS item{actionableIntel.critical === 1 ? "" : "s"} for response verification.</p></article>}
+              {!focusParty && <article className="actionable-intel-card review"><span>Review</span><p><strong>{actionableIntel.otherOpen}</strong> other open incident{actionableIntel.otherOpen === 1 ? "" : "s"}</p></article>}
+              <article className="actionable-intel-card party"><span>Party focus</span><label className="party-focus-field"><select value={focusParty} onChange={e => setFocusParty(e.target.value)} aria-label="Select party for operational analysis"><option value="">No parties</option>{summary.partyNames.map(p => <option key={p} value={p}>{p}</option>)}</select></label></article>
+            </div>
+          </div>
+          {partyAnalysis && <article className="party-result-card"><header><span>Focused result</span><strong>{focusParty}</strong></header><div><section><span>Total votes</span><b>{partyAnalysis.votes.toLocaleString()}</b></section><section><span>Wards leading</span><b>{partyAnalysis.wards}</b></section><section><span>LGAs leading</span><b>{partyAnalysis.lgas}</b></section><section><span>Related incidents</span><b>{partyAnalysis.incidents}</b></section></div></article>}
+          {aiBriefingSections.length > 0 && <section className="ai-intelligence-response"><header><div><span>AI Intelligence</span><h3>Operational assessment &amp; actions</h3></div></header><div className="ai-intelligence-grid">{aiBriefingSections.map(section => <article className={section.title === "ACTIONABLE NEXT STEPS" ? "ai-section actionable" : "ai-section"} key={section.title}><h4>{section.title}</h4>{section.lines.map((line, index) => <p key={`${section.title}-${index}`}>{section.title === "ACTIONABLE NEXT STEPS" && <span className="ai-action-number">{index + 1}</span>}{line}</p>)}</article>)}</div></section>}
+        </section>}
+        {view === "post" && <section className="post-election-dashboard">
+          <div className="post-election-head">
+            <div><span className="eyebrow">AFTER RESULTS</span><h2>Post-Election Analysis</h2><p>Evidence readiness, result trends, spatial concentration, operational lessons and field performance.</p></div>
+            <button className="primary action-btn" disabled={postElectionLoading || !summary.rows.length} onClick={runPostElectionAnalysis}><MdFlashOn /> {postElectionLoading ? "Analyzing…" : "Generate AI Brief"}</button>
+          </div>
+          <p className="post-election-caution">These are provisional analytical indicators from submitted records—not certified results, legal conclusions, turnout estimates or voter-targeting advice.</p>
+          <div className="post-kpi-grid">
+            <article className={postElection.readinessScore >= 80 ? "ready" : postElection.readinessScore >= 55 ? "review" : "risk"}><span>Evidence readiness</span><strong>{postElection.readinessScore}%</strong><small>For legal-team review</small></article>
+            <article><span>Field discrepancies</span><strong>{postElection.fieldMismatches.length}</strong><small>Agent vs Supervisor</small></article>
+            <article><span>IReV discrepancies</span><strong>{postElection.irevMismatches.length}</strong><small>Where official sheets are available</small></article>
+            <article><span>Missing evidence</span><strong>{postElection.missingEvidence.length}</strong><small>Field result submissions</small></article>
+            <article><span>Duplicate updates</span><strong>{postElection.duplicates}</strong><small>Same source and polling unit</small></article>
+          </div>
+
+          <div className="post-analysis-grid">
+            <article className="post-card trend-card">
+              <header><div><h3>Voting Pattern Trend</h3><p>Cumulative share as field submissions arrived</p></div><b>{postElection.trendSeries.length} parties</b></header>
+              {postElection.trendSeries.length ? <><svg className="post-trend-chart" viewBox="0 0 320 100" preserveAspectRatio="none" aria-label="Cumulative party vote share trend">{postElection.trendSeries.map((series, index) => <polyline key={series.party} points={series.points} fill="none" stroke={["#facc15", "#4ade80", "#38bdf8", "#fb7185"][index]} strokeWidth="3" vectorEffect="non-scaling-stroke" />)}</svg><div className="post-trend-legend">{postElection.trendSeries.map((series, index) => <div key={series.party}><i style={{background:["#facc15", "#4ade80", "#38bdf8", "#fb7185"][index]}} /><span>{series.party}</span><strong>{series.share.toFixed(1)}%</strong><small className={series.movement >= 0 ? "up" : "down"}>{series.movement >= 0 ? "+" : ""}{series.movement.toFixed(1)} pts</small></div>)}</div></> : <p className="post-empty">Submit polling-unit results to generate a trend.</p>}
+            </article>
+
+            <article className="post-card litigation-card">
+              <header><div><h3>Litigation Preparation</h3><p>Records requiring preservation or reconciliation</p></div></header>
+              <div className="litigation-list">
+                <div><span>Unsigned / missing result evidence</span><b>{postElection.missingEvidence.length}</b></div>
+                <div><span>Agent–Supervisor count conflicts</span><b>{postElection.fieldMismatches.length}</b></div>
+                <div><span>Field–IReV count conflicts</span><b>{postElection.irevMismatches.length}</b></div>
+                <div><span>Zero-total result sheets</span><b>{postElection.zeroVoteSheets.length}</b></div>
+                <div><span>Duplicate source submissions</span><b>{postElection.duplicates}</b></div>
+              </div>
+              <p className="post-card-note">Preserve original files, timestamps, submitter identity and chain-of-custody records before making corrections.</p>
+            </article>
+          </div>
+
+          <article className="post-card spatial-card">
+            <header><div><h3>Spatial Distribution &amp; Hotspots</h3><p>Wards ranked by submitted vote volume, margin and reported incidents</p></div><small>High volume means reporting concentration—not verified turnout.</small></header>
+            <div className="spatial-grid">{postElection.wardSpatial.slice(0, 12).map((item, index) => <button type="button" key={item.label} onClick={() => Number.isFinite(item.lat) && onFocusLocation?.(item)} disabled={!Number.isFinite(item.lat)}><span className="spatial-rank">#{index + 1}</span><div><strong>{item.label}</strong><small>{item.winner || "No leader"} · margin {item.margin.toLocaleString()}</small></div><div><b>{item.totalVotes.toLocaleString()}</b><small>{item.reports} reports · {item.incidentCount} incidents</small></div>{item.criticalCount > 0 && <em>{item.criticalCount} critical</em>}</button>)}{!postElection.wardSpatial.length && <p className="post-empty">No ward-level result distribution is available.</p>}</div>
+          </article>
+
+          <div className="post-analysis-grid">
+            <article className="post-card next-cycle-card">
+              <header><div><h3>Next Election Cycle</h3><p>Operational improvements from the current evidence</p></div></header>
+              <ol>
+                <li><b>Close evidence gaps:</b> obtain signed result media for {postElection.missingEvidence.length} submission{postElection.missingEvidence.length === 1 ? "" : "s"}.</li>
+                <li><b>Reconcile counts:</b> verify {postElection.fieldMismatches.length + postElection.irevMismatches.length} conflicting unit record{postElection.fieldMismatches.length + postElection.irevMismatches.length === 1 ? "" : "s"} against original sheets.</li>
+                <li><b>Strengthen deployment:</b> review the {postElection.wardSpatial.filter((item) => item.incidentCount > 0).length} ward{postElection.wardSpatial.filter((item) => item.incidentCount > 0).length === 1 ? "" : "s"} with result-linked operational incidents.</li>
+                <li><b>Improve reporting discipline:</b> coach teams below 70% performance and document corrective actions before the next exercise.</li>
+              </ol>
+            </article>
+            <article className="post-card performance-card">
+              <header><div><h3>Performance &amp; Reward Review</h3><p>Objective score: evidence 35%, consistency 35%, volume 20%, closure 10%</p></div></header>
+              <div className="performance-list">{postElection.performance.slice(0, 10).map((item, index) => <div key={item.id}><span>{index + 1}</span><div><strong>{item.name}</strong><small>{item.role} · {item.submissions} submissions</small></div><div className="performance-meter"><i style={{width:`${item.score}%`}} /></div><b>{item.score}%</b>{item.score >= 80 && item.submissions > 0 && <em>Reward review</em>}</div>)}{!postElection.performance.length && <p className="post-empty">No attributable field submissions are available.</p>}</div>
+            </article>
+          </div>
+          {postElectionBrief && <article className="post-card post-ai-brief"><header><div><h3>AI Post-Election Brief</h3><p>Neutral synthesis for command, evidence and planning teams</p></div></header><div>{cleanSummaryText(postElectionBrief)}</div></article>}
+        </section>}
+        {partyAnalysis && view !== "breakdown" && view !== "irev" && view !== "news" && <section className="party-lga-analysis"><div className="party-lga-summary"><div><span>Selected party</span><strong>{focusParty}</strong></div><div className="winning"><span>LGAs winning</span><strong>{partyAnalysis.winningLgas.length}</strong></div><div className="losing"><span>LGAs losing</span><strong>{partyAnalysis.losingLgas.length}</strong></div><div><span>Total votes</span><strong>{partyAnalysis.votes.toLocaleString()}</strong></div></div><div className="party-lga-columns"><section className="party-lga-column winning"><header><div><span className="performance-dot" />Winning LGAs</div><b>{partyAnalysis.winningLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.winningLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Ahead of {item.opponent}</small></div><div><b>+{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.winningLgas.length && <p>No confirmed LGA lead for {focusParty} yet.</p>}</div></section><section className="party-lga-column losing"><header><div><span className="performance-dot" />Losing LGAs</div><b>{partyAnalysis.losingLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.losingLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Behind {item.opponent}</small></div><div><b>-{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.losingLgas.length && <p>No confirmed LGA loss for {focusParty} yet.</p>}</div></section></div>{partyAnalysis.tiedLgas.length > 0 && <p className="party-tied-note">Tied in: {partyAnalysis.tiedLgas.join(", ")}.</p>}<p className="party-analysis-note">Leading in {partyAnalysis.wards} wards. Related incident mentions: {partyAnalysis.incidents}. Based only on submitted polling-unit results.</p></section>}
         {view === "winloss" && <section className="result-table-card"><div className="result-table-title"><div><h2>Win / Loss Analysis</h2><p>Leading party by ward and LGA from submitted polling-unit results.</p></div><b>Top {top6.length} parties</b></div><div className="wl-sub-tabs"><button className="wl-sub-tab active">By Ward</button><button className="wl-sub-tab" onClick={() => setView("winloss-lga")}>By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>Ward</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.wards.map(g => <tr key={g.label}><td>{g.label}</td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}{!winLoss.wards.length && <tr><td colSpan={top6.length + 2} className="result-empty">No ward-level data available yet.</td></tr>}</tbody></table></div></section>}
         {view === "winloss-lga" && <section className="result-table-card"><div className="result-table-title"><div><h2>LGA Win / Loss Analysis</h2><p>Leading party in each Local Government Area.</p></div></div><div className="wl-sub-tabs"><button className="wl-sub-tab" onClick={() => setView("winloss")}>By Ward</button><button className="wl-sub-tab active">By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>LGA</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.lgas.map(g => <tr key={g.label}><td><b>{g.label}</b></td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}</tbody></table></div></section>}
         {["winloss", "winloss-lga"].includes(view) && <div className="result-table-card" style={{marginTop: 16}}><p className="muted">Select a party in the Action tab to compare its wins and losses. Results update automatically as new submissions arrive.</p></div>}
         {view !== "breakdown" ? null : <>
+        <section className="result-source-grid field-source-grid" aria-label="Result submission sources">
+          {sourceStats.filter((item) => item.source !== "INEC IReV").map((item) => <button type="button" className={`result-source-card ${resultSourceFilter === item.source ? "active" : ""}`} key={item.source} onClick={() => setResultSourceFilter((current) => current === item.source ? "" : item.source)}><span>{item.source}</span><strong>{item.submissions}</strong><small>{item.units} polling unit{item.units === 1 ? "" : "s"} · {item.votes.toLocaleString()} votes</small></button>)}
+          <article className="result-source-card field-total"><span>Field submissions</span><strong>{fieldResultRows.length}</strong><small>Agent and Supervisor updates</small></article>
+        </section>
+        {irevAiStoppedReason && <div className="irev-ai-stopped"><MdWarning /><div><strong>OCR status</strong><span>{irevAiStoppedReason}</span></div></div>}
+        </>}
+        {view === "irev" && <section className="irev-pilot-card">
+          <header className="irev-pilot-head">
+            <div><span className="eyebrow">OFFICIAL SOURCE · KWARA 2027</span><h2>INEC IReV — Oyo</h2><p>Prepared for Oyo polling-unit result sheets and automatic verification during the 2027 general election.</p></div>
+            <div className="irev-pilot-actions"><a href={irevPilot?.portalUrl || "https://irev.inecnigeria.org/"} target="_blank" rel="noreferrer">Open IReV</a><button type="button" disabled={irevLoading || irevPilot?.configured === false} onClick={() => loadIrevPilot(true)}><FaSyncAlt /> {irevLoading ? "Checking…" : irevPilot?.configured === false ? "Awaiting INEC" : "Refresh now"}</button></div>
+          </header>
+          {irevError && <div className="error">{irevError}</div>}
+          {irevAiStoppedReason && <div className="irev-ai-stopped"><MdWarning /><div><strong>OCR status</strong><span>{irevAiStoppedReason}</span></div></div>}
+          {irevPilot && <>
+            {irevSection === "results" && irevResultRows.length > 0 && <section className="result-total-strip irev-result-totals">{irevTopParties.map((party) => <article className="result-total-card" key={party}><span>{party}</span><strong>{irevOnlyTotals[party].toLocaleString()}</strong></article>)}</section>}
+            <div className="irev-pilot-stats"><div><span>Uploaded</span><strong>{irevPilot.submitted.toLocaleString()}</strong></div><div><span>Expected</span><strong>{irevPilot.expected.toLocaleString()}</strong></div><div><span>Coverage</span><strong>{irevPilot.expected ? `${((irevPilot.submitted / irevPilot.expected) * 100).toFixed(1)}%` : "—"}</strong></div><div><span>Last checked</span><strong>{new Date(irevPilot.fetchedAt).toLocaleTimeString()}</strong></div></div>
+            {irevPilot.notice && <p className="irev-verification-note"><MdWarning /> {irevPilot.notice}</p>}
+            {!irevPilot.configured && <div className="irev-activation-panel"><div><span>20 February 2027</span><strong>Presidential &amp; National Assembly</strong></div><div><span>6 March 2027</span><strong>Governorship &amp; State Assembly</strong></div><p>The server will not contact the result feed until INEC publishes the Oyo election identifier and it is added as <code>IREV_OYO_ELECTION_ID</code> on Render.</p></div>}
+            <div className="wl-sub-tabs irev-sub-tabs"><button className={irevSection === "uploads" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setIrevSection("uploads")}>Polling-unit uploads</button>{irevResultRows.length > 0 && <button className={irevSection === "results" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setIrevSection("results")}>Results</button>}{irevExtractingIds.size > 0 && <span>Reading {irevExtractingIds.size} sheets in parallel… {irevResultRows.length.toLocaleString()} ready</span>}</div>
+            {irevSection === "uploads" && <>
+            <div className="irev-table-toolbar"><div><strong>{irevPilot.configured ? "All uploaded polling units" : "Oyo result-sheet feed"}</strong><span>{irevPilot.configured ? `${filteredIrevUploads.length.toLocaleString()} of ${irevPilot.uploads.length.toLocaleString()} sheets shown` : "Waiting for INEC activation"}</span></div><label><FaSearch /><input disabled={!irevPilot.configured} value={irevSearch} onChange={(event) => setIrevSearch(event.target.value)} placeholder={irevPilot.configured ? "Search LGA, ward, polling unit or PU code" : "Search activates with the live feed"} />{irevSearch && <button type="button" onClick={() => setIrevSearch("")} aria-label="Clear IReV search"><FaTimes /></button>}</label></div>
+            <div className="irev-table-scroll">
+              <table className="result-progress-table irev-full-table">
+                <thead><tr><th>#</th><th>LGA</th><th>Ward</th><th>Polling unit</th><th>PU code</th><th>Uploaded</th><th>Status</th><th>Result sheet</th></tr></thead>
+                <tbody>{filteredIrevUploads.map((upload, index) => <tr key={upload.id}><td>{index + 1}</td><td><b>{upload.lga || "—"}</b></td><td>{upload.ward || "—"}</td><td>{upload.pollingUnit || "—"}</td><td><strong>{upload.puCode}</strong></td><td>{upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : "—"}</td><td><span className="irev-awaiting-badge">{upload.verificationStatus}</span></td><td><button className="irev-sheet-link" type="button" onClick={() => openIrevPreview(upload)}>View image</button></td></tr>)}{!filteredIrevUploads.length && <tr><td className="result-empty" colSpan="8">{irevPilot.configured ? "No Oyo result sheets have been uploaded yet." : "The Oyo 2027 IReV feed is waiting for its official INEC election identifier."}</td></tr>}</tbody>
+              </table>
+            </div>
+            </>}
+            {irevSection === "results" && <>
+              <div className="irev-table-scroll"><table className="result-progress-table irev-results-table"><thead><tr><th>LGA</th><th>Ward</th><th>Polling unit</th>{irevTopParties.map((party) => <th key={party}>{party}</th>)}</tr></thead><tbody>{irevResultRows.map((upload) => <tr key={upload.id}><td><b>{upload.lga || "—"}</b></td><td>{upload.ward || "—"}</td><td>{upload.pollingUnit || upload.puCode}</td>{irevTopParties.map((party) => <td key={party}><strong>{Number(upload.results.find((result) => result.party === party)?.votes || 0).toLocaleString()}</strong></td>)}</tr>)}{!irevResultRows.length && <tr><td className="result-empty" colSpan={irevTopParties.length + 3}>Result sheets are being read automatically.</td></tr>}</tbody></table></div>
+            </>}
+            {irevPreview && <div className="irev-preview-backdrop" onClick={() => setIrevPreview(null)}><section className="irev-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span className="eyebrow">INEC IREV RESULT SHEET</span><h2>{irevPreview.puCode}</h2><p>{irevPreview.lga} · {irevPreview.ward} · {irevPreview.pollingUnit}</p></div><button type="button" className="icon-btn" onClick={() => setIrevPreview(null)} aria-label="Close image preview"><FaTimes /></button></header><div className="irev-preview-body"><div className="irev-preview-image"><img src={irevPreview.imageUrl} alt={`INEC IReV result sheet for ${irevPreview.puCode}`} /></div><aside><div className="irev-preview-actions"><a href={irevPreview.imageUrl} download target="_blank" rel="noreferrer">Download image</a></div><h3>Party results</h3>{irevExtractingIds.has(irevPreview.id) && <p className="muted">Reading party votes…</p>}{irevDrafts[irevPreview.id] ? <div className="irev-ocr-draft"><div className="irev-party-results">{(irevDrafts[irevPreview.id].results || []).map(({ party, votes }) => <div key={party}><strong>{party}</strong><b>{Number(votes).toLocaleString()}</b></div>)}</div></div> : !canAdmin ? <p className="muted">Automatic extraction is available to administrators.</p> : !irevExtractingIds.has(irevPreview.id) && <p className="muted">This result sheet is queued for automatic reading.</p>}</aside></div></section></div>}
+          </>}
+          {!irevPilot && irevLoading && <p className="muted">Connecting to the official IReV feed…</p>}
+        </section>}
+        {view !== "breakdown" ? null : <>
         <section className="result-total-strip">
-          <article className="result-total-card grand"><span>Polling-unit submissions</span><strong>{reports.length}</strong><small>Multiple updates per unit are allowed</small></article>{summary.partyNames.map(party => <article className="result-total-card" key={party}><span>{party}</span><strong>{summary.totals[party].toLocaleString()}</strong><small>Total uploaded votes</small></article>)}
+          {fieldTopParties.map(party => <article className="result-total-card" key={party}><span>{party}</span><strong>{fieldResultTotals[party].toLocaleString()}</strong></article>)}
         </section>
         <section className="result-table-card">
-          <div className="result-table-title"><div><h2>Polling-unit breakdown</h2><p>Counts and evidence submitted from the field.</p></div><b>{reports.length} submitted</b></div>
+          <div className="result-table-title"><div><h2>Polling-unit breakdown</h2><p>{resultSourceFilter ? `${resultSourceFilter} submissions only. Select the active source card again to show all.` : "Agent and Supervisor counts with field evidence."}</p></div><div className="result-compare-actions"><button type="button" className={compareWithIrev ? "irev-compare-btn active" : "irev-compare-btn"} disabled={irevCompareLoading} onClick={toggleIrevComparison}>{irevCompareLoading ? "Loading IReV…" : compareWithIrev ? "IReV comparison on" : "Compare with IReV"}</button><b>{displayedResultRows.length} shown</b></div></div>
           <div className="result-table-scroll">
             <table className="result-progress-table">
-              <thead><tr><th>LGA</th><th>Ward</th><th>Polling unit</th>{summary.partyNames.map(party => <th key={party}>{party}</th>)}<th>Location</th><th>Evidence</th><th>Uploaded</th></tr></thead>
+              <thead><tr><th>Source</th><th>LGA</th><th>Ward</th><th>Polling unit</th>{fieldTopParties.map(party => <th key={party}>{party}</th>)}<th>Location</th><th>Evidence</th><th>Uploaded</th></tr></thead>
               <tbody>
-                {summary.rows.map((row) => (
-                  <tr key={row.id}><td>{row.lga || "—"}</td><td>{row.ward || "—"}</td><td><b>{row.pollingUnit || "—"}</b></td>{summary.partyNames.map(party => <td key={party}><strong>{Number(row.results.find(item => item.party === party)?.votes || 0).toLocaleString()}</strong></td>)}<td>{Number(row.lat).toFixed(5)}, {Number(row.lng).toFixed(5)}</td><td><div className="result-evidence">{(row.media || []).filter((item) => item.type === "image").slice(0, 2).map((item, index) => <a href={item.data} target="_blank" rel="noreferrer" key={`${row.id}-${index}`}><img src={item.data} alt={`Evidence for ${row.pollingUnit}`} /></a>)}</div></td><td>{new Date(row.createdAt).toLocaleString()}</td></tr>
+                {displayedResultRows.map((row) => (
+                  <tr key={row.id}><td><span className={`result-source-badge source-${row.resultSource.toLowerCase().replace(/[^a-z]+/g, "-")}`}>{row.resultSource}</span></td><td>{row.lga || "—"}</td><td>{row.ward || "—"}</td><td><b>{row.pollingUnit || "—"}</b></td>{fieldTopParties.map(party => <td key={party}>{renderFieldVote(row, party)}</td>)}<td>{Number(row.lat).toFixed(5)}, {Number(row.lng).toFixed(5)}</td><td><div className="result-evidence">{(row.media || []).filter((item) => item.type === "image").slice(0, 2).map((item, index) => <a href={item.data} target="_blank" rel="noreferrer" key={`${row.id}-${index}`}><img src={item.data} alt={`Evidence for ${row.pollingUnit}`} /></a>)}</div></td><td>{new Date(row.createdAt).toLocaleString()}</td></tr>
                 ))}
-                {!summary.rows.length && <tr><td className="result-empty" colSpan={summary.partyNames.length + 7}>No polling-unit results have been uploaded yet.</td></tr>}
+                {!displayedResultRows.length && <tr><td className="result-empty" colSpan={fieldTopParties.length + 8}>No {resultSourceFilter || "polling-unit"} results have been uploaded yet.</td></tr>}
               </tbody>
             </table>
           </div>
         </section>
+        {fieldMismatchDetail && <div className="field-mismatch-backdrop" onClick={() => setFieldMismatchDetail(null)}><section className="field-mismatch-modal" onClick={(event) => event.stopPropagation()}><header><div><span>{fieldMismatchDetail.lga} · {fieldMismatchDetail.ward}</span><h3>{fieldMismatchDetail.pollingUnit}</h3></div><button type="button" onClick={() => setFieldMismatchDetail(null)} aria-label="Close comparison"><FaTimes /></button></header><h4>{fieldMismatchDetail.party}</h4><div><article><span>Agent reported</span><strong>{fieldMismatchDetail.agentVotes.toLocaleString()}</strong></article><article><span>Supervisor reported</span><strong>{fieldMismatchDetail.supervisorVotes.toLocaleString()}</strong></article></div></section></div>}
         </>}
       </main>
     </div>
@@ -2331,6 +2788,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [manageOfficers, setManageOfficers] = useState(false);
   const [mapDataPanel, setMapDataPanel] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [supervisorIncidentsOpen, setSupervisorIncidentsOpen] = useState(false);
   const [partyMapAnalysis, setPartyMapAnalysis] = useState(null);
   const [analysisLayers, setAnalysisLayers] = useState([]);
   const [pendingAreaAction, setPendingAreaAction] = useState(null);
@@ -2372,6 +2830,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [cameraPreviewMode, setCameraPreviewMode] = useState(true); // true = show preview, false = background mode
   const [cameraFacingMode, setCameraFacingMode] = useState("environment");
   const [cameraMicMuted, setCameraMicMuted] = useState(false);
+  const [cameraLocation, setCameraLocation] = useState(null);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [ipLogOpen, setIpLogOpen] = useState(false);
@@ -2453,10 +2912,19 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   );
   const canManagePersonnel =
     ["Super Admin", "Admin"].includes(session.user.role);
+  const parseWardList = (value) => String(value || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const wardInScope = (itemWard, viewerWard) => {
+    const viewerWards = new Set(parseWardList(viewerWard));
+    return parseWardList(itemWard).some((ward) => viewerWards.has(ward));
+  };
+  const isSupervisorWardRelevant = (item) => {
+    if (!isSupervisor || !session.user.lga || !session.user.ward || !item) return false;
+    return String(item.lga || "").trim().toLowerCase() === String(session.user.lga).trim().toLowerCase()
+      && wardInScope(item.ward, session.user.ward);
+  };
   const canSeeReport = (item) =>
     canAdmin ||
-    (isSupervisor && session.user.lga && session.user.ward &&
-      item.lga === session.user.lga && item.ward === session.user.ward) ||
+    (isSupervisor && (item.assignedTo === session.user.id || isSupervisorWardRelevant(item))) ||
     item.createdBy === session.user.id ||
     item.assignedTo === session.user.id ||
     (item.visibleTo || []).includes(session.user.id);
@@ -2841,7 +3309,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     socket.on("camera:shares:list", (feeds) => setPhoneShares(feeds));
     socket.on("camera:share:start", (feed) =>
       setPhoneShares((old) =>
-        old.some((x) => x.userId === feed.userId) ? old : [...old, feed],
+        old.some((x) => x.userId === feed.userId)
+          ? old.map((item) => item.userId === feed.userId ? { ...item, ...feed } : item)
+          : [...old, feed],
       ),
     );
     socket.on("camera:share:stop", ({ userId }) => {
@@ -3487,6 +3957,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     setNotice("Incident assigned and field user notified");
     return result;
   };
+  const claimIncident = async (incidentId) => assignIncidentToField({
+    incidentId,
+    assignedUserId: session.user.id,
+    message: 'Claimed by the assigned-area supervisor for response and follow-up.',
+  });
   const openNotification = async (notification) => {
     let incident = incidents.find((item) => item.id === notification.incidentId) || null;
     if (!incident && notification.incidentId) {
@@ -4310,6 +4785,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       setSharingCamera(false);
       setSelfCameraPreview(false);
       setCameraMicMuted(false);
+      setCameraLocation(null);
       cameraMicMutedRef.current = false;
       releaseWakeLock();
       stopSilentAudio();
@@ -4327,6 +4803,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       setSelfCameraPreview(cameraPreviewMode);
       acquireWakeLock();
       startSilentAudio();
+      const cameraPoint = gpsBestRef.current || gpsPositions[session.user.id] || session.user;
+      if (Number.isFinite(Number(cameraPoint?.lat)) && Number.isFinite(Number(cameraPoint?.lng))) {
+        request(`/location/reverse?lat=${encodeURIComponent(cameraPoint.lat)}&lng=${encodeURIComponent(cameraPoint.lng)}`, session.token)
+          .then(setCameraLocation)
+          .catch(() => setCameraLocation(null));
+      }
       socketRef.current?.emit("camera:share:start", {
         userId: session.user.id,
         name: session.user.name,
@@ -4645,6 +5127,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           </form>
             <>
               {isSupervisor && <div className="sidebar-actions supervisor-actions">
+                <button onClick={() => setSupervisorIncidentsOpen(true)}>
+                  <FaChartBar /> Incident Queue
+                </button>
                 <button onClick={openPollingUnitResultForm}>
                   <ReportIcon iconKey="POI" size={15} /> Polling Result
                 </button>
@@ -5206,6 +5691,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             stream={localCameraStreamRef.current}
             muted={true}
             showControls={false}
+            watermark={{
+              ...session.user,
+              ...(gpsPositions[session.user.id] || gpsBestRef.current || {}),
+              location: cameraLocation,
+            }}
           />
           <div className="self-camera-preview-footer">
             <span>{cameraFacingMode === "environment" ? "Back camera" : "Front camera"}</span>
@@ -5482,7 +5972,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </section>
       )}
-      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
+      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} onFocusLocation={(point) => { setResultsOpen(false); mapRef.current?.flyTo([point.lat, point.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
       {activeEmergency && (
         <div className="emergency-alert-card">
           <b>Emergency from {activeEmergency.name}</b>
@@ -5566,6 +6056,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       )}
       {newResultPoint && <Suspense fallback={<div className="modal-backdrop"><div className="modal">Loading result form…</div></div>}><PollingResultForm user={session.user} point={newResultPoint} parties={parties} onClose={() => setNewResultPoint(null)} onSave={savePollingResult} /></Suspense>}
       {assignIncident && <AssignIncidentModal incident={assignIncident} users={users} currentUser={session.user} onClose={() => setAssignIncident(null)} onAssign={assignIncidentToField} />}
+      {supervisorIncidentsOpen && isSupervisor && <SupervisorIncidentListModal incidents={incidents} currentUser={session.user} users={users} onClose={() => setSupervisorIncidentsOpen(false)} onAssign={assignIncidentToField} onClaim={claimIncident} />}
       {notificationDetail && <IncidentNotificationModal notification={notificationDetail.notification} incident={notificationDetail.incident} users={users} onClose={() => setNotificationDetail(null)} onOpenChat={async (incident) => { setNotificationDetail(null); await openIncidentChat(incident); }} onResolve={resolveNotificationIncident} />}
       {profileOpen && <ProfileModal session={session} onClose={() => setProfileOpen(false)} onSave={saveProfile} />}
       {ipLogOpen && canAdmin && (

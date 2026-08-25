@@ -2,7 +2,63 @@ import { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 import { FaCircle, FaTimes, FaVolumeDown, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
 
-function StreamVideo({ src, stream, muted = false, showControls = true }) {
+const watermarkLines = (feed = {}) => {
+  const location = feed.location || {};
+  const primary = location.label || feed.locationLabel || (Number.isFinite(Number(feed.lat)) && Number.isFinite(Number(feed.lng)) ? `${Number(feed.lat).toFixed(5)}, ${Number(feed.lng).toFixed(5)}` : "Location awaiting GPS");
+  return [
+    primary,
+    location.street && location.street !== primary ? location.street : "",
+    `Polling Unit: ${feed.pollingUnit || feed.station || "Not assigned"}`,
+    `Ward: ${feed.ward || "Not assigned"}  •  LGA: ${feed.lga || "Not assigned"}`,
+    Number(feed.accuracy) > 0 ? `GPS accuracy ±${Math.round(Number(feed.accuracy))} m` : "",
+  ].filter(Boolean);
+};
+
+const createWatermarkedStream = async (source, feed = {}) => {
+  const canvas = document.createElement("canvas");
+  if (!canvas.captureStream) return { stream: source, cleanup: () => {} };
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = source;
+  await video.play();
+  const settings = source.getVideoTracks()[0]?.getSettings?.() || {};
+  canvas.width = Math.max(640, Number(settings.width) || video.videoWidth || 1280);
+  canvas.height = Math.max(360, Number(settings.height) || video.videoHeight || 720);
+  const context = canvas.getContext("2d");
+  if (!context) return { stream: source, cleanup: () => { video.pause(); video.srcObject = null; } };
+  let animationFrame;
+  const draw = () => {
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const fontSize = Math.max(15, Math.round(canvas.width / 54));
+    const lineHeight = Math.round(fontSize * 1.35);
+    const lines = [...watermarkLines(feed), new Date().toLocaleString("en-NG", { hour12: true }), "© OpenStreetMap contributors"];
+    const panelHeight = lines.length * lineHeight + fontSize * 1.5;
+    context.fillStyle = "rgba(0, 0, 0, 0.72)";
+    context.fillRect(0, canvas.height - panelHeight, canvas.width, panelHeight);
+    context.fillStyle = "#ffffff";
+    context.font = `600 ${fontSize}px Arial, sans-serif`;
+    context.textBaseline = "top";
+    lines.forEach((line, index) => {
+      context.fillText(String(line).slice(0, 110), fontSize, canvas.height - panelHeight + fontSize * 0.65 + index * lineHeight, canvas.width - fontSize * 2);
+    });
+    animationFrame = requestAnimationFrame(draw);
+  };
+  draw();
+  const output = canvas.captureStream(24);
+  source.getAudioTracks().forEach(track => output.addTrack(track));
+  return {
+    stream: output,
+    cleanup: () => {
+      cancelAnimationFrame(animationFrame);
+      output.getVideoTracks().forEach(track => track.stop());
+      video.pause();
+      video.srcObject = null;
+    },
+  };
+};
+
+function StreamVideo({ src, stream, muted = false, showControls = true, watermark }) {
   const ref = useRef(null);
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -49,7 +105,7 @@ function StreamVideo({ src, stream, muted = false, showControls = true }) {
     }
   };
 
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
     if (recording) {
       recorderRef.current?.stop();
       return;
@@ -60,8 +116,9 @@ function StreamVideo({ src, stream, muted = false, showControls = true }) {
         stream || video?.captureStream?.() || video?.mozCaptureStream?.();
       if (!source)
         throw new Error("Recording is not supported in this browser");
+      const prepared = watermark ? await createWatermarkedStream(source, watermark) : { stream: source, cleanup: () => {} };
       chunksRef.current = [];
-      const recorder = new MediaRecorder(source, {
+      const recorder = new MediaRecorder(prepared.stream, {
         mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
           ? "video/webm;codecs=vp9,opus"
           : "video/webm",
@@ -71,6 +128,7 @@ function StreamVideo({ src, stream, muted = false, showControls = true }) {
       };
       recorder.onstop = () => {
         setRecording(false);
+        prepared.cleanup();
         const blob = new Blob(chunksRef.current, { type: "video/webm" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -90,6 +148,7 @@ function StreamVideo({ src, stream, muted = false, showControls = true }) {
   return (
     <div className="recordable-video">
       <video ref={ref} controls={showControls} autoPlay playsInline muted={soundMuted} />
+      {watermark && <div className="video-location-watermark">{watermarkLines(watermark).map((line, index) => index === 0 ? <strong key={line}>{line}</strong> : <span key={`${line}-${index}`}>{line}</span>)}<small>© OpenStreetMap contributors</small></div>}
       {showControls && (
         <>
           <div className="stream-audio-controls">
@@ -122,6 +181,7 @@ export default function CameraPanel({
 }) {
   const [recordAll, setRecordAll] = useState(false);
   const [sharingFeedId, setSharingFeedId] = useState(null);
+  const [preparedShares, setPreparedShares] = useState({});
   const recordersRef = useRef({});
   const requestedFeedsRef = useRef(new Set());
   const [form, setForm] = useState({
@@ -212,33 +272,58 @@ export default function CameraPanel({
     }
     try {
       setSharingFeedId(feed.userId);
+      const prepared = await createWatermarkedStream(stream, feed);
       const mimeType = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
         .find((type) => MediaRecorder.isTypeSupported?.(type));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(prepared.stream, mimeType ? { mimeType } : undefined);
       const chunks = [];
       recorder.ondataavailable = (event) => event.data?.size && chunks.push(event.data);
       const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
       recorder.start(500);
       setTimeout(() => recorder.state !== "inactive" && recorder.stop(), 10000);
       await stopped;
+      prepared.cleanup();
       const type = recorder.mimeType || mimeType || "video/webm";
       const extension = type.includes("mp4") ? "mp4" : "webm";
       const unit = String(feed.pollingUnit || feed.station || "live-feed").replace(/[^a-z0-9_-]+/gi, "-");
       const file = new File(chunks, `${unit}_${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`, { type });
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ title: "Election monitoring live feed", text: `${feed.name || "Field agent"} — ${feed.pollingUnit || "Polling unit"}`, files: [file] });
+      setPreparedShares((current) => ({
+        ...current,
+        [feed.userId]: {
+          file,
+          title: "Election monitoring live feed",
+          text: `${feed.name || "Field agent"} — ${feed.location?.label || feed.pollingUnit || "Polling unit"}`,
+        },
+      }));
+    } catch (error) {
+      if (error.name !== "AbortError") alert(error.message || "Unable to prepare this feed");
+    } finally {
+      setSharingFeedId(null);
+    }
+  };
+
+  const sharePreparedFeedVideo = async (feed) => {
+    const prepared = preparedShares[feed.userId];
+    if (!prepared) return shareFeedVideo(feed);
+    const shareData = { title: prepared.title, text: prepared.text, files: [prepared.file] };
+    try {
+      if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
+        await navigator.share(shareData);
       } else {
         const link = document.createElement("a");
-        link.href = URL.createObjectURL(file);
-        link.download = file.name;
+        link.href = URL.createObjectURL(prepared.file);
+        link.download = prepared.file.name;
         link.click();
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
         alert("The video was downloaded. You can attach it to your social media post.");
       }
+      setPreparedShares((current) => {
+        const next = { ...current };
+        delete next[feed.userId];
+        return next;
+      });
     } catch (error) {
       if (error.name !== "AbortError") alert(error.message || "Unable to share this feed");
-    } finally {
-      setSharingFeedId(null);
     }
   };
 
@@ -333,7 +418,7 @@ export default function CameraPanel({
             >
               <div className="video-shell">
                 {remoteStreams[feed.userId] ? (
-                  <StreamVideo stream={remoteStreams[feed.userId]} />
+                  <StreamVideo stream={remoteStreams[feed.userId]} watermark={feed} />
                 ) : (
                   <button
                     className="connect-feed"
@@ -357,8 +442,8 @@ export default function CameraPanel({
                 {feed.lat && (
                   <button onClick={() => onShowMap(feed)}>Show on map</button>
                 )}
-                <button disabled={sharingFeedId === feed.userId} onClick={() => shareFeedVideo(feed)}>
-                  {sharingFeedId === feed.userId ? "Recording 10s…" : "Share video"}
+                <button className={preparedShares[feed.userId] ? "share-ready" : ""} disabled={sharingFeedId === feed.userId} onClick={() => preparedShares[feed.userId] ? sharePreparedFeedVideo(feed) : shareFeedVideo(feed)}>
+                  {sharingFeedId === feed.userId ? "Recording 10s…" : preparedShares[feed.userId] ? "Share ready" : "Prepare video"}
                 </button>
               </div>
               <div className="agent-feed-hover">
