@@ -37,6 +37,7 @@ const meteredTurnRegion = normalizeMeteredRegion(process.env.METERED_TURN_REGION
 if ((process.env.METERED_DOMAIN || process.env.METERED_TURN_API_KEY) && (!meteredDomain || !meteredTurnApiKey)) {
   console.warn('Metered TURN is not fully configured. Live video will use the STUN fallback.');
 }
+if (!meteredDomain && !meteredTurnApiKey) console.warn('Metered TURN is not configured. Live video will use the STUN fallback.');
 if (!process.env.SUPER_ADMIN_PASSWORD || !process.env.ADMIN_PASSWORD) {
   console.warn('SUPER_ADMIN_PASSWORD and ADMIN_PASSWORD were not set. Generated secure random passwords for the seeded admin accounts.');
 }
