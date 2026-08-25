@@ -74,7 +74,7 @@ export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) 
 
     <div className="rc-tab-bar">
       <button className={tab === 'sentiment' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('sentiment')}>Sentiment</button>
-      <button className={tab === 'records' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('records')}>Previous Election Record</button>
+      <button className={tab === 'records' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('records')}>History</button>
     </div>
 
     {tab === 'sentiment' && <article className="pre-card pre-generated-brief">
