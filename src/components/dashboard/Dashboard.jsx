@@ -1463,9 +1463,9 @@ function MapView({
             : colors[status];
           return {
             color: selectedColor?.line || "#22d3ee",
-            weight: selectedColor ? 3.5 : 2.75,
+            weight: historicalMapAnalysis ? 5 : selectedColor ? 3.5 : 2.75,
             dashArray: selectedColor ? "" : "7 5",
-            fillOpacity: selectedColor ? 0.42 : 0.025,
+            fillOpacity: historicalMapAnalysis ? 0.82 : selectedColor ? 0.42 : 0.025,
             fillColor: selectedColor?.fill || "#22d3ee",
             opacity: 1,
           };
@@ -1495,7 +1495,7 @@ function MapView({
           }
           layerGeo.on({
             mouseover: (e) => {
-              e.target.setStyle({ weight: 4, color: "#a5f3fc", fillOpacity: 0.14, opacity: 1 });
+              e.target.setStyle({ weight: historicalMapAnalysis ? 6 : 4, color: "#a5f3fc", fillOpacity: historicalMapAnalysis ? 0.95 : 0.14, opacity: 1 });
               if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
             },
             mouseout: (e) => lgaLayer.resetStyle(e.target),
