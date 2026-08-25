@@ -79,6 +79,7 @@ import {
   MdAdjust,
   MdAssessment,
   MdHowToVote,
+  MdOutlineFactCheck,
 } from "react-icons/md";
 import ProfileModal from "./ProfileModal.jsx";
 import DashboardChatPanel from "./ChatPanel.jsx";
@@ -2893,7 +2894,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
           {fieldTopParties.map(party => <article className="result-total-card" key={party}><span>{party}</span><strong>{fieldResultTotals[party].toLocaleString()}</strong></article>)}
         </section>
         <section className="result-table-card">
-          <div className="result-table-title"><div><h2>Polling-unit breakdown</h2><p>{resultSourceFilter ? `${resultSourceFilter} submissions only. Select the active source card again to show all.` : "Agent and Supervisor counts with field evidence."}</p></div><div className="result-compare-actions"><button type="button" className={compareWithIrev ? "irev-compare-btn active" : "irev-compare-btn"} disabled={irevCompareLoading} onClick={toggleIrevComparison}>{irevCompareLoading ? "Loading IReV…" : compareWithIrev ? "IReV comparison on" : "Compare with IReV"}</button><b>{displayedResultRows.length} shown</b></div></div>
+          <div className="result-table-title"><div><h2>Polling-unit breakdown</h2><p>{resultSourceFilter ? `${resultSourceFilter} submissions only. Select the active source card again to show all.` : "Agent and Supervisor counts with field evidence."}</p></div><div className="result-compare-actions"><button type="button" className={compareWithIrev ? "irev-compare-btn active" : "irev-compare-btn"} disabled={irevCompareLoading} onClick={toggleIrevComparison}>{irevCompareLoading ? <FaSyncAlt className="irev-compare-spinner" /> : <MdOutlineFactCheck />}<span>{irevCompareLoading ? "Loading IReV…" : compareWithIrev ? "IReV comparison on" : "Compare with IReV"}</span>{compareWithIrev && !irevCompareLoading && <i>ON</i>}</button><b>{displayedResultRows.length} shown</b></div></div>
           <div className="result-table-scroll">
             <table className="result-progress-table">
               <thead><tr><th>Source</th><th>LGA</th><th>Ward</th><th>Polling unit</th>{fieldTopParties.map(party => <th key={party}>{party}</th>)}<th>Location</th><th>Evidence</th><th>Uploaded</th></tr></thead>
