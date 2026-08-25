@@ -7,7 +7,7 @@ const formatMetric = (value, metric) => `${Number(value || 0).toLocaleString()} 
 export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) {
   const [tab, setTab] = useState('sentiment');
   const [year, setYear] = useState(2023);
-  const [election, setElection] = useState('Governorship');
+  const [election, setElection] = useState('Presidential');
   const [brief, setBrief] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -68,11 +68,9 @@ export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) 
     <div className="pre-election-head">
       <div><span className="eyebrow">BEFORE THE NEXT ELECTION</span><h2>Pre-Election Analysis</h2><p>Review election sentiment and previous Oyo election records.</p></div>
       <div className="pre-election-head-actions">
-        {dataset?.geography?.levels?.includes('lga') && <button className="secondary action-btn history-map-launch" onClick={() => onShowHistoricalMap?.(dataset)}><MdMap /> Show previous election history</button>}
         <button className="primary action-btn" disabled={loading || !result} onClick={generate}><MdFlashOn /> {loading ? 'Analyzing…' : 'Generate Brief'}</button>
       </div>
     </div>
-    <p className="pre-election-caution">Historical results are a baseline, not a forecast. Missing votes remain unavailable and are never converted to zero.</p>
 
     <div className="rc-tab-bar">
       <button className={tab === 'sentiment' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('sentiment')}>Sentiment</button>
@@ -80,7 +78,7 @@ export default function PreElectionAnalysis({ onAnalyze, onShowHistoricalMap }) 
     </div>
 
     {tab === 'sentiment' && <article className="pre-card pre-generated-brief">
-      <header><div><h3>2023 Presidential Election Sentiment Analysis</h3><p>Analysis based on the 2023 Presidential election record.</p></div><button className="secondary action-btn history-map-launch" onClick={() => onShowHistoricalMap?.(election2023Results[0].dataset)}><MdMap /> Show on map</button></header>
+      <header><div><h3>2023 Presidential Election Sentiment Analysis</h3></div><button className="secondary action-btn history-map-launch" onClick={() => onShowHistoricalMap?.(election2023Results[0].dataset)}><MdMap /> Show on map</button></header>
       <div className="historical-party-bars">{Object.entries(sentimentParties).map(([party, value]) => <div key={party}><div><strong>{party}</strong><b>{value.toLocaleString()} votes</b></div><span><i style={{ width: `${(value / maxSentiment) * 100}%` }} /></span></div>)}</div>
       {brief && <div>{brief}</div>}{error && <p className="pre-analysis-error">{error}</p>}
     </article>}

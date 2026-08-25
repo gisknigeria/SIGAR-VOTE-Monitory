@@ -903,7 +903,7 @@ body{font-size:14px}
 .sidebar-user button{border:0;background:transparent;color:#7fa9d4;font-size:11px}
 .map-top-controls{position:absolute;z-index:760;top:14px;left:18px;right:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;pointer-events:none}
 .map-top-left{display:flex;align-items:center;gap:6px;pointer-events:auto}
-.map-top-left .home-menu{order:1}.map-top-left .map-layer-menu{order:2}.map-top-left .street-view-tool{order:3}.map-top-left .clear-tools-btn{order:4}.map-top-left .share-location-action{order:5}.map-top-left .camera-share-action{order:6}.map-top-left .result-center-open{order:7}.map-top-left .report-action{order:8}.map-top-left .camera-count{display:grid;order:9}.map-top-left .incident-menu{order:10}.map-top-left .pre-election-action{order:11}.map-top-left .post-election-action{order:12}.map-top-left .emergency-open{order:13}.map-top-left>.share-map-action{display:none}
+.map-top-left .home-menu{order:1}.map-top-left .map-layer-menu{order:2}.map-top-left .street-view-tool{order:3}.map-top-left .clear-tools-btn{order:4}.map-top-left .share-location-action{order:5}.map-top-left .camera-share-action{order:6}.map-top-left .report-action{order:8}.map-top-left .camera-count{display:grid;order:9}.map-top-left .incident-menu{order:10}.map-top-left .pre-election-action{order:11}.map-top-left .result-center-open{order:12}.map-top-left .post-election-action{order:13}.map-top-left .emergency-open{order:14}.map-top-left>.share-map-action{display:none}
 .map-top-right{position:relative;display:flex;align-items:center;gap:7px;pointer-events:auto}
 .desktop-map-search{position:static;transform:none;width:100%;height:38px;margin:0;background:#0b1826ef;border-color:#2b4a68;box-shadow:0 8px 24px #0007;backdrop-filter:blur(8px)}
 .desktop-map-search span{font:700 9px 'JetBrains Mono';letter-spacing:.14em;color:#6aaeff;text-transform:uppercase}
@@ -1011,6 +1011,7 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .map-action.election-phase-action svg{font-size:17px}
 .map-action.pre-election-action{border-color:#22c55e;background:#15803d;color:#ffffff}
 .map-action.pre-election-action:hover{border-color:#4ade80;background:#166534;color:#ffffff}
+.map-action.pre-election-action.active{border:3px solid #86efac;background:#16a34a;color:#ffffff;box-shadow:0 0 0 3px #22c55e66,0 0 16px #22c55eaa}
 .map-action.result-report-action{border-color:#f97316;background:#c2410c;color:#ffffff}
 .map-action.result-report-action:hover{border-color:#fb923c;background:#9a3412;color:#ffffff}
 .map-action.post-election-action{border-color:#3b82f6;background:#2563eb;color:#ffffff}
@@ -1042,7 +1043,8 @@ body.resizing-sidebar{cursor:col-resize;user-select:none}
 .self-camera-preview-actions .end-live-head span{color:#fff!important;font-weight:800}
 .self-camera-preview-actions .mic-muted,.camera-live-pill .mic-muted{border-color:#f87171;background:#7f1d1dcc;color:#fecaca!important}
 .self-camera-preview-actions .mic-live,.camera-live-pill .mic-live{border-color:#34d399;background:#064e3bcc;color:#a7f3d0!important}
-.result-center-open{color:#f5dc9a!important}
+.result-center-open{border-color:#f97316!important;background:#c2410c!important;color:#ffffff!important}
+.result-center-open:hover{border-color:#fb923c!important;background:#9a3412!important;color:#ffffff!important}
 .result-center-open svg{font-size:16px}
 .results-center{position:fixed;z-index:2600;inset:0;display:flex;flex-direction:column;background:linear-gradient(145deg,#18050c,#2b0816 55%,#16040a);color:#fff;overflow:hidden}
 .results-center-head{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 28px;border-bottom:1px solid #793149;background:#240711f5}.results-center-head h1{margin:5px 0 3px;font-size:25px!important}.results-center-head p{margin:0;color:#d5b8c2!important}.results-center-head .icon-btn{width:40px;height:40px;border:1px solid #793149;border-radius:50%;background:#360c1c}

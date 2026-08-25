@@ -5815,8 +5815,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 setResultsInitialView("pulse");
                 setResultsOpen(true);
               }}
-              title="Open dashboard"
-              aria-label="Open dashboard"
+              title="Election Dashboard"
+              aria-label="Election Dashboard"
             >
               <FaChartBar />
             </button>
@@ -5848,7 +5848,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               Result
             </button>}
             <button
-              className="map-action election-phase-action pre-election-action"
+              className={`map-action election-phase-action pre-election-action${resultsOpen && resultsInitialView === "pre" ? " active" : ""}`}
               onClick={() => {
                 setResultsInitialView("pre");
                 setResultsOpen(true);
