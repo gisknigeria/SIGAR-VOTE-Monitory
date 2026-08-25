@@ -99,6 +99,7 @@ const PollingResultForm = lazy(() => loadFieldModals().then((module) => ({ defau
 
 const API = "/api";
 const OYO_CENTER = [7.3775, 3.947];
+const RESULT_SOURCES = ["Agent", "Supervisor", "INEC IReV"];
 const OYO_BOUNDS = [
   [6.73, 2.67],
   [8.38, 4.6],
