@@ -194,7 +194,6 @@ function ElectionCountdown() {
 
   return (
     <div className="election-countdown" aria-label="Time remaining until election day">
-      <span className="election-countdown-label">ELECTION DAY · 06 FEB 2027</span>
       <div className="election-countdown-units">
         {units.map(([value, label]) => (
           <span key={label} className="election-countdown-unit">
