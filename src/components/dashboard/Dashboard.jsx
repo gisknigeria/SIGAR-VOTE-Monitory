@@ -749,6 +749,7 @@ function MapView({
   showBoundaryLayer,
   showStateBorders,
   showLgaBorders,
+  showWardBorders,
   showBoundaryNames,
   partyMapAnalysis,
   historicalMapAnalysis,
@@ -780,6 +781,8 @@ function MapView({
   const [layerPanelOpen, setLayerPanelOpen] = useState(false);
   const [oyoBoundaries, setOyoBoundaries] = useState({ state: null, lgas: null });
   const [oyoWardBoundaries, setOyoWardBoundaries] = useState({ lga: "", wards: null, notice: "" });
+  const [selectedWardBoundaryLga, setSelectedWardBoundaryLga] = useState("");
+  const renderLgaSelectionLayer = showLgaBorders || (showWardBorders && !selectedWardBoundaryLga);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1421,7 +1424,7 @@ function MapView({
     nigeriaLgaOverlay.current = null;
     nigeriaLgaLabels.current.forEach(l => l.remove());
     nigeriaLgaLabels.current = [];
-    if (!showLgaBorders) return;
+    if (!renderLgaSelectionLayer) return;
     const uploadedLgaFeatures = mapLayers
       .filter(l => l.visible !== false && l.type === "geojson" && l.data?.features)
       .flatMap(l => l.data.features.filter(f => {
@@ -1500,6 +1503,12 @@ function MapView({
                 onHistoricalLgaSelect?.(name);
                 return;
               }
+              if (showWardBorders) {
+                setSelectedWardBoundaryLga(name);
+                if (layerGeo.getBounds?.().isValid?.()) leaflet.current?.fitBounds(layerGeo.getBounds(), { padding: [30, 30], maxZoom: 12 });
+                onBoundarySelect?.(String(name).trim().toLowerCase().replace(/\s+/g, " "), name);
+                return;
+              }
               const key = String(name).trim().toLowerCase().replace(/\s+/g, " ");
               onBoundarySelect?.(key, name);
             },
@@ -1539,10 +1548,10 @@ function MapView({
         } catch {}
       });
     }
-  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults, historicalMapAnalysis, historicalLgaResults, onHistoricalLgaSelect]);
+  }, [renderLgaSelectionLayer, showWardBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults, historicalMapAnalysis, historicalLgaResults, onHistoricalLgaSelect]);
 
   useEffect(() => {
-    const lga = historicalMapAnalysis?.selectedLga?.name;
+    const lga = historicalMapAnalysis?.selectedLga?.name || (showWardBorders ? selectedWardBoundaryLga : "");
     if (!lga) {
       setOyoWardBoundaries({ lga: "", wards: null, notice: "" });
       return undefined;
@@ -1555,7 +1564,11 @@ function MapView({
         if (error.name !== "AbortError") setOyoWardBoundaries({ lga, wards: null, notice: error.message || "Ward boundaries unavailable" });
       });
     return () => controller.abort();
-  }, [historicalMapAnalysis?.selectedLga?.name]);
+  }, [historicalMapAnalysis?.selectedLga?.name, selectedWardBoundaryLga, showWardBorders]);
+
+  useEffect(() => {
+    if (!showWardBorders) setSelectedWardBoundaryLga("");
+  }, [showWardBorders]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -1565,14 +1578,14 @@ function MapView({
     wardLabels.current.forEach(label => label.remove());
     wardLabels.current = [];
     const features = oyoWardBoundaries.wards?.features || [];
-    if (!historicalMapAnalysis?.selectedLga || !features.length) return;
+    if ((!historicalMapAnalysis?.selectedLga && !showWardBorders) || !features.length) return;
     const layer = L.geoJSON({ type: "FeatureCollection", features }, {
       pane: "overlayPane",
       style: feature => {
         const name = feature.properties?.ward || "";
         const result = historicalWardForFeature(feature);
-        const fillColor = result ? historicalPartyColor(result.winner) : "#64748b";
-        return { color: "#f0abfc", weight: 2.7, dashArray: result ? "" : "5 4", fillColor, fillOpacity: result ? 0.28 : 0.05, opacity: 1 };
+        const fillColor = result ? historicalPartyColor(result.winner) : "#5a172b";
+        return { color: result ? "#f0abfc" : "#f5dc9a", weight: 2.7, dashArray: result ? "" : "5 4", fillColor, fillOpacity: result ? 0.28 : 0.06, opacity: 1 };
       },
       onEachFeature: (feature, wardLayer) => {
         const name = feature.properties?.ward || feature.properties?.ward_alt_names || "Ward";
@@ -1588,7 +1601,8 @@ function MapView({
           click: event => {
             L.DomEvent.stopPropagation(event);
             const selectedWard = historicalWardForFeature(feature);
-            if (selectedWard) onHistoricalWardSelect?.(selectedWard);
+            if (selectedWard && historicalMapAnalysis) onHistoricalWardSelect?.(selectedWard);
+            else onBoundarySelect?.(String(name).trim().toLowerCase().replace(/\s+/g, " "), name);
           },
         });
         if (showBoundaryNames) {
@@ -1608,7 +1622,7 @@ function MapView({
       wardLabels.current.forEach(label => label.remove());
       wardLabels.current = [];
     };
-  }, [oyoWardBoundaries.wards, historicalMapAnalysis?.selectedLga, historicalMapAnalysis?.wardDetail, historicalWardResults, showBoundaryNames, onHistoricalWardSelect]);
+  }, [oyoWardBoundaries.wards, historicalMapAnalysis, historicalMapAnalysis?.selectedLga, historicalMapAnalysis?.wardDetail, historicalWardResults, showWardBorders, showBoundaryNames, onHistoricalWardSelect, onBoundarySelect]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -2951,6 +2965,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
   const [showStateBorders, setShowStateBorders] = useState(true);
   const [showLgaBorders, setShowLgaBorders] = useState(true);
+  const [showWardBorders, setShowWardBorders] = useState(false);
   const [showBoundaryNames, setShowBoundaryNames] = useState(false);
   const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
   const [drawMode, setDrawMode] = useState("");
@@ -5579,19 +5594,43 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                    SOS <span>{showSosIncidents ? "Hide" : "Show"}</span>
                 </button>
                 <button
-                  className={(showStateBorders || showLgaBorders) ? "active" : ""}
+                  className={showStateBorders ? "active" : ""}
                   onClick={() => {
-                    const next = !(showStateBorders || showLgaBorders);
-                    setShowStateBorders(next);
-                    setShowLgaBorders(next);
+                    setShowStateBorders(value => !value);
                     setMapMenu("");
                   }}
                 >
-                  Borders <span>{showStateBorders || showLgaBorders ? "Hide" : "Show"}</span>
+                  State Border <span>{showStateBorders ? "Hide" : "Show"}</span>
+                </button>
+                <button
+                  className={showLgaBorders ? "active" : ""}
+                  onClick={() => {
+                    const next = !showLgaBorders;
+                    setShowLgaBorders(next);
+                    if (next) setShowWardBorders(false);
+                    setMapMenu("");
+                  }}
+                >
+                  LGA Borders <span>{showLgaBorders ? "Hide" : "Show"}</span>
+                </button>
+                <button
+                  className={showWardBorders ? "active" : ""}
+                  onClick={() => {
+                    const next = !showWardBorders;
+                    setShowWardBorders(next);
+                    if (next) {
+                      setShowLgaBorders(false);
+                      setNotice("Ward border mode: select an LGA on the map.");
+                    }
+                    setMapMenu("");
+                  }}
+                  title={showWardBorders ? "Hide ward borders" : "Show ward borders after selecting an LGA"}
+                >
+                  Ward Borders <span>{showWardBorders ? "Hide" : "Show"}</span>
                 </button>
                 <button
                   className={showBoundaryNames ? "active" : ""}
-                  disabled={!showStateBorders && !showLgaBorders}
+                  disabled={!showStateBorders && !showLgaBorders && !showWardBorders}
                   onClick={() => {
                     setShowBoundaryNames(value => !value);
                     setMapMenu("");
@@ -5863,6 +5902,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           showBoundaryLayer={showBoundaryLayer}
           showStateBorders={showStateBorders}
           showLgaBorders={showLgaBorders}
+          showWardBorders={showWardBorders}
           showBoundaryNames={showBoundaryNames}
           partyMapAnalysis={partyMapAnalysis}
           historicalMapAnalysis={historicalMapAnalysis}
