@@ -2111,21 +2111,26 @@ app.use((err, _, res, __) => {
   res.status(500).json({ message: 'Server error. Please check logs.' });
 });
 
-if (IREV_OYO_ELECTION_ID) {
+const enableIrevAutoSync = process.env.IREV_AUTO_SYNC === 'true';
+if (enableIrevAutoSync && IREV_OYO_ELECTION_ID) {
   const syncIrevArchive = () => loadOyoIrev(true).catch(error => console.warn('[irev] Background Oyo archive update failed:', error.message));
   const initialIrevSync = setTimeout(syncIrevArchive, 5_000);
   initialIrevSync.unref?.();
   const recurringIrevSync = setInterval(syncIrevArchive, 5 * 60_000);
   recurringIrevSync.unref?.();
-} else {
+} else if (!IREV_OYO_ELECTION_ID) {
   console.log('[irev] Oyo 2027 feed is dormant until IREV_OYO_ELECTION_ID is configured.');
 }
 
-const osunIrevArchiveSync = () => loadOsunIrevPilot(true).catch(error => console.warn('[irev] Background Osun archive update failed:', error.message));
-const initialOsunIrevSync = setTimeout(osunIrevArchiveSync, 2_000);
-initialOsunIrevSync.unref?.();
-const recurringOsunIrevSync = setInterval(osunIrevArchiveSync, 60_000);
-recurringOsunIrevSync.unref?.();
+if (enableIrevAutoSync) {
+  const osunIrevArchiveSync = () => loadOsunIrevPilot(true).catch(error => console.warn('[irev] Background Osun archive update failed:', error.message));
+  const initialOsunIrevSync = setTimeout(osunIrevArchiveSync, 2_000);
+  initialOsunIrevSync.unref?.();
+  const recurringOsunIrevSync = setInterval(osunIrevArchiveSync, 60_000);
+  recurringOsunIrevSync.unref?.();
+} else {
+  console.log('[irev] Background sync disabled; serving the persistent archive.');
+}
 
 if (process.env.NODE_ENV === 'production') { app.use(express.static(join(__dirname, '..', 'dist'))); app.get(/.*/, (_, res) => res.sendFile(join(__dirname, '..', 'dist', 'index.html'))); }
 server.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log(`Election Monitoring Command API listening on port ${process.env.PORT || 5000}`));
