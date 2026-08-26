@@ -2487,6 +2487,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
   }, [irevResultRows, irevSearch]);
   const irevRowsByUnit = useMemo(() => new Map(irevResultRows.map((row) => [resultUnitKey(row), row])), [irevResultRows]);
   const irevOnlyTotals = useMemo(() => Object.fromEntries((irevPublishedResults?.totals || []).map(({ party, votes }) => [party, Number(votes || 0)])), [irevPublishedResults]);
+  const irevPublishedTotalVotes = useMemo(() => Object.values(irevOnlyTotals).reduce((total, votes) => total + votes, 0), [irevOnlyTotals]);
   const irevTopParties = useMemo(() => Object.keys(irevOnlyTotals).filter((party) => irevOnlyTotals[party] > 0).sort((a, b) => irevOnlyTotals[b] - irevOnlyTotals[a]).slice(0, 5), [irevOnlyTotals]);
   const top6 = useMemo(() => summary.partyNames.filter((party) => summary.totals[party] > 0).sort((a,b) => summary.totals[b]-summary.totals[a]).slice(0,6), [summary]);
   const winLoss = useMemo(() => {
@@ -2857,6 +2858,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
           </header>
           {irevError && <div className="error">{irevError}</div>}
           {irevPilot && <>
+            {irevSection === "results" && irevPublishedResults?.totals?.length > 0 && <section className="result-total-strip irev-result-totals" aria-label="Published vote totals"><article className="result-total-card grand"><span>Total votes</span><strong>{irevPublishedTotalVotes.toLocaleString()}</strong></article>{irevPublishedResults.totals.map(({ party, votes }) => <article className="result-total-card" key={party}><span>{party}</span><strong>{Number(votes || 0).toLocaleString()}</strong></article>)}</section>}
             <div className="irev-pilot-stats"><div><span>Uploaded</span><strong>{irevPilot.submitted.toLocaleString()}</strong></div><div><span>Expected</span><strong>{irevPilot.expected.toLocaleString()}</strong></div><div><span>Coverage</span><strong>{irevPilot.expected ? `${((irevPilot.submitted / irevPilot.expected) * 100).toFixed(1)}%` : "—"}</strong></div><div><span>Last checked</span><strong>{new Date(irevPilot.fetchedAt).toLocaleTimeString()}</strong></div></div>
             {irevPilot.notice && <p className="irev-verification-note"><MdWarning /> {irevPilot.notice}</p>}
             <div className="wl-sub-tabs irev-sub-tabs"><button className={irevSection === "uploads" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setIrevSection("uploads")}>Polling-unit uploads</button>{irevResultRows.length > 0 && <button className={irevSection === "results" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setIrevSection("results")}>Published results</button>}</div>

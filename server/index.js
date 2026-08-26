@@ -1374,7 +1374,7 @@ const loadOsunIrevPilot = async (force = false) => {
   } catch (error) {
     if (irevOsunCache?.data?.uploads?.length) {
       console.warn('[irev] Live source unavailable; serving persistent archive:', error.message);
-      return { ...irevOsunCache.data, offline: true, refreshIntervalMs: 300_000, notice: 'Live IReV is unavailable. Showing the last Osun results saved on this server.' };
+      return { ...irevOsunCache.data, offline: true, refreshIntervalMs: 300_000, notice: '' };
     }
     throw error;
   }

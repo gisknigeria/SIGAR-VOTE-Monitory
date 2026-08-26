@@ -59,6 +59,10 @@
 .irev-sub-tabs .wl-sub-tab{min-height:46px;padding:0 16px;border-bottom:2px solid transparent}
 .irev-sub-tabs .wl-sub-tab.active{border-bottom-color:#e0b84f;background:#3a1321;color:#fff}
 .irev-pilot-card .irev-table-toolbar{padding:0 20px 14px}
+.irev-pilot-card .irev-result-totals{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding:16px 20px 4px}
+.irev-pilot-card .irev-result-totals .result-total-card{min-height:124px;padding:18px;border:1px solid #8a6d2e;border-radius:14px;background:linear-gradient(145deg,#35121c,#210b13);box-shadow:0 10px 24px #0004}
+.irev-pilot-card .irev-result-totals .result-total-card span{color:#ead3da!important;font-size:10px!important;font-weight:800}
+.irev-pilot-card .irev-result-totals .result-total-card strong{align-self:end;color:#f5dc9a!important;font-size:27px!important;font-weight:500}
 .irev-pilot-card .irev-table-toolbar>div span{color:#d7bfc7!important}
 .irev-pilot-card .irev-table-toolbar label{border-color:#8a6d2e;background:#16080e}
 .irev-pilot-card .irev-table-scroll{max-height:68vh;overflow-x:hidden;overflow-y:auto;border-top:1px solid #6a283d;scrollbar-color:#8a6d2e #12070b;scrollbar-width:thin}
@@ -75,6 +79,8 @@
 .irev-pilot-card .irev-results-table th:nth-child(5),.irev-pilot-card .irev-results-table td:nth-child(5){width:9%}
 .irev-pilot-card .irev-results-table th:nth-child(n+6),.irev-pilot-card .irev-results-table td:nth-child(n+6){width:9%;text-align:center}
 @media(max-width:760px){.irev-pilot-card .irev-results-table{min-width:900px!important}.irev-pilot-card .irev-table-scroll{overflow-x:auto}.irev-sub-tabs{margin-inline:12px}.irev-pilot-card .irev-table-toolbar{padding-inline:12px}}
+@media(max-width:1000px){.irev-pilot-card .irev-result-totals{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.irev-pilot-card .irev-result-totals{grid-template-columns:repeat(2,minmax(0,1fr));padding-inline:12px}.irev-pilot-card .irev-result-totals .result-total-card{min-height:96px;padding:13px}.irev-pilot-card .irev-result-totals .result-total-card strong{font-size:21px!important}}
 
 /* Kwara dashboard structure, translated to the Oyo burgundy-and-gold brand. */
 .irev-pilot-actions{display:flex;gap:8px;flex-wrap:wrap}
