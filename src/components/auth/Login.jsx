@@ -90,7 +90,7 @@ export default function Login({ onLogin }) {
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            type="email"
+            type="text"
             autoComplete="email"
           />
         </label>
