@@ -97,7 +97,13 @@ jsonDb.users = jsonDb.users.map(user => {
   return user;
 });
 jsonDb.incidents = jsonDb.incidents.filter(incident => !['i1', 'i2', 'i3'].includes(incident.id) && incident.createdBy !== 'seed');
-const saveJson = () => writeFileSync(dataFile, JSON.stringify(jsonDb, null, 2));
+const saveJson = () => {
+  try {
+    writeFileSync(dataFile, JSON.stringify(jsonDb, null, 2));
+  } catch (error) {
+    console.warn(`[data] Could not persist JSON data at ${dataFile}: ${error.message}`);
+  }
+};
 if (!databaseUrl) saveJson();
 
 let pool = databaseUrl ? new Pool({
