@@ -100,7 +100,7 @@ jsonDb.incidents = jsonDb.incidents.filter(incident => !['i1', 'i2', 'i3'].inclu
 const saveJson = () => writeFileSync(dataFile, JSON.stringify(jsonDb, null, 2));
 if (!databaseUrl) saveJson();
 
-const pool = databaseUrl ? new Pool({
+let pool = databaseUrl ? new Pool({
   connectionString: databaseUrl,
   ssl: process.env.DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: true },
   max: Math.max(1, Math.min(Number(process.env.DATABASE_POOL_SIZE) || 10, 20)),
@@ -539,7 +539,14 @@ const store = {
   }
 };
 
-await initPostgres();
+try {
+  await initPostgres();
+} catch (error) {
+  console.error(`[database] PostgreSQL unavailable; using JSON fallback: ${error.message}`);
+  await pool?.end().catch(() => {});
+  pool = null;
+  saveJson();
+}
 
 const app = express();
 const server = createServer(app);
