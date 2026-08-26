@@ -16,6 +16,7 @@ import { analyzeContextLocally, summarizeNewsLocally } from './ai.js';
 import { FALLBACK_ICE_SERVERS, normalizeMeteredDomain, normalizeMeteredRegion, sanitizeIceServers } from './turn.js';
 import { formatReverseLocation } from './location.js';
 import { normalizeLgaHistory, normalizeStateHistory, normalizeWardHistory, slugifyHistoricalArea } from './historical-results.js';
+import { OSUN_2026_PUBLISHED_RESULTS } from './osun2026Results.js';
 
 const { Pool } = pg;
 sharp.cache({ memory: 16, files: 0, items: 10 });
@@ -1286,6 +1287,92 @@ app.post('/api/irev/oyo/ocr', auth, adminOnly, irevOcrRateLimit, asyncRoute(asyn
   await persistenceTask;
   return res.json(extraction);
 }));
+const IREV_OSUN_ELECTION_ID = '6a7f788adcbc755a763f082a';
+const IREV_OSUN_PORTAL_URL = `https://irev.inecnigeria.org/elections/${IREV_OSUN_ELECTION_ID}`;
+const IREV_OSUN_ARCHIVE_KEY = 'irev_osun_archive_v1';
+let irevOsunCache = null;
+let irevOsunArchiveLoadPromise = null;
+const ensureOsunIrevArchiveLoaded = () => {
+  if (!irevOsunArchiveLoadPromise) irevOsunArchiveLoadPromise = store.setting(IREV_OSUN_ARCHIVE_KEY, null).then(archive => {
+    if (archive?.electionId === IREV_OSUN_ELECTION_ID && Array.isArray(archive.uploads)) {
+      irevOsunCache = { data: { ...archive, offline: true }, expiresAt: 0 };
+    }
+  });
+  return irevOsunArchiveLoadPromise;
+};
+const normalizeOsunIrevUpload = item => {
+  const pollingUnit = item?.polling_unit || {};
+  const imageUrl = item?.document?.url || '';
+  return {
+    id: sanitizeString(item?._id || ''),
+    puCode: sanitizeString(item?.pu_code || pollingUnit.pu_code || ''),
+    pollingUnit: sanitizeString(item?.name || pollingUnit.name || ''),
+    lga: sanitizeString(pollingUnit?.lga?.name || ''),
+    ward: sanitizeString(pollingUnit?.ward?.name || ''),
+    uploadedAt: item?.document?.updated_at || item?.updated_at || '',
+    imageUrl: isTrustedIrevImage(imageUrl) ? imageUrl : '',
+    sourceUrl: IREV_OSUN_PORTAL_URL,
+    verificationStatus: 'Awaiting verification',
+  };
+};
+const loadOsunIrevPilot = async (force = false) => {
+  await ensureOsunIrevArchiveLoaded();
+  if (!force && irevOsunCache?.expiresAt > Date.now()) return irevOsunCache.data;
+  try {
+    const [stats, allUnits] = await Promise.all([
+      fetchIrevJson(`elections/${IREV_OSUN_ELECTION_ID}/result/stats`),
+      fetchIrevJson(`elections/${IREV_OSUN_ELECTION_ID}/pus`, 16 * 1024 * 1024),
+    ]);
+    const liveUploads = (Array.isArray(allUnits) ? allUnits : [])
+      .map(normalizeOsunIrevUpload)
+      .filter(item => item.id && item.puCode && item.imageUrl);
+    const mergedUploads = new Map((irevOsunCache?.data?.uploads || []).map(upload => [upload.id, upload]));
+    liveUploads.forEach(upload => mergedUploads.set(upload.id, upload));
+    const uploads = [...mergedUploads.values()].sort((a, b) => `${a.lga}|${a.ward}|${a.puCode}`.localeCompare(`${b.lga}|${b.ward}|${b.puCode}`));
+    const data = {
+      pilot: true,
+      configured: true,
+      state: 'Osun',
+      electionId: IREV_OSUN_ELECTION_ID,
+      electionName: sanitizeString(allUnits?.[0]?.election?.full_name || irevOsunCache?.data?.electionName || 'Osun governorship election'),
+      portalUrl: IREV_OSUN_PORTAL_URL,
+      submitted: Math.max(uploads.length, Number(stats?.documents) || 0),
+      expected: Math.max(0, Number(stats?.expected ?? stats?.pus) || irevOsunCache?.data?.expected || 0),
+      latestUploadAt: stats?.latest?.document?.updated_at || stats?.latest?.updated_at || liveUploads[0]?.uploadedAt || irevOsunCache?.data?.latestUploadAt || '',
+      uploads,
+      fetchedAt: new Date().toISOString(),
+      archivedAt: new Date().toISOString(),
+      offline: false,
+      refreshIntervalMs: 60_000,
+      notice: '',
+    };
+    const previous = irevOsunCache?.data;
+    const changed = !previous || previous.uploads?.length !== data.uploads.length || previous.latestUploadAt !== data.latestUploadAt || previous.submitted !== data.submitted;
+    irevOsunCache = { data, expiresAt: Date.now() + 55_000 };
+    if (changed) await store.setSetting(IREV_OSUN_ARCHIVE_KEY, data);
+    return data;
+  } catch (error) {
+    if (irevOsunCache?.data?.uploads?.length) {
+      console.warn('[irev] Live source unavailable; serving persistent archive:', error.message);
+      return { ...irevOsunCache.data, offline: true, refreshIntervalMs: 300_000, notice: 'Live IReV is unavailable. Showing the last Osun results saved on this server.' };
+    }
+    throw error;
+  }
+};
+app.get('/api/irev/osun', auth, rateLimit, asyncRoute(async (req, res) => {
+  try {
+    const data = await loadOsunIrevPilot(req.query.refresh === '1' && isAdminRole(req.user));
+    res.set('Cache-Control', 'private, no-store');
+    return res.json(data);
+  } catch (error) {
+    console.error('[irev] Osun pilot fetch failed:', error.message);
+    return res.status(503).json({ message: 'The official IReV feed is temporarily unavailable.' });
+  }
+}));
+app.get('/api/irev/osun/results', auth, rateLimit, (_req, res) => {
+  res.set('Cache-Control', 'private, max-age=3600');
+  return res.json(OSUN_2026_PUBLISHED_RESULTS);
+});
 app.use(['/api/news/summary', '/api/analysis/ai'], (req, _res, next) => { console.log(`[ai] request=${req.path} geminiConfigured=${Boolean(process.env.GEMINI_API_KEY)} model=${process.env.GEMINI_MODEL || 'gemini-2.0-flash'}`); next(); });
 app.get('/api/ai/status', auth, adminOnly, rateLimit, (_, res) => {
   const provider = process.env.GROQ_API_KEY ? 'groq' : process.env.GEMINI_API_KEY ? 'gemini' : process.env.OPENAI_API_KEY ? 'openai' : 'none';
@@ -2010,6 +2097,12 @@ if (IREV_OYO_ELECTION_ID) {
 } else {
   console.log('[irev] Oyo 2027 feed is dormant until IREV_OYO_ELECTION_ID is configured.');
 }
+
+const osunIrevArchiveSync = () => loadOsunIrevPilot(true).catch(error => console.warn('[irev] Background Osun archive update failed:', error.message));
+const initialOsunIrevSync = setTimeout(osunIrevArchiveSync, 2_000);
+initialOsunIrevSync.unref?.();
+const recurringOsunIrevSync = setInterval(osunIrevArchiveSync, 60_000);
+recurringOsunIrevSync.unref?.();
 
 if (process.env.NODE_ENV === 'production') { app.use(express.static(join(__dirname, '..', 'dist'))); app.get(/.*/, (_, res) => res.sendFile(join(__dirname, '..', 'dist', 'index.html'))); }
 server.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log(`Election Monitoring Command API listening on port ${process.env.PORT || 5000}`));
