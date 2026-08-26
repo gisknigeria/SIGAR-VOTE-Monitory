@@ -560,14 +560,14 @@ try {
     const user = jsonDb.users.find(item => item.id === 'u0');
     if (user) {
       user.email = superAdminEmail;
-      user.password = bcrypt.hashSync(superAdminPassword, 10);
+      if (!bcrypt.compareSync(superAdminPassword, user.password)) user.password = bcrypt.hashSync(superAdminPassword, 10);
     }
   }
   if (process.env.ADMIN_PASSWORD) {
     const user = jsonDb.users.find(item => item.id === 'u1');
     if (user) {
       user.email = adminEmail;
-      user.password = bcrypt.hashSync(adminPassword, 10);
+      if (!bcrypt.compareSync(adminPassword, user.password)) user.password = bcrypt.hashSync(adminPassword, 10);
     }
   }
   for (const [id, email, password] of [
@@ -577,7 +577,7 @@ try {
     const user = jsonDb.users.find(item => item.id === id);
     if (user) {
       user.email = email;
-      user.password = bcrypt.hashSync(password, 10);
+      if (!bcrypt.compareSync(password, user.password)) user.password = bcrypt.hashSync(password, 10);
     }
   }
   saveJson();
