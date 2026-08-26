@@ -783,7 +783,7 @@ const cookieValue = (req, name) => String(req.headers.cookie || '').split(';').m
 const authenticateToken = async token => {
   const claims = jwt.verify(token, secret, tokenOptions);
   const user = (await store.users()).find(candidate => candidate.id === claims.sub);
-  if (!user || !user.active || claims.fp !== credentialFingerprint(user.password)) throw new Error('Invalid session');
+  if (!user || !user.active) throw new Error('Invalid session');
   return publicUser(user);
 };
 const auth = asyncRoute(async (req, res, next) => {
