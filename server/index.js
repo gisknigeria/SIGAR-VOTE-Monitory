@@ -114,7 +114,7 @@ const toUser = row => row && ({ id: row.id, name: row.name, email: row.email, pa
 const toIncident = row => row && ({ id: row.id, title: row.title, description: row.description, reportType: row.report_type || 'IP', severity: row.severity, status: row.status, lat: Number(row.lat), lng: Number(row.lng), assignedTo: row.assigned_to || '', visibleTo: row.visible_to || [], media: row.media || [], geometry: row.geometry || null, style: row.style || null, lga: row.lga || '', ward: row.ward || '', pollingUnit: row.polling_unit || '', resultCount: row.result_count || '', createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at, createdBy: row.created_by || '' });
 const toNotification = row => row && ({ id: row.id, userId: row.user_id, incidentId: row.incident_id || '', roomId: row.room_id || '', senderId: row.sender_id || '', message: row.message, incidentType: row.incident_type || '', read: Boolean(row.read), createdAt: row.created_at?.toISOString?.() || row.created_at });
 const toCamera = row => row && ({ id: row.id, name: row.name, type: row.type, url: row.url, lat: Number(row.lat), lng: Number(row.lng), status: row.status, createdAt: row.created_at?.toISOString?.() || row.created_at });
-const toMapLayer = row => row && ({ id: row.id, name: row.name, type: row.type, data: row.data, url: row.url || '', bounds: row.bounds, opacity: Number(row.opacity ?? 0.65), fillOpacity: Number(row.fill_opacity ?? 0.18), category: row.category || (row.type === 'raster' ? 'Raster' : 'Point'), operationalUse: row.operational_use || 'Reference', color: row.color || '#facc15', fillColor: row.fill_color || '#f59e0b', lineWeight: Number(row.line_weight || 2), lineStyle: row.line_style || 'solid', pointIcon: row.point_icon || 'pin', pointIconColor: row.point_icon_color || '#ffffff', pointSize: Number(row.point_size || 24), showLabels: row.show_labels ?? true, labelField: row.label_field || 'name', popupFields: row.popup_fields || '', visible: row.visible ?? true, zIndex: Number(row.z_index || 0), createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at });
+const toMapLayer = row => row && ({ id: row.id, name: row.name, type: row.type, data: row.data, url: row.url || '', bounds: row.bounds, opacity: Number(row.opacity ?? 0.65), fillOpacity: Number(row.fill_opacity ?? 0.18), category: row.category || (row.type === 'raster' ? 'Raster' : 'Point'), operationalUse: row.operational_use || 'Reference', color: row.color || '#facc15', fillColor: row.fill_color || '#f59e0b', lineWeight: Number(row.line_weight || 2), lineStyle: row.line_style || 'solid', pointIcon: row.point_icon || 'pin', pointIconColor: row.point_icon_color || '#ffffff', pointSize: Number(row.point_size ?? 2), showLabels: row.show_labels ?? true, labelField: row.label_field || 'name', labelColor: row.label_color || '#3f0b1b', popupFields: row.popup_fields || '', visible: row.visible ?? true, zIndex: Number(row.z_index || 0), createdAt: row.created_at?.toISOString?.() || row.created_at, updatedAt: row.updated_at?.toISOString?.() || row.updated_at });
 const toChatRoom = row => row && ({ id: row.id, name: row.name, type: row.type || 'room', incidentId: row.incident_id || '', createdBy: row.created_by || '', createdAt: row.created_at?.toISOString?.() || row.created_at, members: row.members || [] });
 const toChatMessage = row => row && ({ id: row.id, roomId: row.room_id, senderId: row.sender_id, body: row.body, attachments: row.attachments || [], createdAt: row.created_at?.toISOString?.() || row.created_at });
 
@@ -190,9 +190,10 @@ async function initPostgres() {
       line_style text default 'solid',
       point_icon text default 'pin',
       point_icon_color text default '#ffffff',
-      point_size double precision default 24,
+      point_size double precision default 2,
       show_labels boolean default true,
       label_field text default 'name',
+      label_color text default '#3f0b1b',
       popup_fields text default '',
       visible boolean default true,
       z_index integer default 0,
@@ -264,9 +265,11 @@ async function initPostgres() {
   await pool.query("alter table map_layers add column if not exists line_style text default 'solid'");
   await pool.query("alter table map_layers add column if not exists point_icon text default 'pin'");
   await pool.query("alter table map_layers add column if not exists point_icon_color text default '#ffffff'");
-  await pool.query("alter table map_layers add column if not exists point_size double precision default 24");
+  await pool.query("alter table map_layers add column if not exists point_size double precision default 2");
+  await pool.query("alter table map_layers alter column point_size set default 2");
   await pool.query("alter table map_layers add column if not exists show_labels boolean default true");
   await pool.query("alter table map_layers add column if not exists label_field text default 'name'");
+  await pool.query("alter table map_layers add column if not exists label_color text default '#3f0b1b'");
   await pool.query("alter table map_layers add column if not exists popup_fields text default ''");
   await pool.query("alter table map_layers add column if not exists visible boolean default true");
   await pool.query("alter table map_layers add column if not exists z_index integer default 0");
@@ -438,7 +441,7 @@ const store = {
   },
   async createMapLayer(layer) {
     if (!pool) { jsonDb.mapLayers ||= []; jsonDb.mapLayers.unshift(layer); saveJson(); return layer; }
-    const { rows } = await pool.query('insert into map_layers (id,name,type,data,url,bounds,opacity,fill_opacity,category,operational_use,color,fill_color,line_weight,line_style,point_icon,point_icon_color,point_size,show_labels,label_field,popup_fields,visible,z_index,created_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning *', [layer.id, layer.name, layer.type, layer.data || null, layer.url || null, layer.bounds || null, layer.opacity, layer.fillOpacity ?? 0.18, layer.category, layer.operationalUse || 'Reference', layer.color, layer.fillColor, layer.lineWeight || 2, layer.lineStyle || 'solid', layer.pointIcon || 'pin', layer.pointIconColor || '#ffffff', layer.pointSize || 24, layer.showLabels, layer.labelField, layer.popupFields || '', layer.visible, layer.zIndex, layer.createdAt]);
+    const { rows } = await pool.query('insert into map_layers (id,name,type,data,url,bounds,opacity,fill_opacity,category,operational_use,color,fill_color,line_weight,line_style,point_icon,point_icon_color,point_size,show_labels,label_field,label_color,popup_fields,visible,z_index,created_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) returning *', [layer.id, layer.name, layer.type, layer.data || null, layer.url || null, layer.bounds || null, layer.opacity, layer.fillOpacity ?? 0.18, layer.category, layer.operationalUse || 'Reference', layer.color, layer.fillColor, layer.lineWeight || 2, layer.lineStyle || 'solid', layer.pointIcon || 'pin', layer.pointIconColor || '#ffffff', layer.pointSize ?? 2, layer.showLabels, layer.labelField, layer.labelColor || '#3f0b1b', layer.popupFields || '', layer.visible, layer.zIndex, layer.createdAt]);
     return toMapLayer(rows[0]);
   },
   async updateMapLayer(id, changes) {
@@ -452,7 +455,7 @@ const store = {
     const current = await pool.query('select * from map_layers where id=$1', [id]);
     if (!current.rows[0]) return null;
     const merged = { ...toMapLayer(current.rows[0]), ...changes, updatedAt: new Date().toISOString() };
-    const { rows } = await pool.query('update map_layers set name=$2, opacity=$3, fill_opacity=$4, category=$5, operational_use=$6, color=$7, fill_color=$8, line_weight=$9, line_style=$10, point_icon=$11, point_icon_color=$12, point_size=$13, show_labels=$14, label_field=$15, popup_fields=$16, visible=$17, z_index=$18, updated_at=$19 where id=$1 returning *', [id, merged.name, merged.opacity, merged.fillOpacity, merged.category, merged.operationalUse, merged.color, merged.fillColor, merged.lineWeight, merged.lineStyle, merged.pointIcon, merged.pointIconColor, merged.pointSize, merged.showLabels, merged.labelField, merged.popupFields, merged.visible, merged.zIndex, merged.updatedAt]);
+    const { rows } = await pool.query('update map_layers set name=$2, opacity=$3, fill_opacity=$4, category=$5, operational_use=$6, color=$7, fill_color=$8, line_weight=$9, line_style=$10, point_icon=$11, point_icon_color=$12, point_size=$13, show_labels=$14, label_field=$15, label_color=$16, popup_fields=$17, visible=$18, z_index=$19, updated_at=$20 where id=$1 returning *', [id, merged.name, merged.opacity, merged.fillOpacity, merged.category, merged.operationalUse, merged.color, merged.fillColor, merged.lineWeight, merged.lineStyle, merged.pointIcon, merged.pointIconColor, merged.pointSize, merged.showLabels, merged.labelField, merged.labelColor, merged.popupFields, merged.visible, merged.zIndex, merged.updatedAt]);
     return toMapLayer(rows[0]);
   },
   async deleteMapLayer(id) {
@@ -1938,13 +1941,13 @@ app.delete('/api/cameras/:id', auth, adminOnly, rateLimit, asyncRoute(async (req
 app.get('/api/map-layers', auth, rateLimit, asyncRoute(async (_, res) => res.json(await store.mapLayers())));
 app.post('/api/map-layers', auth, superAdminOnly, rateLimit, asyncRoute(async (req, res) => {
   if (!req.body.name || !req.body.type) return res.status(400).json({ message: 'Layer name and type are required' });
-  const layer = { id: createId('layer'), name: sanitizeString(req.body.name).trim(), type: req.body.type, data: req.body.data || null, url: sanitizeString(req.body.url || ''), bounds: req.body.bounds || null, opacity: Number(req.body.opacity) || 0.65, fillOpacity: Number(req.body.fillOpacity ?? 0.18), category: sanitizeString(req.body.category || (req.body.type === 'raster' ? 'Raster' : 'Point')).trim() || 'Point', operationalUse: sanitizeString(req.body.operationalUse || 'Reference').trim() || 'Reference', color: sanitizeString(req.body.color || '#facc15'), fillColor: sanitizeString(req.body.fillColor || req.body.color || '#f59e0b'), lineWeight: Number(req.body.lineWeight) || 2, lineStyle: sanitizeString(req.body.lineStyle || 'solid'), pointIcon: sanitizeString(req.body.pointIcon || 'pin'), pointIconColor: sanitizeString(req.body.pointIconColor || '#ffffff'), pointSize: Number(req.body.pointSize) || 24, showLabels: req.body.showLabels ?? true, labelField: sanitizeString(req.body.labelField || 'name'), popupFields: sanitizeString(req.body.popupFields || ''), visible: req.body.visible ?? true, zIndex: Number(req.body.zIndex) || 0, createdAt: new Date().toISOString() };
+  const layer = { id: createId('layer'), name: sanitizeString(req.body.name).trim(), type: req.body.type, data: req.body.data || null, url: sanitizeString(req.body.url || ''), bounds: req.body.bounds || null, opacity: Number(req.body.opacity) || 0.65, fillOpacity: Number(req.body.fillOpacity ?? 0.18), category: sanitizeString(req.body.category || (req.body.type === 'raster' ? 'Raster' : 'Point')).trim() || 'Point', operationalUse: sanitizeString(req.body.operationalUse || 'Reference').trim() || 'Reference', color: sanitizeString(req.body.color || '#facc15'), fillColor: sanitizeString(req.body.fillColor || req.body.color || '#f59e0b'), lineWeight: Number(req.body.lineWeight) || 2, lineStyle: sanitizeString(req.body.lineStyle || 'solid'), pointIcon: sanitizeString(req.body.pointIcon || 'pin'), pointIconColor: sanitizeString(req.body.pointIconColor || '#ffffff'), pointSize: Number(req.body.pointSize ?? 2), showLabels: req.body.showLabels ?? true, labelField: sanitizeString(req.body.labelField || 'name'), labelColor: sanitizeString(req.body.labelColor || '#3f0b1b'), popupFields: sanitizeString(req.body.popupFields || ''), visible: req.body.visible ?? true, zIndex: Number(req.body.zIndex) || 0, createdAt: new Date().toISOString() };
   const created = await store.createMapLayer(layer);
   io.emit('map-layer:created', created);
   res.status(201).json(created);
 }));
 app.put('/api/map-layers/:id', auth, rateLimit, asyncRoute(async (req, res) => {
-  const allowedKeys = isAdminRole(req.user) ? ['visible', 'opacity', 'fillOpacity', 'color', 'fillColor', 'lineWeight', 'lineStyle', 'pointIcon', 'pointIconColor', 'pointSize', 'showLabels', 'labelField', 'popupFields', 'category', 'operationalUse', 'name', 'zIndex'] : ['visible'];
+  const allowedKeys = isAdminRole(req.user) ? ['visible', 'opacity', 'fillOpacity', 'color', 'fillColor', 'lineWeight', 'lineStyle', 'pointIcon', 'pointIconColor', 'pointSize', 'showLabels', 'labelField', 'labelColor', 'popupFields', 'category', 'operationalUse', 'name', 'zIndex'] : ['visible'];
   const changes = {};
   for (const key of allowedKeys) {
     if (req.body[key] === undefined) continue;

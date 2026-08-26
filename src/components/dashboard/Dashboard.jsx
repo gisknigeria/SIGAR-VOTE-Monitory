@@ -233,6 +233,15 @@ const hexToRgba = (hex, alpha = 1) => {
   const b = int & 255;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
+const safeHexColor = (value, fallback = "#3f0b1b") =>
+  /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 // Render a point icon as SVG string for Leaflet divIcon HTML
 const pointIconSvg = (iconKey, color = "#ffffff", size = 20) => {
   return renderToStaticMarkup(
@@ -1254,7 +1263,7 @@ function MapView({
             const opacity = layerItem.opacity ?? 0.65;
             const category = layerGeometry(layerItem);
             const lineWeight = Number(layerItem.lineWeight || 2);
-            const pointSize = Number(layerItem.pointSize || 24);
+            const pointSize = Number(layerItem.pointSize ?? 2);
             const pointIcon = layerItem.pointIcon || "pin";
             const pointIconColor = layerItem.pointIconColor || "#ffffff";
             const popupFields = String(layerItem.popupFields || "")
@@ -1300,8 +1309,10 @@ function MapView({
                   feature.properties?.shapeName ||
                   feature.properties?.title ||
                   layerItem.name;
-                if (layerItem.showLabels !== false && label)
-                  layerGeo.bindTooltip(String(label), { sticky: true });
+                if (layerItem.showLabels !== false && label) {
+                  const labelColor = safeHexColor(layerItem.labelColor);
+                  layerGeo.bindTooltip(`<span style="color:${labelColor}!important">${escapeHtml(label)}</span>`, { sticky: true });
+                }
                 const fields = popupFields.length
                   ? popupFields
                   : Object.keys(feature.properties || {}).slice(0, 6);
@@ -5200,10 +5211,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         );
       setNotice("Could not save layer change");
       setTimeout(() => setNotice(""), 2500);
+      throw err;
     }
   };
-  const toggleMapLayer = (id, visible) => updateMapLayer(id, { visible });
-  const updateLayerOpacity = (id, opacity) => updateMapLayer(id, { opacity });
+  const toggleMapLayer = (id, visible) => updateMapLayer(id, { visible }).catch(() => {});
+  const updateLayerOpacity = (id, opacity) => updateMapLayer(id, { opacity }).catch(() => {});
   const deleteMapLayer = async (item) => {
     if (!window.confirm(`Delete map layer "${item.name}"?`)) return;
     await request(`/map-layers/${item.id}`, session.token, {
