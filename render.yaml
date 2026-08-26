@@ -16,7 +16,9 @@ services:
       # Must match the public Render URL so browser requests are not accepted
       # from arbitrary origins. Override this value if the service name changes.
       - key: CORS_ORIGIN
-        value: https://election-monitor-command-center.onrender.com
+        value: https://e-monitoring.onrender.com
+      - key: IREV_AUTO_SYNC
+        value: "false"
       - key: DATABASE_URL
         sync: false
       - key: ADMIN_EMAIL
