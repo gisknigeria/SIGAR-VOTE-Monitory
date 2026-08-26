@@ -1,4 +1,4 @@
-const CACHE_NAME = 'election-monitor-command-v26-osun-irev-pilot';
+const CACHE_NAME = 'election-monitor-command-v27-irev-party-counts';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/bsa-logo.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-192.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png'];
 
 self.addEventListener('install', event => {
