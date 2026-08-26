@@ -76,18 +76,17 @@ export default function ToolsPanel({
   onPassword,
 }) {
   return (
-    <div className="modal-backdrop">
-      <section className="modal tools-modal">
-        <div className="panel-title">
-          <div>
-            <span className="eyebrow">COMMAND TOOLS</span>
-            <h2>Actions</h2>
-          </div>
-          <button className="icon-btn" onClick={onClose}>
-            <FaTimes />
-          </button>
+    <section className="sidebar-panel-view">
+      <div className="sidebar-panel-head">
+        <div>
+          <span className="eyebrow">COMMAND TOOLS</span>
+          <h2>Actions</h2>
         </div>
-        <div className="tools-grid">
+        <button className="icon-btn" onClick={onClose}>
+          <FaTimes />
+        </button>
+      </div>
+      <div className="sidebar-tools-grid">
           <button
             className={drawMode === "measure" ? "active" : ""}
             onClick={() => {
@@ -257,9 +256,8 @@ export default function ToolsPanel({
             </b>
             <span>Your own account</span>
           </button>
-        </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 

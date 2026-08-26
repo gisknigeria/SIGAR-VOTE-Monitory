@@ -4,7 +4,7 @@ import {
   MdAccessible, MdAccountBalance, MdAnchor, MdBusiness, MdChurch, MdConstruction,
   MdDirectionsBus, MdFactory, MdFilterHdr, MdFlashOn, MdFlight, MdGrass, MdHexagon,
   MdHome, MdImage, MdLocalFireDepartment, MdLocalGasStation, MdLocalHospital,
-  MdLocalParking, MdLocalShipping, MdLocationPin, MdMosque, MdOutlineRadio, MdPark,
+  MdLabel, MdLocalParking, MdLocalShipping, MdLocationPin, MdMosque, MdOutlineRadio, MdPark,
   MdPlace, MdPolyline, MdPushPin, MdRecycling, MdSchool, MdSecurity,
   MdSettingsInputAntenna, MdSignpost, MdStore, MdTerrain, MdTraffic, MdTrain,
   MdVideocam, MdWarning, MdWaterDrop,
@@ -191,11 +191,19 @@ function LayerStyleEditor({ layer, canDelete, onUpdate, onDelete }) {
         <b>{layer.name}</b>
         <small>
           {layer.type} - {layerGeometry(layer)} - {layer.operationalUse || "Reference"} / opacity {Math.round((layer.opacity ?? 0.65) * 100)}%
-          {layer.showLabels ? " / labels on" : ""}
+          {layer.showLabels !== false ? " / labels on" : " / labels off"}
         </small>
       </div>
       <button className={`lcp-toggle ${layer.visible !== false ? "on" : "off"}`} onClick={() => onUpdate(layer.id, { visible: layer.visible === false })} title={layer.visible !== false ? "Hide" : "Show"}>
         {layer.visible !== false ? <MdVideocam size={14} /> : <MdVideocam size={14} style={{ opacity: 0.3 }} />}
+      </button>
+      <button
+        className={`lcp-toggle ${layer.showLabels !== false ? "on" : "off"}`}
+        onClick={() => onUpdate(layer.id, { showLabels: layer.showLabels === false })}
+        title={layer.showLabels !== false ? "Turn labels off" : "Turn labels on"}
+        aria-label={layer.showLabels !== false ? "Turn labels off" : "Turn labels on"}
+      >
+        <MdLabel size={14} style={layer.showLabels !== false ? undefined : { opacity: 0.3 }} />
       </button>
       <button className="unit-action-btn" onClick={() => setOpen((x) => !x)}>
         {open ? "Close" : "Edit"}
