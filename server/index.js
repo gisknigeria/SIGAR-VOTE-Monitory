@@ -1386,6 +1386,11 @@ const preparedOsunPilot = {
 };
 let irevOsunCache = null;
 let irevOsunArchiveLoadPromise = null;
+let irevOsunLiveLookupPromise = null;
+let irevOsunLiveLookupExpiresAt = 0;
+let irevOsunLiveLookupError = null;
+const irevOsunLiveUploadsByCode = new Map();
+const irevOsunLiveUploadsById = new Map();
 const ensureOsunIrevArchiveLoaded = () => {
   if (!irevOsunArchiveLoadPromise) irevOsunArchiveLoadPromise = store.setting(IREV_OSUN_ARCHIVE_KEY, null).then(archive => {
     if (archive?.electionId === IREV_OSUN_ELECTION_ID && Array.isArray(archive.uploads)) {
@@ -1408,6 +1413,33 @@ const normalizeOsunIrevUpload = item => {
     sourceUrl: IREV_OSUN_PORTAL_URL,
     verificationStatus: 'Awaiting verification',
   };
+};
+const loadOsunIrevImageLookup = async () => {
+  if (irevOsunLiveUploadsByCode.size && irevOsunLiveLookupExpiresAt > Date.now()) return;
+  if (irevOsunLiveLookupError && irevOsunLiveLookupExpiresAt > Date.now()) throw irevOsunLiveLookupError;
+  if (!irevOsunLiveLookupPromise) {
+    irevOsunLiveLookupPromise = fetchIrevJson(`elections/${IREV_OSUN_ELECTION_ID}/pus`, 16 * 1024 * 1024)
+      .then(allUnits => {
+        const uploads = (Array.isArray(allUnits) ? allUnits : [])
+          .map(normalizeOsunIrevUpload)
+          .filter(item => item.id && item.puCode && item.imageUrl);
+        irevOsunLiveUploadsByCode.clear();
+        irevOsunLiveUploadsById.clear();
+        for (const upload of uploads) {
+          irevOsunLiveUploadsByCode.set(upload.puCode, upload);
+          irevOsunLiveUploadsById.set(upload.id, upload);
+        }
+        irevOsunLiveLookupError = null;
+        irevOsunLiveLookupExpiresAt = Date.now() + 15 * 60_000;
+      })
+      .catch(error => {
+        irevOsunLiveLookupError = error;
+        irevOsunLiveLookupExpiresAt = Date.now() + 60_000;
+        throw error;
+      })
+      .finally(() => { irevOsunLiveLookupPromise = null; });
+  }
+  await irevOsunLiveLookupPromise;
 };
 const loadOsunIrevPilot = async (force = false) => {
   await ensureOsunIrevArchiveLoaded();
@@ -1472,6 +1504,45 @@ app.get('/api/irev/osun', auth, rateLimit, asyncRoute(async (req, res) => {
   } catch (error) {
     console.error('[irev] Osun pilot fetch failed:', error.message);
     return res.status(503).json({ message: 'The official IReV feed is temporarily unavailable.' });
+  }
+}));
+app.get('/api/irev/osun/uploads/:puCode', auth, rateLimit, asyncRoute(async (req, res) => {
+  const puCode = sanitizeString(req.params.puCode || '').trim();
+  if (!puCode || puCode.length > 80) return res.status(400).json({ message: 'Invalid polling-unit code.' });
+  try {
+    await loadOsunIrevImageLookup();
+    const upload = irevOsunLiveUploadsByCode.get(puCode);
+    if (!upload) return res.status(404).json({ message: 'No official result-sheet image is available for this polling unit.' });
+    return res.json({ ...upload, imageUrl: `/api/irev/osun/images/${encodeURIComponent(upload.id)}` });
+  } catch (error) {
+    console.warn('[irev] Osun image lookup unavailable:', error.message);
+    return res.status(503).json({ message: 'The official result-sheet image service is temporarily unavailable. The saved result figures are still shown.' });
+  }
+}));
+app.get('/api/irev/osun/images/:uploadId', auth, rateLimit, asyncRoute(async (req, res) => {
+  const uploadId = sanitizeString(req.params.uploadId || '').trim();
+  if (!/^[a-f0-9]{24}$/i.test(uploadId)) return res.status(400).json({ message: 'Invalid IReV upload identifier.' });
+  try {
+    await loadOsunIrevImageLookup();
+    const upload = irevOsunLiveUploadsById.get(uploadId);
+    if (!upload?.imageUrl || !isTrustedIrevImage(upload.imageUrl)) return res.status(404).json({ message: 'Result-sheet image not found.' });
+    const imageResponse = await fetch(upload.imageUrl, {
+      headers: { Accept: 'image/*', 'User-Agent': 'Election-Monitor/1.0 IReV image proxy' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!imageResponse.ok) return res.status(502).json({ message: 'The official result-sheet image could not be retrieved.' });
+    const contentType = String(imageResponse.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    const contentLength = Number(imageResponse.headers.get('content-length') || 0);
+    if (!contentType.startsWith('image/')) return res.status(415).json({ message: 'The official result-sheet file is not an image.' });
+    if (contentLength > 8 * 1024 * 1024) return res.status(413).json({ message: 'The official result-sheet image is too large to display.' });
+    const imageBytes = Buffer.from(await imageResponse.arrayBuffer());
+    if (!imageBytes.length || imageBytes.length > 8 * 1024 * 1024) return res.status(413).json({ message: 'The official result-sheet image is empty or too large.' });
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'private, max-age=3600');
+    return res.send(imageBytes);
+  } catch (error) {
+    console.warn('[irev] Osun image proxy unavailable:', error.message);
+    return res.status(503).json({ message: 'The official result-sheet image is temporarily unavailable.' });
   }
 }));
 app.get('/api/irev/osun/results', auth, rateLimit, (_req, res) => {
