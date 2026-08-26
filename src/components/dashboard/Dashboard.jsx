@@ -2418,14 +2418,8 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
   };
   useEffect(() => {
     if (!["irev", "post"].includes(view)) return undefined;
-    let stopped = false;
-    let timer = null;
-    const poll = async () => {
-      const pilot = await loadIrevPilot();
-      if (!stopped) timer = window.setTimeout(poll, Math.max(60_000, Number(pilot?.refreshIntervalMs) || 300_000));
-    };
-    poll();
-    return () => { stopped = true; window.clearTimeout(timer); };
+    loadIrevPilot();
+    return undefined;
   }, [view, authToken]);
   useEffect(() => {
     if (!["irev", "post"].includes(view) || irevPublishedResults) return;
@@ -2863,7 +2857,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
         </>}
         {view === "irev" && <section className="irev-pilot-card">
           <header className="irev-pilot-head">
-            <div><span className="eyebrow">LIVE OFFICIAL SOURCE · SHOWCASE PILOT</span><h2>INEC IReV — Osun</h2><p>Reads public polling-unit upload metadata and original result-sheet images from IReV every 60 seconds.</p></div>
+            <div><span className="eyebrow">INEC ARCHIVE · SHOWCASE PILOT</span><h2>INEC IReV — Osun</h2><p>Shows the saved polling-unit upload archive and prepared Osun results. Use Refresh now for an explicit live check.</p></div>
             <div className="irev-pilot-actions"><a href={irevPilot?.portalUrl || "https://irev.inecnigeria.org/"} target="_blank" rel="noreferrer">Open IReV</a><button type="button" disabled={irevLoading} onClick={() => loadIrevPilot(true)}><FaSyncAlt /> {irevLoading ? "Checking…" : "Refresh now"}</button></div>
           </header>
           {irevError && <div className="error">{irevError}</div>}

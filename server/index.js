@@ -32,6 +32,10 @@ const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@command.loc
 const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || randomBytes(24).toString('hex');
 const adminEmail = process.env.ADMIN_EMAIL || 'admin@command.local';
 const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(24).toString('hex');
+const agent1Email = process.env.AGENT1_EMAIL || 'agent1@command.local';
+const agent1Password = process.env.AGENT1_PASSWORD || 'AgentOne!2026Secure';
+const agent2Email = process.env.AGENT2_EMAIL || 'agent2@command.local';
+const agent2Password = process.env.AGENT2_PASSWORD || 'AgentTwo!2026Secure';
 const cloudflareTurnKeyId = normalizeCloudflareTurnKeyId(process.env.CLOUDFLARE_TURN_KEY_ID);
 const cloudflareTurnApiToken = String(process.env.CLOUDFLARE_TURN_API_TOKEN || '').trim();
 const cloudflareTurnTtl = normalizeCloudflareTurnTtl(process.env.CLOUDFLARE_TURN_TTL);
@@ -63,7 +67,9 @@ if (process.env.NODE_ENV === 'production') {
 const seed = {
   users: [
     { id: 'u0', name: 'System Administrator', email: superAdminEmail, password: bcrypt.hashSync(superAdminPassword, 10), role: 'Super Admin', rank: 'Super Admin', active: true, unit: 'System Control', command: 'Oyo State Command', division: '', state: 'Oyo', lga: '', lat: 7.3775, lng: 3.9470 },
-    { id: 'u1', name: 'Election Operations Admin', email: adminEmail, password: bcrypt.hashSync(adminPassword, 10), role: 'Admin', rank: 'Admin', active: true, unit: 'Command Center', command: 'Oyo State Command', division: '', state: 'Oyo', lga: '', lat: 7.3775, lng: 3.9470 }
+    { id: 'u1', name: 'Election Operations Admin', email: adminEmail, password: bcrypt.hashSync(adminPassword, 10), role: 'Admin', rank: 'Admin', active: true, unit: 'Command Center', command: 'Oyo State Command', division: '', state: 'Oyo', lga: '', lat: 7.3775, lng: 3.9470 },
+    { id: 'u2', name: 'Field Agent One', email: agent1Email, password: bcrypt.hashSync(agent1Password, 10), role: 'Agent', rank: 'Agent', active: true, unit: 'Field Unit 1', command: 'Oyo State Command', division: '', state: 'Oyo', lga: '', lat: 7.3775, lng: 3.9470 },
+    { id: 'u3', name: 'Field Agent Two', email: agent2Email, password: bcrypt.hashSync(agent2Password, 10), role: 'Agent', rank: 'Agent', active: true, unit: 'Field Unit 2', command: 'Oyo State Command', division: '', state: 'Oyo', lga: '', lat: 7.3775, lng: 3.9470 }
   ],
   incidents: [],
   cameras: [],
@@ -85,7 +91,7 @@ jsonDb.notifications ||= [];
 jsonDb.chatMembers ||= [];
 jsonDb.chatMessages ||= [];
 jsonDb.parties ||= [];
-const existingSeedUsers = new Map(jsonDb.users.filter(user => ['u0', 'u1'].includes(user.id)).map(user => [user.id, user]));
+const existingSeedUsers = new Map(jsonDb.users.filter(user => ['u0', 'u1', 'u2', 'u3'].includes(user.id)).map(user => [user.id, user]));
 jsonDb.users = jsonDb.users.filter(user => !['u0', 'u1', 'u2', 'u3'].includes(user.id));
 jsonDb.users.unshift(...seed.users.map(user => {
   const existing = existingSeedUsers.get(user.id);
@@ -283,7 +289,6 @@ async function initPostgres() {
   await pool.query("update users set role='Agent', rank='Agent' where role='Officer'");
   const { rows } = await pool.query('select count(*)::int as count from users');
   await pool.query("delete from incidents where id in ('i1','i2','i3') or created_by='seed'");
-  await pool.query("delete from users where id in ('u2','u3')");
   for (const user of seed.users) {
     await pool.query('insert into users (id,name,email,password,role,rank,active,unit,unit_type,command,division,station,lga,lat,lng) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) on conflict (id) do update set name=excluded.name,email=excluded.email,role=excluded.role,rank=excluded.rank,active=excluded.active,unit=excluded.unit,command=excluded.command', [user.id, user.name, user.email, user.password, user.role, user.rank, user.active, user.unit, user.unitType || 'Division', user.command, user.division, user.station || '', user.lga, user.lat, user.lng]);
   }
@@ -551,6 +556,30 @@ try {
   console.error(`[database] PostgreSQL unavailable; using JSON fallback: ${error.message}`);
   await pool?.end().catch(() => {});
   pool = null;
+  if (process.env.SUPER_ADMIN_PASSWORD) {
+    const user = jsonDb.users.find(item => item.id === 'u0');
+    if (user) {
+      user.email = superAdminEmail;
+      user.password = bcrypt.hashSync(superAdminPassword, 10);
+    }
+  }
+  if (process.env.ADMIN_PASSWORD) {
+    const user = jsonDb.users.find(item => item.id === 'u1');
+    if (user) {
+      user.email = adminEmail;
+      user.password = bcrypt.hashSync(adminPassword, 10);
+    }
+  }
+  for (const [id, email, password] of [
+    ['u2', agent1Email, agent1Password],
+    ['u3', agent2Email, agent2Password],
+  ]) {
+    const user = jsonDb.users.find(item => item.id === id);
+    if (user) {
+      user.email = email;
+      user.password = bcrypt.hashSync(password, 10);
+    }
+  }
   saveJson();
 }
 
@@ -1354,6 +1383,7 @@ const normalizeOsunIrevUpload = item => {
 const loadOsunIrevPilot = async (force = false) => {
   await ensureOsunIrevArchiveLoaded();
   if (!force && irevOsunCache?.expiresAt > Date.now()) return irevOsunCache.data;
+  if (!force && irevOsunCache?.data) return { ...irevOsunCache.data, offline: true, notice: 'Showing the saved Osun IReV archive.' };
   try {
     const [stats, allUnits] = await Promise.all([
       fetchIrevJson(`elections/${IREV_OSUN_ELECTION_ID}/result/stats`),
