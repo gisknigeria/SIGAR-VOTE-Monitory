@@ -5008,14 +5008,22 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const getCameraStream = async (facingMode, includeAudio = true, exact = false) => {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
       throw new Error("Camera sharing requires HTTPS and a supported browser");
-    return navigator.mediaDevices.getUserMedia({
+    const constraints = {
       video: {
         facingMode: exact ? { exact: facingMode } : { ideal: facingMode },
         width: { ideal: 1280 },
         height: { ideal: 720 },
       },
       audio: includeAudio,
-    });
+    };
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      if (includeAudio && ["NotFoundError", "OverconstrainedError"].includes(error.name)) {
+        return navigator.mediaDevices.getUserMedia({ ...constraints, audio: false });
+      }
+      throw error;
+    }
   };
   const toggleCamera = async () => {
     if (sharingCamera) {

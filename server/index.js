@@ -1355,6 +1355,33 @@ app.post('/api/irev/oyo/ocr', auth, adminOnly, irevOcrRateLimit, asyncRoute(asyn
 const IREV_OSUN_ELECTION_ID = '6a7f788adcbc755a763f082a';
 const IREV_OSUN_PORTAL_URL = `https://irev.inecnigeria.org/elections/${IREV_OSUN_ELECTION_ID}`;
 const IREV_OSUN_ARCHIVE_KEY = 'irev_osun_archive_v1';
+const preparedOsunPilot = {
+  pilot: true,
+  configured: true,
+  state: 'Osun',
+  electionId: IREV_OSUN_ELECTION_ID,
+  electionName: OSUN_2026_PUBLISHED_RESULTS.election,
+  portalUrl: IREV_OSUN_PORTAL_URL,
+  submitted: OSUN_2026_PUBLISHED_RESULTS.count,
+  expected: OSUN_2026_PUBLISHED_RESULTS.count,
+  latestUploadAt: OSUN_2026_PUBLISHED_RESULTS.importedAt,
+  uploads: OSUN_2026_PUBLISHED_RESULTS.pollingUnits.map(row => ({
+    id: row.id,
+    puCode: row.puCode,
+    pollingUnit: row.pollingUnit,
+    lga: row.lga,
+    ward: row.ward,
+    uploadedAt: OSUN_2026_PUBLISHED_RESULTS.importedAt,
+    imageUrl: '',
+    sourceUrl: OSUN_2026_PUBLISHED_RESULTS.sourceUrl,
+    verificationStatus: 'Prepared archive',
+  })),
+  fetchedAt: OSUN_2026_PUBLISHED_RESULTS.importedAt,
+  archivedAt: OSUN_2026_PUBLISHED_RESULTS.importedAt,
+  offline: true,
+  refreshIntervalMs: 0,
+  notice: 'Showing the prepared Osun results archive. Live IReV downloads are disabled for this demo.',
+};
 let irevOsunCache = null;
 let irevOsunArchiveLoadPromise = null;
 const ensureOsunIrevArchiveLoaded = () => {
@@ -1381,6 +1408,7 @@ const normalizeOsunIrevUpload = item => {
   };
 };
 const loadOsunIrevPilot = async (force = false) => {
+  if (!force) return preparedOsunPilot;
   await ensureOsunIrevArchiveLoaded();
   if (!force && irevOsunCache?.expiresAt > Date.now()) return irevOsunCache.data;
   if (!force && irevOsunCache?.data) return { ...irevOsunCache.data, offline: true, notice: 'Showing the saved Osun IReV archive.' };

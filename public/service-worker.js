@@ -1,4 +1,4 @@
-const CACHE_NAME = 'election-monitor-command-v30-irev-published-totals';
+const CACHE_NAME = 'election-monitor-command-v31-runtime-assets';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/bsa-logo.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-192.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png'];
 
 self.addEventListener('install', event => {
@@ -53,6 +53,12 @@ self.addEventListener('fetch', event => {
 
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).catch(() => caches.match('/')));
+    return;
+  }
+
+  // Hashed Vite assets must always come from the current deployment.
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(fetch(request));
     return;
   }
 
