@@ -27,12 +27,12 @@ services:
         value: superadmin@command.local
       - key: SUPER_ADMIN_PASSWORD
         sync: false
-      - key: METERED_DOMAIN
+      - key: CLOUDFLARE_TURN_KEY_ID
         sync: false
-      - key: METERED_TURN_API_KEY
+      - key: CLOUDFLARE_TURN_API_TOKEN
         sync: false
-      - key: METERED_TURN_REGION
-        value: standard
+      - key: CLOUDFLARE_TURN_TTL
+        value: "86400"
       - key: EXPRESSTURN_URLS
         sync: false
       - key: EXPRESSTURN_USERNAME

@@ -2488,7 +2488,6 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
   const irevRowsByUnit = useMemo(() => new Map(irevResultRows.map((row) => [resultUnitKey(row), row])), [irevResultRows]);
   const irevOnlyTotals = useMemo(() => Object.fromEntries((irevPublishedResults?.totals || []).map(({ party, votes }) => [party, Number(votes || 0)])), [irevPublishedResults]);
   const irevTopParties = useMemo(() => Object.keys(irevOnlyTotals).filter((party) => irevOnlyTotals[party] > 0).sort((a, b) => irevOnlyTotals[b] - irevOnlyTotals[a]).slice(0, 5), [irevOnlyTotals]);
-  const irevPublishedVoteTotal = useMemo(() => Object.values(irevOnlyTotals).reduce((sum, votes) => sum + Number(votes || 0), 0), [irevOnlyTotals]);
   const top6 = useMemo(() => summary.partyNames.filter((party) => summary.totals[party] > 0).sort((a,b) => summary.totals[b]-summary.totals[a]).slice(0,6), [summary]);
   const winLoss = useMemo(() => {
     const groups = (key) => {
@@ -2871,9 +2870,8 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
             </div>
             </>}
             {irevSection === "results" && <>
-              <section className="irev-party-count-section" aria-label="Published party vote counts"><header><div><span>PUBLISHED PARTY COUNTS</span><strong>Osun governorship results</strong></div><b>{irevPublishedVoteTotal.toLocaleString()} total votes</b></header><div className="irev-party-count-grid">{(irevPublishedResults?.totals || []).map(({ party, name, votes }) => <article key={party}><span>{party}</span><strong>{Number(votes || 0).toLocaleString()}</strong><small>{name}</small><em>{irevPublishedVoteTotal ? `${((Number(votes || 0) / irevPublishedVoteTotal) * 100).toFixed(2)}%` : "0%"}</em></article>)}</div></section>
               <div className="irev-table-toolbar"><div><strong>Polling-unit result counts</strong><span>{filteredIrevResultRows.length.toLocaleString()} of {irevResultRows.length.toLocaleString()} units shown</span></div><label><FaSearch /><input value={irevSearch} onChange={(event) => setIrevSearch(event.target.value)} placeholder="Search LGA, ward, polling unit or PU code" />{irevSearch && <button type="button" onClick={() => setIrevSearch("")} aria-label="Clear result search"><FaTimes /></button>}</label></div>
-              <div className="irev-table-scroll"><table className="result-progress-table irev-results-table"><thead><tr><th>LGA</th><th>Ward</th><th>Polling unit</th><th>PU code</th><th>Winner</th>{irevTopParties.map((party) => <th key={party}>{party}</th>)}</tr></thead><tbody>{filteredIrevResultRows.map((row) => <tr key={row.id}><td><b>{row.lga}</b></td><td>{row.ward}</td><td>{row.pollingUnit}</td><td><strong>{row.puCode}</strong></td><td><b>{row.winner}</b></td>{irevTopParties.map((party) => <td key={party}><strong>{Number(row.results.find((result) => result.party === party)?.votes || 0).toLocaleString()}</strong></td>)}</tr>)}{!filteredIrevResultRows.length && <tr><td className="result-empty" colSpan={irevTopParties.length + 5}>No prepared polling-unit results match this search.</td></tr>}</tbody></table></div>
+              <div className="irev-table-scroll"><table className="result-progress-table irev-results-table"><thead><tr><th>LGA</th><th>Ward</th><th>Polling unit</th><th>PU code</th><th>Winner</th>{irevTopParties.slice(0, 3).map((party) => <th key={party}>{party}</th>)}</tr></thead><tbody>{filteredIrevResultRows.map((row) => <tr key={row.id}><td><b>{row.lga}</b></td><td>{row.ward}</td><td>{row.pollingUnit}</td><td><strong>{row.puCode}</strong></td><td><b>{row.winner}</b></td>{irevTopParties.slice(0, 3).map((party) => <td key={party}><strong>{Number(row.results.find((result) => result.party === party)?.votes || 0).toLocaleString()}</strong></td>)}</tr>)}{!filteredIrevResultRows.length && <tr><td className="result-empty" colSpan="8">No prepared polling-unit results match this search.</td></tr>}</tbody></table></div>
             </>}
             {irevPreview && <div className="irev-preview-backdrop" onClick={() => setIrevPreview(null)}><section className="irev-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span className="eyebrow">INEC IREV RESULT SHEET</span><h2>{irevPreview.puCode}</h2><p>{irevPreview.lga} · {irevPreview.ward} · {irevPreview.pollingUnit}</p></div><button type="button" className="icon-btn" onClick={() => setIrevPreview(null)} aria-label="Close image preview"><FaTimes /></button></header><div className="irev-preview-body"><div className="irev-preview-image"><img src={irevPreview.imageUrl} alt={`INEC IReV result sheet for ${irevPreview.puCode}`} /></div><aside><div className="irev-preview-actions"><a href={irevPreview.imageUrl} download target="_blank" rel="noreferrer">Download image</a></div><h3>Original result sheet</h3><p className="muted">This image is shown exactly as published on IReV. Prepared polling-unit vote figures are available in the Published results tab.</p></aside></div></section></div>}
           </>}
@@ -3033,7 +3031,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [cameraPanel, setCameraPanel] = useState(false);
   const [phoneShares, setPhoneShares] = useState([]);
   const [remoteStreams, setRemoteStreams] = useState({});
-  const [turnStatus, setTurnStatus] = useState({ provider: "checking", region: "", route: "pending" });
+  const [turnStatus, setTurnStatus] = useState({ provider: "checking", fallbackProvider: "", region: "", route: "pending" });
   const [sharingCamera, setSharingCamera] = useState(false);
   const [selfCameraPreview, setSelfCameraPreview] = useState(false);
   const [cameraPreviewMode, setCameraPreviewMode] = useState(true); // true = show preview, false = background mode
@@ -3319,20 +3317,22 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     const iceConfigurationPromise = request("/turn/credentials", session.token)
       .then((result) => {
         const provider = result?.provider || "stun-fallback";
+        const fallbackProvider = result?.fallbackProvider || "";
         const region = result?.region || "";
         const iceServers = Array.isArray(result?.iceServers) && result.iceServers.length
           ? result.iceServers
           : fallbackIceServers;
-        setTurnStatus({ provider, region, route: provider === "metered" ? "ready" : "fallback" });
-        return { iceServers, provider, region };
+        const turnReady = ["cloudflare", "expressturn", "metered"].includes(provider);
+        setTurnStatus({ provider, fallbackProvider, region, route: turnReady ? "ready" : "fallback" });
+        return { iceServers, provider, fallbackProvider, region };
       })
       .catch((error) => {
         console.error("[turn] Credential request failed", error);
         console.warn("[camera] TURN credentials unavailable; using STUN fallback", error);
-        setTurnStatus({ provider: "stun-fallback", region: "", route: "fallback" });
-        return { iceServers: fallbackIceServers, provider: "stun-fallback", region: "" };
+        setTurnStatus({ provider: "stun-fallback", fallbackProvider: "", region: "", route: "fallback" });
+        return { iceServers: fallbackIceServers, provider: "stun-fallback", fallbackProvider: "", region: "" };
       });
-    const detectIceRoute = async (pc) => {
+    const detectIceRoute = async (pc, iceConfiguration) => {
       try {
         const stats = await pc.getStats();
         let selectedPair = null;
@@ -3348,9 +3348,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         }
         const localCandidate = selectedPair?.localCandidateId ? stats.get(selectedPair.localCandidateId) : null;
         const remoteCandidate = selectedPair?.remoteCandidateId ? stats.get(selectedPair.remoteCandidateId) : null;
-        return [localCandidate, remoteCandidate].some((candidate) => candidate?.candidateType === "relay") ? "turn" : "direct";
+        const relayCandidate = [localCandidate, remoteCandidate].find((candidate) => candidate?.candidateType === "relay");
+        if (!relayCandidate) return { route: "direct", provider: iceConfiguration.provider };
+        const relayUrl = String(relayCandidate.url || "").toLowerCase();
+        const provider = relayUrl.includes("cloudflare.com")
+          ? "cloudflare"
+          : iceConfiguration.provider === "cloudflare" && iceConfiguration.fallbackProvider === "expressturn" && relayUrl
+            ? "expressturn"
+            : iceConfiguration.provider;
+        return { route: "turn", provider };
       } catch {
-        return "direct";
+        return { route: "direct", provider: iceConfiguration.provider };
       }
     };
     const makePeer = async (key, remoteUserId) => {
@@ -3367,9 +3375,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         if (pc.connectionState === "connected") {
           clearTimeout(connectionTimer);
           stopOfflineVideoRecording();
-          const route = await detectIceRoute(pc);
-          setTurnStatus({ provider: iceConfiguration.provider, region: iceConfiguration.region, route });
-          setNotice(route === "turn" ? `Live video connected via ${iceConfiguration.provider === "expressturn" ? "ExpressTURN" : "Metered TURN"}` : "Live video connected directly");
+          const selectedIce = await detectIceRoute(pc, iceConfiguration);
+          const providerLabel = selectedIce.provider === "cloudflare" ? "Cloudflare TURN" : selectedIce.provider === "expressturn" ? "ExpressTURN" : "TURN relay";
+          setTurnStatus({ provider: selectedIce.provider, fallbackProvider: iceConfiguration.fallbackProvider, region: iceConfiguration.region, route: selectedIce.route });
+          setNotice(selectedIce.route === "turn" ? `Live video connected via ${providerLabel}` : "Live video connected directly");
           setTimeout(() => setNotice(""), 2500);
         } else if (["failed", "disconnected"].includes(pc.connectionState)) {
           console.warn("[camera] WebRTC connection issue", {

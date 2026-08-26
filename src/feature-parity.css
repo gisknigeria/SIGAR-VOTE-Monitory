@@ -54,6 +54,28 @@
 .historical-row-action{display:flex!important;justify-content:flex-end!important;width:100%;color:#e7bd60;font-size:8px;font-weight:800;letter-spacing:.03em}.historical-row-action b{font-size:12px}.historical-pu-meta{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;padding-top:8px}.historical-pu-meta small{padding:6px!important;border:1px solid #4f2935;border-radius:7px!important;background:#16080e!important}
 @media(max-width:650px){.historical-map-panel{right:8px;bottom:10px;width:calc(100% - 16px);max-height:62vh;border-radius:15px}.historical-map-panel>header{padding:13px 14px}.historical-breadcrumb{top:58px}.historical-share-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+/* Kwara published-results table layout, recoloured for the Oyo brand. */
+.irev-sub-tabs{align-items:center;margin:0 20px 14px;padding:0;border-bottom:1px solid #5d2436;background:#240c15}
+.irev-sub-tabs .wl-sub-tab{min-height:46px;padding:0 16px;border-bottom:2px solid transparent}
+.irev-sub-tabs .wl-sub-tab.active{border-bottom-color:#e0b84f;background:#3a1321;color:#fff}
+.irev-pilot-card .irev-table-toolbar{padding:0 20px 14px}
+.irev-pilot-card .irev-table-toolbar>div span{color:#d7bfc7!important}
+.irev-pilot-card .irev-table-toolbar label{border-color:#8a6d2e;background:#16080e}
+.irev-pilot-card .irev-table-scroll{max-height:68vh;overflow-x:hidden;overflow-y:auto;border-top:1px solid #6a283d;scrollbar-color:#8a6d2e #12070b;scrollbar-width:thin}
+.irev-pilot-card .irev-results-table{width:100%;min-width:0!important;table-layout:fixed;border-collapse:separate;border-spacing:0}
+.irev-pilot-card .irev-results-table th,.irev-pilot-card .irev-results-table td{padding:12px 12px;white-space:normal!important;overflow-wrap:anywhere;vertical-align:middle;line-height:1.35}
+.irev-pilot-card .irev-results-table th{position:sticky;top:0;z-index:2;border-bottom:1px solid #d2a642;background:#641b34;color:#fff8df!important;font-size:10px!important;font-weight:800;text-align:left}
+.irev-pilot-card .irev-results-table td{border-bottom:1px solid #562033;background:#180910;color:#fff!important;font-size:10px!important}
+.irev-pilot-card .irev-results-table tbody tr:nth-child(even) td{background:#210c14}
+.irev-pilot-card .irev-results-table tbody tr:hover td{background:#34111f}
+.irev-pilot-card .irev-results-table th:nth-child(1),.irev-pilot-card .irev-results-table td:nth-child(1){width:13%}
+.irev-pilot-card .irev-results-table th:nth-child(2),.irev-pilot-card .irev-results-table td:nth-child(2){width:13%}
+.irev-pilot-card .irev-results-table th:nth-child(3),.irev-pilot-card .irev-results-table td:nth-child(3){width:25%}
+.irev-pilot-card .irev-results-table th:nth-child(4),.irev-pilot-card .irev-results-table td:nth-child(4){width:13%}
+.irev-pilot-card .irev-results-table th:nth-child(5),.irev-pilot-card .irev-results-table td:nth-child(5){width:9%}
+.irev-pilot-card .irev-results-table th:nth-child(n+6),.irev-pilot-card .irev-results-table td:nth-child(n+6){width:9%;text-align:center}
+@media(max-width:760px){.irev-pilot-card .irev-results-table{min-width:900px!important}.irev-pilot-card .irev-table-scroll{overflow-x:auto}.irev-sub-tabs{margin-inline:12px}.irev-pilot-card .irev-table-toolbar{padding-inline:12px}}
+
 /* Kwara dashboard structure, translated to the Oyo burgundy-and-gold brand. */
 .irev-pilot-actions{display:flex;gap:8px;flex-wrap:wrap}
 .irev-pilot-actions a,.irev-pilot-actions button{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 13px}

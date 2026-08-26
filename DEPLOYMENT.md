@@ -10,9 +10,10 @@
    - `DATABASE_URL`: your Neon pooled PostgreSQL connection string, including `sslmode=require`.
    - `ADMIN_PASSWORD`: the password for `admin@command.local`.
    - `SUPER_ADMIN_PASSWORD`: the password for `superadmin@command.local`.
-   - `METERED_DOMAIN`: the Metered application domain, for example `your-app.metered.live` (no path).
-   - `METERED_TURN_API_KEY`: the credential-scoped API key shown for the TURN credential in Metered. Do not use the account Secret Key.
-   - `METERED_TURN_REGION`: optional Metered region; use `standard` to follow the credential's default region.
+   - `CLOUDFLARE_TURN_KEY_ID`: the 32-character TURN key ID created under Cloudflare Realtime TURN.
+   - `CLOUDFLARE_TURN_API_TOKEN`: the secret bearer token belonging to that TURN key—not a general Cloudflare account API token.
+   - `CLOUDFLARE_TURN_TTL`: credential lifetime in seconds. Keep the provided default of `86400` unless calls must last longer than one day.
+   - `EXPRESSTURN_URLS`, `EXPRESSTURN_USERNAME`, and `EXPRESSTURN_PASSWORD`: the backup relay credentials supplied by ExpressTURN.
 
    Do not put these values directly into `render.yaml` or commit them to Git.
 
@@ -23,22 +24,23 @@ The Starter plan is intentional: Render's free web service cannot attach a persi
 
 The single service supports WebSockets, so live incident and GPS updates use the same public HTTPS domain.
 
-## Metered TURN
+## Cloudflare TURN with ExpressTURN fallback
 
-The browser requests authenticated ICE configuration from `/api/turn/credentials`. The server reads the Metered values from Render, retrieves the STUN/TURN URLs and credentials, validates them, and passes them to WebRTC without exposing the Render environment values.
+The browser requests authenticated ICE configuration from `/api/turn/credentials`. The server uses the private Cloudflare TURN key to generate short-lived ICE credentials. Cloudflare servers are returned first and ExpressTURN servers are appended second, allowing WebRTC to gather backup relay candidates during the same connection attempt. If Cloudflare credential generation fails, the endpoint returns ExpressTURN directly. The last fallback is public STUN only.
 
 In the Camera Feeds header:
 
-- `Metered TURN ready` means valid Metered relay credentials were loaded.
-- `Connected via Metered TURN` means the selected WebRTC candidate pair is actively using the relay.
-- `Metered ready · direct route` means TURN is available, but WebRTC selected a faster direct/STUN route.
-- `STUN fallback only` means the Metered values are missing, invalid, or the credential request failed.
+- `Cloudflare TURN ready · ExpressTURN backup` means both relay providers are configured.
+- `Connected via Cloudflare TURN` means Cloudflare is carrying the selected relay connection.
+- `Connected via ExpressTURN` means the backup relay was selected.
+- `Cloudflare ready · direct route` means TURN is available, but WebRTC selected a faster direct/STUN route.
+- `STUN fallback only` means neither TURN provider is available.
 
 After changing Render environment values, redeploy or restart the service so the server reads them.
 
 ## ExpressTURN fallback
 
-Metered is tried first. To use ExpressTURN automatically when Metered credentials fail, copy the TURN URL(s), username, and password shown in the ExpressTURN dashboard into these private Render variables:
+Cloudflare is primary. Copy the TURN URL(s), username, and password shown in the ExpressTURN dashboard into these private Render variables so ExpressTURN is available second:
 
 ```env
 EXPRESSTURN_URLS=turn:YOUR_EXPRESSTURN_HOST:3478,turns:YOUR_EXPRESSTURN_HOST:5349

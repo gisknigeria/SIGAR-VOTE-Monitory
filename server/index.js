@@ -13,7 +13,7 @@ import sharp from 'sharp';
 import { canManageRank, getRegistrationLocationOptions, normalizeCommand, normalizeRegistrationState, ranksBelow } from '../shared/electionData.js';
 import { credentialFingerprint, createId, createRateLimitState, normalizeText, sanitizeString, validateContentLength, validateCoordinates, validateEmail, validateExternalUrl, validateMediaPayload, validatePassword } from './security.js';
 import { analyzeContextLocally, summarizeNewsLocally } from './ai.js';
-import { FALLBACK_ICE_SERVERS, normalizeMeteredDomain, normalizeMeteredRegion, sanitizeIceServers } from './turn.js';
+import { FALLBACK_ICE_SERVERS, normalizeCloudflareTurnKeyId, normalizeCloudflareTurnTtl, sanitizeCloudflareIceServers, sanitizeIceServers } from './turn.js';
 import { formatReverseLocation } from './location.js';
 import { normalizeLgaHistory, normalizeStateHistory, normalizeWardHistory, slugifyHistoricalArea } from './historical-results.js';
 import { OSUN_2026_PUBLISHED_RESULTS } from './osun2026Results.js';
@@ -32,9 +32,10 @@ const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@command.loc
 const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || randomBytes(24).toString('hex');
 const adminEmail = process.env.ADMIN_EMAIL || 'admin@command.local';
 const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(24).toString('hex');
-const meteredDomain = normalizeMeteredDomain(process.env.METERED_DOMAIN);
-const meteredTurnApiKey = String(process.env.METERED_TURN_API_KEY || '').trim();
-const meteredTurnRegion = normalizeMeteredRegion(process.env.METERED_TURN_REGION);
+const cloudflareTurnKeyId = normalizeCloudflareTurnKeyId(process.env.CLOUDFLARE_TURN_KEY_ID);
+const cloudflareTurnApiToken = String(process.env.CLOUDFLARE_TURN_API_TOKEN || '').trim();
+const cloudflareTurnTtl = normalizeCloudflareTurnTtl(process.env.CLOUDFLARE_TURN_TTL);
+const hasCloudflareTurn = Boolean(cloudflareTurnKeyId && cloudflareTurnApiToken);
 const expressTurnUrls = String(process.env.EXPRESSTURN_URLS || '')
   .split(',').map(url => url.trim()).filter(Boolean);
 const expressTurnServers = sanitizeIceServers(expressTurnUrls.length ? [{
@@ -44,12 +45,12 @@ const expressTurnServers = sanitizeIceServers(expressTurnUrls.length ? [{
 }] : []);
 const hasExpressTurn = expressTurnServers.some(server => {
   const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
-  return urls.some(url => /^turns?:/i.test(url));
+  return Boolean(server.username && server.credential && urls.some(url => /^turns?:/i.test(url)));
 });
-if ((process.env.METERED_DOMAIN || process.env.METERED_TURN_API_KEY) && (!meteredDomain || !meteredTurnApiKey)) {
-  console.warn('Metered TURN is not fully configured. Live video will use the STUN fallback.');
+if ((process.env.CLOUDFLARE_TURN_KEY_ID || process.env.CLOUDFLARE_TURN_API_TOKEN) && !hasCloudflareTurn) {
+  console.warn('Cloudflare TURN is not fully configured. Live video will use ExpressTURN or the STUN fallback.');
 }
-if (!meteredDomain && !meteredTurnApiKey && !hasExpressTurn) console.warn('No TURN provider is configured. Live video will use the STUN fallback.');
+if (!hasCloudflareTurn && !hasExpressTurn) console.warn('No TURN provider is configured. Live video will use the STUN fallback.');
 if (!process.env.SUPER_ADMIN_PASSWORD || !process.env.ADMIN_PASSWORD) {
   console.warn('SUPER_ADMIN_PASSWORD and ADMIN_PASSWORD were not set. Generated secure random passwords for the seeded admin accounts.');
 }
@@ -879,36 +880,55 @@ const emitEmergencyAlert = (sourceSocket, alert) => {
   }
 };
 
-app.get('/api/health', rateLimit, (_, res) => res.json({ ok: true, service: 'Election Monitoring Command API' }));
+app.get('/api/health', rateLimit, (_, res) => res.json({
+  ok: true,
+  service: 'Election Monitoring Command API',
+  turn: {
+    primary: hasCloudflareTurn ? 'cloudflare' : hasExpressTurn ? 'expressturn' : 'stun-fallback',
+    expressTurnBackup: hasExpressTurn,
+  },
+}));
 let turnCredentialCache = null;
 app.get('/api/turn/credentials', auth, rateLimit, asyncRoute(async (_req, res) => {
-  if (!meteredDomain || !meteredTurnApiKey) {
+  const expressFallbackServers = hasExpressTurn ? [...FALLBACK_ICE_SERVERS, ...expressTurnServers] : FALLBACK_ICE_SERVERS;
+  if (!hasCloudflareTurn) {
     res.set('Cache-Control', 'private, no-store');
-    return res.json({ iceServers: hasExpressTurn ? expressTurnServers : FALLBACK_ICE_SERVERS, provider: hasExpressTurn ? 'expressturn' : 'stun-fallback' });
+    return res.json({ iceServers: expressFallbackServers, provider: hasExpressTurn ? 'expressturn' : 'stun-fallback', fallbackProvider: hasExpressTurn ? 'stun' : '' });
   }
   res.set('Cache-Control', 'private, max-age=240');
   res.set('Vary', 'Authorization');
   if (turnCredentialCache?.expiresAt > Date.now()) return res.json(turnCredentialCache.data);
   try {
-    const params = new URLSearchParams({ apiKey: meteredTurnApiKey, region: meteredTurnRegion });
-    const response = await fetch(`https://${meteredDomain}/api/v1/turn/credentials?${params}`, {
-      headers: { Accept: 'application/json' },
+    const response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${cloudflareTurnKeyId}/credentials/generate-ice-servers`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${cloudflareTurnApiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ttl: cloudflareTurnTtl }),
       signal: AbortSignal.timeout(8_000),
     });
-    if (!response.ok) throw new Error(`Metered returned ${response.status}`);
-    const iceServers = sanitizeIceServers(await response.json());
-    if (!iceServers.some(server => {
+    if (!response.ok) throw new Error(`Cloudflare returned ${response.status}`);
+    const payload = await response.json();
+    const cloudflareServers = sanitizeCloudflareIceServers(payload?.iceServers);
+    if (!cloudflareServers.some(server => {
       const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
       return urls.some(url => /^turns?:/i.test(url));
-    })) throw new Error('Metered returned no usable TURN servers');
-    const data = { iceServers, provider: 'metered', region: meteredTurnRegion };
-    turnCredentialCache = { data, expiresAt: Date.now() + 5 * 60 * 1000 };
+    })) throw new Error('Cloudflare returned no usable TURN servers');
+    const data = {
+      iceServers: [...cloudflareServers, ...(hasExpressTurn ? expressTurnServers : [])],
+      provider: 'cloudflare',
+      fallbackProvider: hasExpressTurn ? 'expressturn' : 'stun-fallback',
+      expiresAt: new Date(Date.now() + cloudflareTurnTtl * 1000).toISOString(),
+    };
+    turnCredentialCache = { data, expiresAt: Date.now() + Math.min(60 * 60 * 1000, cloudflareTurnTtl * 500) };
     return res.json(data);
   } catch (error) {
-    console.error('[turn] Metered credential fetch failed:', error.message);
+    console.error('[turn] Cloudflare credential fetch failed:', error.message);
     res.set('Cache-Control', 'private, no-store');
-    console.warn(`[turn] Metered failed; ${hasExpressTurn ? 'using ExpressTURN fallback' : 'using STUN fallback'}`);
-    return res.json({ iceServers: hasExpressTurn ? expressTurnServers : FALLBACK_ICE_SERVERS, provider: hasExpressTurn ? 'expressturn' : 'stun-fallback' });
+    console.warn(`[turn] Cloudflare failed; ${hasExpressTurn ? 'using ExpressTURN fallback' : 'using STUN fallback'}`);
+    return res.json({ iceServers: expressFallbackServers, provider: hasExpressTurn ? 'expressturn' : 'stun-fallback', fallbackProvider: hasExpressTurn ? 'stun' : '' });
   }
 }));
 let oyoBoundaryCache = null;
