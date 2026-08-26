@@ -1408,8 +1408,17 @@ const normalizeOsunIrevUpload = item => {
   };
 };
 const loadOsunIrevPilot = async (force = false) => {
-  if (!force) return preparedOsunPilot;
   await ensureOsunIrevArchiveLoaded();
+  if (!force) {
+    const archivedUploads = new Map((irevOsunCache?.data?.uploads || []).map(item => [item.puCode, item]));
+    return {
+      ...preparedOsunPilot,
+      uploads: preparedOsunPilot.uploads.map((item, index) => index < 10 && archivedUploads.has(item.puCode)
+        ? { ...item, ...archivedUploads.get(item.puCode), verificationStatus: 'Archived IReV image' }
+        : item),
+      notice: '',
+    };
+  }
   if (!force && irevOsunCache?.expiresAt > Date.now()) return irevOsunCache.data;
   if (!force && irevOsunCache?.data) return { ...irevOsunCache.data, offline: true, notice: 'Showing the saved Osun IReV archive.' };
   try {

@@ -2857,8 +2857,8 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
         </>}
         {view === "irev" && <section className="irev-pilot-card">
           <header className="irev-pilot-head">
-            <div><span className="eyebrow">INEC ARCHIVE · SHOWCASE PILOT</span><h2>INEC IReV — Osun</h2><p>Shows the saved polling-unit upload archive and prepared Osun results. Use Refresh now for an explicit live check.</p></div>
-            <div className="irev-pilot-actions"><a href={irevPilot?.portalUrl || "https://irev.inecnigeria.org/"} target="_blank" rel="noreferrer">Open IReV</a><button type="button" disabled={irevLoading} onClick={() => loadIrevPilot(true)}><FaSyncAlt /> {irevLoading ? "Checking…" : "Refresh now"}</button></div>
+            <div><span className="eyebrow">INEC ARCHIVE · SHOWCASE PILOT</span><h2>INEC IReV — Osun</h2><p>Shows the saved polling-unit archive and prepared Osun results.</p></div>
+            <div className="irev-pilot-actions"><a href={irevPilot?.portalUrl || "https://irev.inecnigeria.org/"} target="_blank" rel="noreferrer">Open IReV</a></div>
           </header>
           {irevError && <div className="error">{irevError}</div>}
           {irevPilot && <>
