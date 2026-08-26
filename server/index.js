@@ -1223,7 +1223,9 @@ const loadOyoIrev = async (force = false) => {
       .filter(item => item.id && item.puCode && item.imageUrl);
     const mergedUploads = new Map((irevOyoCache?.data?.uploads || []).map(upload => [upload.id, upload]));
     liveUploads.forEach(upload => mergedUploads.set(upload.id, upload));
-    const uploads = [...mergedUploads.values()].sort((a, b) => `${a.lga}|${a.ward}|${a.puCode}`.localeCompare(`${b.lga}|${b.ward}|${b.puCode}`));
+    const uploads = [...mergedUploads.values()]
+      .sort((a, b) => `${a.lga}|${a.ward}|${a.puCode}`.localeCompare(`${b.lga}|${b.ward}|${b.puCode}`))
+      .slice(0, 10);
     const data = {
       pilot: true,
       configured: true,
