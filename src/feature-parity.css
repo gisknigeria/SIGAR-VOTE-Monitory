@@ -61,7 +61,8 @@
 .irev-pilot-card .irev-table-toolbar{padding:0 20px 14px}
 .irev-pilot-card .irev-result-totals{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding:16px 20px 4px}
 .irev-pilot-card .irev-result-totals .result-total-card{min-height:124px;padding:18px;border:1px solid #8a6d2e;border-radius:14px;background:linear-gradient(145deg,#35121c,#210b13);box-shadow:0 10px 24px #0004}
-.irev-pilot-card .irev-result-totals .result-total-card span{color:#ead3da!important;font-size:10px!important;font-weight:800}
+.irev-pilot-card .irev-result-totals .result-total-card span{color:#ead3da!important;font-size:15px!important;font-weight:800;line-height:1.25}
+.irev-pilot-card .irev-result-totals .result-total-card span b{color:#f5dc9a!important;font-size:17px!important}
 .irev-pilot-card .irev-result-totals .result-total-card strong{align-self:end;color:#f5dc9a!important;font-size:34px!important;font-weight:500}
 .irev-pilot-card .irev-table-toolbar>div span{color:#d7bfc7!important}
 .irev-pilot-card .irev-table-toolbar label{border-color:#8a6d2e;background:#16080e}
