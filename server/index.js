@@ -1652,7 +1652,7 @@ app.get('/api/admin/ip-log', auth, adminOnly, rateLimit, (req, res) => {
   if (type) results = results.filter(entry => entry.type === type);
   res.json(results.slice(0, Number(limit)));
 });
-app.post('/api/auth/login', loginRateLimit, asyncRoute(async (req, res) => {
+app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const email = sanitizeString(req.body.email || '').toLowerCase();
   const password = String(req.body.password || '');
   if (!validateEmail(email) || !password || password.length > 1024) return res.status(400).json({ message: 'A valid email and password are required.' });
