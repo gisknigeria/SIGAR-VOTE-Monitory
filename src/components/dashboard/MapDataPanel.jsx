@@ -1,14 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
-import {
-  MdAccessible, MdAccountBalance, MdAnchor, MdBusiness, MdChurch, MdConstruction,
-  MdDirectionsBus, MdFactory, MdFilterHdr, MdFlashOn, MdFlight, MdGrass, MdHexagon,
-  MdHome, MdImage, MdLocalFireDepartment, MdLocalGasStation, MdLocalHospital,
-  MdLabel, MdLocalParking, MdLocalShipping, MdLocationPin, MdMosque, MdOutlineRadio, MdPark,
-  MdPlace, MdPolyline, MdPushPin, MdRecycling, MdSchool, MdSecurity,
-  MdSettingsInputAntenna, MdSignpost, MdStore, MdTerrain, MdTraffic, MdTrain,
-  MdVideocam, MdWarning, MdWaterDrop,
-} from "react-icons/md";
+import { MdFilterHdr, MdHexagon, MdImage, MdLocationPin, MdPolyline, MdVideocam } from "react-icons/md";
 
 const LAYER_CATEGORIES = ["Point", "Line", "Polygon", "Raster"];
 const LAYER_COLORS_PRESET = [
@@ -60,50 +52,41 @@ const OPERATIONAL_USES = [
 
 const POINT_ICONS = [
   { key: "pin", label: "Pin", Component: MdLocationPin },
-  { key: "place", label: "Place", Component: MdPlace },
-  { key: "pushpin", label: "Push Pin", Component: MdPushPin },
-  { key: "home", label: "Home", Component: MdHome },
-  { key: "business", label: "Building", Component: MdBusiness },
-  { key: "school", label: "School", Component: MdSchool },
-  { key: "hospital", label: "Hospital", Component: MdLocalHospital },
-  { key: "bank", label: "Bank", Component: MdAccountBalance },
-  { key: "factory", label: "Factory", Component: MdFactory },
-  { key: "store", label: "Store", Component: MdStore },
-  { key: "mosque", label: "Mosque", Component: MdMosque },
-  { key: "church", label: "Church", Component: MdChurch },
-  { key: "fuel", label: "Fuel", Component: MdLocalGasStation },
-  { key: "busstop", label: "Bus Stop", Component: MdDirectionsBus },
-  { key: "train", label: "Train", Component: MdTrain },
-  { key: "airport", label: "Airport", Component: MdFlight },
-  { key: "anchor", label: "Anchor", Component: MdAnchor },
-  { key: "truck", label: "Truck", Component: MdLocalShipping },
-  { key: "construction", label: "Construction", Component: MdConstruction },
-  { key: "traffic", label: "Traffic", Component: MdTraffic },
-  { key: "parking", label: "Parking", Component: MdLocalParking },
-  { key: "camera", label: "Camera", Component: MdVideocam },
-  { key: "antenna", label: "Antenna", Component: MdSettingsInputAntenna },
-  { key: "electric", label: "Electric", Component: MdFlashOn },
-  { key: "fire", label: "Fire", Component: MdLocalFireDepartment },
-  { key: "water", label: "Water", Component: MdWaterDrop },
-  { key: "park", label: "Park", Component: MdPark },
-  { key: "vegetation", label: "Vegetation", Component: MdGrass },
-  { key: "terrain", label: "Terrain", Component: MdTerrain },
-  { key: "bridge", label: "Bridge", Component: MdSignpost },
-  { key: "security", label: "Security", Component: MdSecurity },
-  { key: "warning", label: "Warning", Component: MdWarning },
-  { key: "radiation", label: "Radiation", Component: MdOutlineRadio },
-  { key: "accessible", label: "Accessible", Component: MdAccessible },
-  { key: "recycle", label: "Recycle", Component: MdRecycling },
+  { key: "place", label: "Place", Component: MdLocationPin },
+  { key: "pushpin", label: "Push Pin", Component: MdHexagon },
+  { key: "home", label: "Home", Component: MdLocationPin },
+  { key: "business", label: "Building", Component: MdLocationPin },
+  { key: "school", label: "School", Component: MdLocationPin },
+  { key: "hospital", label: "Hospital", Component: MdLocationPin },
+  { key: "bank", label: "Bank", Component: MdLocationPin },
+  { key: "factory", label: "Factory", Component: MdLocationPin },
+  { key: "store", label: "Store", Component: MdLocationPin },
+  { key: "mosque", label: "Mosque", Component: MdLocationPin },
+  { key: "church", label: "Church", Component: MdLocationPin },
+  { key: "fuel", label: "Fuel", Component: MdLocationPin },
+  { key: "busstop", label: "Bus Stop", Component: MdLocationPin },
+  { key: "train", label: "Train", Component: MdLocationPin },
+  { key: "airport", label: "Airport", Component: MdLocationPin },
+  { key: "anchor", label: "Anchor", Component: MdLocationPin },
+  { key: "truck", label: "Truck", Component: MdLocationPin },
+  { key: "construction", label: "Construction", Component: MdLocationPin },
+  { key: "traffic", label: "Traffic", Component: MdLocationPin },
+  { key: "parking", label: "Parking", Component: MdLocationPin },
+  { key: "camera", label: "Camera", Component: MdLocationPin },
+  { key: "antenna", label: "Antenna", Component: MdLocationPin },
+  { key: "electric", label: "Electric", Component: MdLocationPin },
+  { key: "fire", label: "Fire", Component: MdLocationPin },
+  { key: "water", label: "Water", Component: MdLocationPin },
+  { key: "park", label: "Park", Component: MdLocationPin },
+  { key: "vegetation", label: "Vegetation", Component: MdLocationPin },
+  { key: "terrain", label: "Terrain", Component: MdLocationPin },
+  { key: "bridge", label: "Bridge", Component: MdLocationPin },
+  { key: "security", label: "Security", Component: MdLocationPin },
+  { key: "warning", label: "Warning", Component: MdLocationPin },
+  { key: "radiation", label: "Radiation", Component: MdLocationPin },
+  { key: "accessible", label: "Accessible", Component: MdLocationPin },
+  { key: "recycle", label: "Recycle", Component: MdLocationPin },
 ];
-
-const featureList = (data) => {
-  if (Array.isArray(data)) return data.flatMap(featureList);
-  if (data?.type === "FeatureCollection") return data.features || [];
-  if (data?.type === "Feature") return [data];
-  return [];
-};
-const propertyHeaders = (data) => [...new Set(featureList(data).flatMap((feature) => Object.keys(feature?.properties || {})))];
-const preferredLabelHeader = (headers) => headers.find((header) => /^(name|title|label)$/i.test(header)) || headers.find((header) => /(name|title|label)/i.test(header)) || headers[0] || "name";
 
 const layerGeometry = (layer) =>
   LAYER_CATEGORIES.includes(layer?.category)
@@ -137,41 +120,24 @@ function LayerStyleEditor({ layer, canDelete, onUpdate, onDelete }) {
     lineStyle: item.lineStyle || "solid",
     pointIcon: item.pointIcon || "pin",
     pointIconColor: item.pointIconColor || "#ffffff",
-    pointSize: item.pointSize ?? 2,
+    pointSize: item.pointSize || 24,
     showLabels: item.showLabels !== false,
     labelField: item.labelField || "name",
-    labelColor: item.labelColor || "#3f0b1b",
     popupFields: item.popupFields || "",
   });
   const [draft, setDraft] = useState(() => makeDraft(layer));
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const headers = propertyHeaders(layer.data);
-  useEffect(() => {
-    if (!open) setDraft(makeDraft(layer));
-  }, [layer, open]);
   const isPoint = draft.category === "Point";
   const isLine = draft.category === "Line";
   const isPolygon = draft.category === "Polygon";
   const isRaster = draft.category === "Raster" || layer.type === "raster";
-  const save = async () => {
-    setSaveError("");
-    setSaving(true);
-    try {
-      await onUpdate(layer.id, {
-        ...draft,
-        opacity: Number(draft.opacity),
-        fillOpacity: Number(draft.fillOpacity),
-        lineWeight: Number(draft.lineWeight),
-        pointSize: Number(draft.pointSize),
-      });
-      setOpen(false);
-    } catch (err) {
-      setSaveError(err.message || "Could not save layer changes");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const save = () =>
+    onUpdate(layer.id, {
+      ...draft,
+      opacity: Number(draft.opacity),
+      fillOpacity: Number(draft.fillOpacity),
+      lineWeight: Number(draft.lineWeight),
+      pointSize: Number(draft.pointSize),
+    });
 
   return (
     <div className="manage-row mdp-manage-row">
@@ -191,19 +157,11 @@ function LayerStyleEditor({ layer, canDelete, onUpdate, onDelete }) {
         <b>{layer.name}</b>
         <small>
           {layer.type} - {layerGeometry(layer)} - {layer.operationalUse || "Reference"} / opacity {Math.round((layer.opacity ?? 0.65) * 100)}%
-          {layer.showLabels !== false ? " / labels on" : " / labels off"}
+          {layer.showLabels ? " / labels on" : ""}
         </small>
       </div>
       <button className={`lcp-toggle ${layer.visible !== false ? "on" : "off"}`} onClick={() => onUpdate(layer.id, { visible: layer.visible === false })} title={layer.visible !== false ? "Hide" : "Show"}>
         {layer.visible !== false ? <MdVideocam size={14} /> : <MdVideocam size={14} style={{ opacity: 0.3 }} />}
-      </button>
-      <button
-        className={`lcp-toggle ${layer.showLabels !== false ? "on" : "off"}`}
-        onClick={() => onUpdate(layer.id, { showLabels: layer.showLabels === false })}
-        title={layer.showLabels !== false ? "Turn labels off" : "Turn labels on"}
-        aria-label={layer.showLabels !== false ? "Turn labels off" : "Turn labels on"}
-      >
-        <MdLabel size={14} style={layer.showLabels !== false ? undefined : { opacity: 0.3 }} />
       </button>
       <button className="unit-action-btn" onClick={() => setOpen((x) => !x)}>
         {open ? "Close" : "Edit"}
@@ -275,7 +233,7 @@ function LayerStyleEditor({ layer, canDelete, onUpdate, onDelete }) {
               </label>
               <label className="mdp-label">
                 Point size
-                <input type="number" min="2" max="44" value={draft.pointSize} onChange={(e) => setDraft({ ...draft, pointSize: e.target.value })} />
+                <input type="number" min="14" max="44" value={draft.pointSize} onChange={(e) => setDraft({ ...draft, pointSize: e.target.value })} />
               </label>
               <label className="mdp-label mdp-color-label">
                 Marker color
@@ -324,26 +282,14 @@ function LayerStyleEditor({ layer, canDelete, onUpdate, onDelete }) {
             </label>
             <label className="mdp-label">
               Label field
-              {headers.length ? (
-                <select value={draft.labelField} onChange={(e) => setDraft({ ...draft, labelField: e.target.value })}>
-                  {!headers.includes(draft.labelField) && <option value={draft.labelField}>{draft.labelField}</option>}
-                  {headers.map((header) => <option key={header} value={header}>{header}</option>)}
-                </select>
-              ) : (
-                <input value={draft.labelField} onChange={(e) => setDraft({ ...draft, labelField: e.target.value })} />
-              )}
-            </label>
-            <label className="mdp-label mdp-color-label">
-              Label color
-              <input type="color" value={draft.labelColor} onChange={(e) => setDraft({ ...draft, labelColor: e.target.value })} />
+              <input value={draft.labelField} onChange={(e) => setDraft({ ...draft, labelField: e.target.value })} />
             </label>
             <label className="mdp-label mdp-wide">
               Popup fields
               <input value={draft.popupFields} onChange={(e) => setDraft({ ...draft, popupFields: e.target.value })} />
             </label>
           </div>
-          {saveError && <div className="error">{saveError}</div>}
-          <button type="button" className="primary mdp-save-style" disabled={saving} onClick={save}>{saving ? "Saving..." : "Save layer style"}</button>
+          <button className="primary mdp-save-style" onClick={save}>Save layer style</button>
         </div>
       )}
     </div>
@@ -366,15 +312,12 @@ export default function MapDataPanel({ layers, isSuperAdmin, onClose, onCreate, 
     lineStyle: "solid",
     pointIcon: "pin",
     pointIconColor: "#ffffff",
-    pointSize: "2",
+    pointSize: "24",
     showLabels: true,
     labelField: "name",
-    labelColor: "#3f0b1b",
     popupFields: "name,type,status",
   });
   const [file, setFile] = useState(null);
-  const [parsedData, setParsedData] = useState(null);
-  const [headers, setHeaders] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState(isSuperAdmin ? "upload" : "manage");
@@ -387,30 +330,6 @@ export default function MapDataPanel({ layers, isSuperAdmin, onClose, onCreate, 
       if (selected.name.toLowerCase().endsWith(".zip")) reader.readAsArrayBuffer(selected);
       else reader.readAsText(selected);
     });
-
-  const chooseFile = async (selected) => {
-    setFile(selected);
-    setParsedData(null);
-    setHeaders([]);
-    setError("");
-    if (!selected) return;
-    try {
-      const raw = await readFile(selected);
-      const data = selected.name.toLowerCase().endsWith(".zip")
-        ? await (await import("shpjs")).default(raw)
-        : JSON.parse(raw);
-      const nextHeaders = propertyHeaders(data);
-      setParsedData(data);
-      setHeaders(nextHeaders);
-      setForm((current) => ({
-        ...current,
-        labelField: preferredLabelHeader(nextHeaders),
-        popupFields: nextHeaders.slice(0, 6).join(","),
-      }));
-    } catch (err) {
-      setError(err.message || "Could not read the selected map file");
-    }
-  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -433,13 +352,10 @@ export default function MapDataPanel({ layers, isSuperAdmin, onClose, onCreate, 
         });
       } else {
         if (!file) throw new Error("Choose a GeoJSON or zipped shapefile (.zip)");
-        let data = parsedData;
-        if (!data) {
-          const raw = await readFile(file);
-          data = file.name.toLowerCase().endsWith(".zip")
-            ? await (await import("shpjs")).default(raw)
-            : JSON.parse(raw);
-        }
+        const raw = await readFile(file);
+        const data = file.name.toLowerCase().endsWith(".zip")
+          ? await (await import("shpjs")).default(raw)
+          : JSON.parse(raw);
         await onCreate({
           name: form.name || file.name,
           type: "geojson",
@@ -457,15 +373,12 @@ export default function MapDataPanel({ layers, isSuperAdmin, onClose, onCreate, 
           pointSize: Number(form.pointSize),
           showLabels: form.showLabels,
           labelField: form.labelField,
-          labelColor: form.labelColor,
           popupFields: form.popupFields,
           visible: true,
         });
       }
       setForm((f) => ({ ...f, name: "", url: "" }));
       setFile(null);
-      setParsedData(null);
-      setHeaders([]);
       setTab("manage");
     } catch (err) {
       setError(err.message);
@@ -543,7 +456,7 @@ export default function MapDataPanel({ layers, isSuperAdmin, onClose, onCreate, 
             ) : (
               <label className="mdp-label">
                 Shapefile (.zip) or GeoJSON (.geojson / .json)
-                <input type="file" accept=".geojson,.json,.zip" onChange={(e) => chooseFile(e.target.files?.[0] || null)} />
+                <input type="file" accept=".geojson,.json,.zip" onChange={(e) => setFile(e.target.files?.[0] || null)} />
                 {file && <span className="mdp-file-name">{file.name}</span>}
               </label>
             )}
@@ -618,7 +531,7 @@ export default function MapDataPanel({ layers, isSuperAdmin, onClose, onCreate, 
                     </label>
                     <label className="mdp-label">
                       Point size
-                      <input type="number" min="2" max="44" value={form.pointSize} onChange={(e) => setForm({ ...form, pointSize: e.target.value })} />
+                      <input type="number" min="14" max="44" value={form.pointSize} onChange={(e) => setForm({ ...form, pointSize: e.target.value })} />
                     </label>
                     <label className="mdp-label mdp-color-label">
                       Icon color
@@ -634,19 +547,7 @@ export default function MapDataPanel({ layers, isSuperAdmin, onClose, onCreate, 
                   {form.showLabels && (
                     <label className="mdp-label">
                       Label field
-                      {headers.length ? (
-                        <select value={form.labelField} onChange={(e) => setForm({ ...form, labelField: e.target.value })}>
-                          {headers.map((header) => <option key={header} value={header}>{header}</option>)}
-                        </select>
-                      ) : (
-                        <input value={form.labelField} onChange={(e) => setForm({ ...form, labelField: e.target.value })} placeholder={uploadLine ? "road_name" : "name"} />
-                      )}
-                    </label>
-                  )}
-                  {form.showLabels && (
-                    <label className="mdp-label mdp-color-label">
-                      Label color
-                      <input type="color" value={form.labelColor} onChange={(e) => setForm({ ...form, labelColor: e.target.value })} />
+                      <input value={form.labelField} onChange={(e) => setForm({ ...form, labelField: e.target.value })} placeholder={uploadLine ? "road_name, name" : "name, NAME, ADM2_EN, lga_name"} />
                     </label>
                   )}
                   <label className="mdp-label mdp-wide">

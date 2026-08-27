@@ -1,13 +1,15 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { lazy, Suspense } from "react";
 import L from "leaflet";
 import { io } from "socket.io-client";
+import { API, API_BASE_URL } from "../../config.js";
 import {
   FaBullseye,
   FaCamera,
   FaChartBar,
   FaCircle,
+  FaClipboardList,
   FaComments,
   FaDrawPolygon,
   FaEraser,
@@ -77,9 +79,6 @@ import {
   MdFilterHdr,
   MdCropSquare,
   MdAdjust,
-  MdAssessment,
-  MdHowToVote,
-  MdOutlineFactCheck,
 } from "react-icons/md";
 import ProfileModal from "./ProfileModal.jsx";
 import DashboardChatPanel from "./ChatPanel.jsx";
@@ -92,6 +91,7 @@ import AssignIncidentModal from "./AssignIncidentModal.jsx";
 import IncidentNotificationModal from "./IncidentNotificationModal.jsx";
 import SupervisorIncidentListModal from "./SupervisorIncidentListModal.jsx";
 import PreElectionAnalysis from "./PreElectionAnalysis.jsx";
+import "../../notification-styles.css";
 
 const loadFieldModals = () => import("./FieldModals.jsx");
 const DashboardCameraPanel = lazy(() => import("./CameraPanel.jsx"));
@@ -100,9 +100,7 @@ const OfficerManager = lazy(() => loadFieldModals().then((module) => ({ default:
 const PartyManager = lazy(() => loadFieldModals().then((module) => ({ default: module.PartyManager })));
 const PollingResultForm = lazy(() => loadFieldModals().then((module) => ({ default: module.PollingResultForm })));
 
-const API = "/api";
 const OYO_CENTER = [7.3775, 3.947];
-const RESULT_SOURCES = ["Agent", "Supervisor", "INEC IReV"];
 const OYO_BOUNDS = [
   [6.73, 2.67],
   [8.38, 4.6],
@@ -169,7 +167,6 @@ const layerGeometry = (layer) =>
     : layer?.type === "raster"
       ? "Raster"
       : LEGACY_CATEGORY_GEOMETRY[layer?.category] || "Point";
-
 const LAYER_COLORS_PRESET = [
   "#38bdf8",
   "#facc15",
@@ -233,15 +230,6 @@ const hexToRgba = (hex, alpha = 1) => {
   const b = int & 255;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
-const safeHexColor = (value, fallback = "#3f0b1b") =>
-  /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
-const escapeHtml = (value) =>
-  String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 // Render a point icon as SVG string for Leaflet divIcon HTML
 const pointIconSvg = (iconKey, color = "#ffffff", size = 20) => {
   return renderToStaticMarkup(
@@ -281,6 +269,7 @@ const INCIDENT_TYPES = [
   "Battery Depletion",
 ];
 const POLLING_RESULT_TYPE = "Polling Unit Result";
+const RESULT_SOURCES = ["Agent", "Supervisor", "INEC IReV"];
 const COMMAND_PARTY = "Party";
 const REPORT_TYPES = [...INCIDENT_TYPES, POLLING_RESULT_TYPE];
 
@@ -508,6 +497,39 @@ const playEmergencyRing = (alert = {}) => {
     Notification.requestPermission().catch(() => {});
 };
 
+const playFieldNotification = (notification = {}) => {
+  navigator.vibrate?.([180, 90, 180]);
+  const title = notification.incidentType || "New field alert";
+  const body = notification.message || "Open the app to read this alert.";
+  if ("Notification" in window && Notification.permission === "granted") {
+    navigator.serviceWorker?.ready
+      .then((reg) => reg.showNotification(title, {
+        body,
+        tag: notification.id || "field-notification",
+        renotify: true,
+        icon: "/bsa-logo.png",
+      }))
+      .catch(() => new Notification(title, { body }));
+  } else if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
+};
+
+const safeApiErrorMessage = (status, body, contentType = "") => {
+  const message = typeof body === "object" && body
+    ? body?.message
+    : typeof body === "string"
+      ? body.trim()
+      : "";
+  const isHtml = contentType.toLowerCase().includes("text/html")
+    || /<!doctype\s+html|<html[\s>]|<style[\s>]|data:font\//i.test(message);
+
+  if (status === 429) return "Too many requests. Please wait a moment and try again.";
+  if (!isHtml && message && message.length <= 300) return message;
+  if (status >= 500) return "Service temporarily unavailable. Please try again shortly.";
+  return `Request failed (${status})`;
+};
+
 async function request(path, token, options = {}) {
   const response = await fetch(`${API}${path}`, {
     ...options,
@@ -521,13 +543,12 @@ async function request(path, token, options = {}) {
     },
   });
   const contentType = response.headers.get("content-type") || "";
-  const body = response.status === 204 ? null : contentType.includes("application/json") ? await response.json().catch(() => ({})) : await response.text().catch(() => "");
+  const body = response.status === 204 ? null : contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
-    const message = typeof body === "object" && body ? body.message : String(body || "").trim();
-    const html = contentType.includes("text/html") || /<!doctype|<html[\s>]|<style[\s>]/i.test(message);
-    if (response.status === 429) throw new Error("Too many requests. Please wait a moment and try again.");
-    if (!html && message && message.length <= 300) throw new Error(message);
-    throw new Error(response.status >= 500 ? "Service temporarily unavailable. Please try again shortly." : `Request failed (${response.status})`);
+    const error = new Error(safeApiErrorMessage(response.status, body, contentType));
+    error.code = typeof body === "object" && body ? body.code : "";
+    error.status = response.status;
+    throw error;
   }
   return body;
 }
@@ -759,20 +780,13 @@ function MapView({
   showBoundaryLayer,
   showStateBorders,
   showLgaBorders,
-  showWardBorders,
   showBoundaryNames,
   partyMapAnalysis,
-  historicalMapAnalysis,
-  onHistoricalLgaSelect,
-  onHistoricalWardSelect,
-  onHistoricalShowWards,
-  onHistoricalShowPollingUnits,
-  onHistoricalPollingUnitSelect,
-  onHistoricalBack,
-  onHistoricalClose,
   selectedBoundaryState,
   onBoundarySelect,
   onBoundaryClear,
+  focusedOfficerId,
+  onClearOfficerFocus,
 }) {
   const el = useRef(null);
   const leaflet = useRef(null);
@@ -785,16 +799,11 @@ function MapView({
   const lgaOverlay = useRef(null);
   const nigeriaStateOverlay = useRef(null);
   const nigeriaLgaOverlay = useRef(null);
-  const wardOverlay = useRef(null);
   const nigeriaStateLabels = useRef([]);
   const nigeriaLgaLabels = useRef([]);
-  const wardLabels = useRef([]);
   const hoverBoundaryLayer = useRef(null);
   const [layerPanelOpen, setLayerPanelOpen] = useState(false);
   const [oyoBoundaries, setOyoBoundaries] = useState({ state: null, lgas: null });
-  const [oyoWardBoundaries, setOyoWardBoundaries] = useState({ lga: "", wards: null, notice: "" });
-  const [selectedWardBoundaryLga, setSelectedWardBoundaryLga] = useState("");
-  const renderLgaSelectionLayer = showLgaBorders && !historicalMapAnalysis?.wardDetail;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -817,28 +826,6 @@ function MapView({
     () => Object.fromEntries(Object.entries(partyMapAnalysis?.byLga || {}).map(([name, result]) => [normalizeLgaMatch(name), result])),
     [partyMapAnalysis],
   );
-  const historicalLgaResults = useMemo(
-    () => Object.fromEntries(Object.entries(historicalMapAnalysis?.byLga || {}).map(([name, result]) => [normalizeLgaMatch(name), result])),
-    [historicalMapAnalysis],
-  );
-  const historicalWardResults = useMemo(
-    () => Object.fromEntries((historicalMapAnalysis?.wardDetail?.areas || []).map(result => [normalizeLgaMatch(result.name), result])),
-    [historicalMapAnalysis?.wardDetail],
-  );
-  const displayParty = (party) => party === "PDP" ? "APM" : party;
-  const historicalPartyColor = (party) => ({
-    APC: '#2563eb', PDP: '#dc2626', APM: '#dc2626', LP: '#16a34a', NNPP: '#7c3aed', ACCORD: '#f59e0b', A: '#f59e0b', ADC: '#0891b2', SDP: '#ea580c',
-  })[String(party || '').toUpperCase()] || '#64748b';
-  const compactPartyShares = (area) => {
-    return (area?.parties || [])
-      .filter(item => Number(item.percentage || 0) > 0)
-      .slice(0, 4);
-  };
-  const historicalWardForFeature = feature => {
-    const properties = feature?.properties || {};
-    const names = [properties.ward, ...String(properties.ward_alt_names || "").split(",")].map(normalizeLgaMatch).filter(Boolean);
-    return names.map(name => historicalWardResults[name]).find(Boolean);
-  };
 
   const getStateKey = (feature) =>
     normalizeBoundaryKey(
@@ -1013,9 +1000,17 @@ function MapView({
       overlays.current.push(marker);
     });
     officers.forEach((item) => {
+      const locationName = item.locationName || item.unit || "Last known location";
+      const shortName = String(item.name || "User").trim().split(/\s+/).pop();
+      const isFocused = item.id === focusedOfficerId;
+      const coordinateLabel = `${Number(item.lat).toFixed(5)}, ${Number(item.lng).toFixed(5)}`;
+      const freshnessLabel = item.hasLiveLocation ? "Current live location" : "Last known location";
+      const updatedLabel = item.lastSeen
+        ? `Updated ${new Date(item.lastSeen).toLocaleString()}`
+        : "No live update time available";
       const icon = L.divIcon({
         className: "",
-        html: `<div class="officer-marker ${item.status.toLowerCase()}"><span></span>${item.name.split(" ")[1]}</div>`,
+        html: `<div class="officer-marker ${item.status.toLowerCase()}"><span></span>${escapeMapText(shortName)}</div>`,
         iconSize: [92, 28],
         iconAnchor: [12, 14],
       });
@@ -1023,8 +1018,29 @@ function MapView({
         leaflet.current,
       );
       marker.bindPopup(
-        `<div class="marker-popup"><b>${item.name}</b><br>${item.unit}<br>Status: ${item.status}${item.lastSeen ? `<br>Last GPS: ${new Date(item.lastSeen).toLocaleTimeString()}` : ""}${item.speed != null ? `<br>Speed: ${Math.round(item.speed * 3.6)} km/h` : ""}<div class="marker-actions"><button data-tool="measure">Measure from here</button><button data-tool="route">Route from here</button></div></div>`,
+        `<div class="marker-popup"><b>${escapeMapText(item.name)}</b><br>${escapeMapText(locationName)}<br>Status: ${escapeMapText(item.status)}${item.lastSeen ? `<br>Last GPS: ${new Date(item.lastSeen).toLocaleTimeString()}` : ""}${item.speed != null ? `<br>Speed: ${Math.round(item.speed * 3.6)} km/h` : ""}<div class="marker-actions"><button data-tool="measure">Measure from here</button><button data-tool="route">Route from here</button></div></div>`,
       );
+      marker.bindTooltip(
+        `<div class="officer-location-label"><div class="officer-location-label-head"><strong>${escapeMapText(item.name)}</strong>${isFocused ? '<button type="button" data-close-officer-label aria-label="Close user location label">×</button>' : ""}</div><span>${escapeMapText(freshnessLabel)}</span><b>${escapeMapText(locationName)}</b><small>${escapeMapText(coordinateLabel)}</small><em>${escapeMapText(updatedLabel)}</em></div>`,
+        {
+          permanent: isFocused,
+          direction: "top",
+          offset: [0, -10],
+          className: "officer-location-tooltip",
+          interactive: isFocused,
+        },
+      );
+      marker.on("tooltipopen", (event) => {
+        const closeButton = event.tooltip
+          .getElement()
+          ?.querySelector("[data-close-officer-label]");
+        if (closeButton) {
+          closeButton.onclick = (clickEvent) => {
+            L.DomEvent.stopPropagation(clickEvent);
+            onClearOfficerFocus?.("");
+          };
+        }
+      });
       marker.on("popupopen", (event) =>
         event.popup
           .getElement()
@@ -1085,7 +1101,7 @@ function MapView({
       );
       overlays.current.push(marker);
     });
-  }, [incidents, officers, cameras, emergencyAlerts, onMarkerTool]);
+  }, [incidents, officers, cameras, emergencyAlerts, onMarkerTool, focusedOfficerId, onClearOfficerFocus]);
   useEffect(() => {
     if (!leaflet.current) return;
     areaLayers.current.forEach((x) => x.remove());
@@ -1263,7 +1279,7 @@ function MapView({
             const opacity = layerItem.opacity ?? 0.65;
             const category = layerGeometry(layerItem);
             const lineWeight = Number(layerItem.lineWeight || 2);
-            const pointSize = Number(layerItem.pointSize ?? 2);
+            const pointSize = Number(layerItem.pointSize || 24);
             const pointIcon = layerItem.pointIcon || "pin";
             const pointIconColor = layerItem.pointIconColor || "#ffffff";
             const popupFields = String(layerItem.popupFields || "")
@@ -1309,10 +1325,8 @@ function MapView({
                   feature.properties?.shapeName ||
                   feature.properties?.title ||
                   layerItem.name;
-                if (layerItem.showLabels !== false && label) {
-                  const labelColor = safeHexColor(layerItem.labelColor);
-                  layerGeo.bindTooltip(`<span style="color:${labelColor}!important">${escapeHtml(label)}</span>`, { sticky: true });
-                }
+                if (layerItem.showLabels !== false && label)
+                  layerGeo.bindTooltip(String(label), { sticky: true });
                 const fields = popupFields.length
                   ? popupFields
                   : Object.keys(feature.properties || {}).slice(0, 6);
@@ -1439,7 +1453,7 @@ function MapView({
     nigeriaLgaOverlay.current = null;
     nigeriaLgaLabels.current.forEach(l => l.remove());
     nigeriaLgaLabels.current = [];
-    if (!renderLgaSelectionLayer) return;
+    if (!showLgaBorders) return;
     const uploadedLgaFeatures = mapLayers
       .filter(l => l.visible !== false && l.type === "geojson" && l.data?.features)
       .flatMap(l => l.data.features.filter(f => {
@@ -1462,7 +1476,6 @@ function MapView({
         pane: "overlayPane",
         style: (feature) => {
           const name = feature.properties?.ADM2_EN || feature.properties?.lga_name || feature.properties?.LGA || feature.properties?.lga || feature.properties?.LTNAME || feature.properties?.name || "";
-          const historical = historicalLgaResults[normalizeLgaMatch(name)];
           const status = partyLgaResults[normalizeLgaMatch(name)]?.status || (partyMapAnalysis?.party ? "no-data" : "");
           const colors = {
             winning: { line: "#16a34a", fill: "#22c55e" },
@@ -1470,14 +1483,12 @@ function MapView({
             tied: { line: "#ca8a04", fill: "#facc15" },
             "no-data": { line: "#ca8a04", fill: "#facc15" },
           };
-          const selectedColor = historical
-            ? { line: "#22d3ee", fill: historicalPartyColor(historical.winner) }
-            : colors[status];
+          const selectedColor = colors[status];
           return {
             color: selectedColor?.line || "#22d3ee",
-            weight: historicalMapAnalysis ? 5 : selectedColor ? 3.5 : 2.75,
+            weight: selectedColor ? 3.5 : 2.75,
             dashArray: selectedColor ? "" : "7 5",
-            fillOpacity: historicalMapAnalysis ? 0.82 : selectedColor ? 0.42 : 0.025,
+            fillOpacity: selectedColor ? 0.42 : 0.025,
             fillColor: selectedColor?.fill || "#22d3ee",
             opacity: 1,
           };
@@ -1492,38 +1503,23 @@ function MapView({
             feature.properties?.name ||
             "";
           if (name) {
-            const historical = historicalLgaResults[normalizeLgaMatch(name)];
             const performance = partyLgaResults[normalizeLgaMatch(name)];
             const status = performance?.status || (partyMapAnalysis?.party ? "no-data" : "");
             const statusLabel = status === "winning" ? "Winning" : status === "losing" ? "Losing" : status === "tied" ? "Tied" : status === "no-data" ? "No submitted result" : "";
             const margin = performance?.margin ? ` · margin ${Number(performance.margin).toLocaleString()}` : "";
-            const historicalShares = compactPartyShares(historical).map(item => `${escapeMapText(item.party)} ${escapeMapText(item.percentage)}%`).join(" · ");
-            const tooltip = historicalMapAnalysis
-              ? `<strong>${escapeMapText(name)}</strong><br>Winner: ${escapeMapText(historical?.winner || "No recorded result")}<br>${historicalShares || "No recorded party shares"}`
-              : partyMapAnalysis?.party
+            const tooltip = partyMapAnalysis?.party
               ? `<strong>${escapeMapText(name)}</strong><br>${escapeMapText(partyMapAnalysis.party)}: ${escapeMapText(statusLabel)}${escapeMapText(margin)}`
               : escapeMapText(name);
             layerGeo.bindTooltip(tooltip, { permanent: false, sticky: true, className: "nigeria-lga-tooltip" });
           }
           layerGeo.on({
             mouseover: (e) => {
-              e.target.setStyle({ weight: historicalMapAnalysis ? 6 : 4, color: "#a5f3fc", fillOpacity: historicalMapAnalysis ? 0.95 : 0.14, opacity: 1 });
+              e.target.setStyle({ weight: 4, color: "#a5f3fc", fillOpacity: 0.14, opacity: 1 });
               if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
             },
             mouseout: (e) => lgaLayer.resetStyle(e.target),
             click: (e) => {
               L.DomEvent.stopPropagation(e);
-              if (historicalMapAnalysis) {
-                if (layerGeo.getBounds?.().isValid?.()) leaflet.current?.fitBounds(layerGeo.getBounds(), { padding: [40, 40], maxZoom: 11 });
-                onHistoricalLgaSelect?.(name);
-                return;
-              }
-              if (showWardBorders) {
-                setSelectedWardBoundaryLga(name);
-                if (layerGeo.getBounds?.().isValid?.()) leaflet.current?.fitBounds(layerGeo.getBounds(), { padding: [30, 30], maxZoom: 12 });
-                onBoundarySelect?.(String(name).trim().toLowerCase().replace(/\s+/g, " "), name);
-                return;
-              }
               const key = String(name).trim().toLowerCase().replace(/\s+/g, " ");
               onBoundarySelect?.(key, name);
             },
@@ -1563,98 +1559,7 @@ function MapView({
         } catch {}
       });
     }
-  }, [renderLgaSelectionLayer, showWardBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults, historicalMapAnalysis, historicalLgaResults, onHistoricalLgaSelect]);
-
-  useEffect(() => {
-    const lga = historicalMapAnalysis?.selectedLga?.name || (showWardBorders ? selectedWardBoundaryLga : "");
-    if (!lga && !showWardBorders) {
-      setOyoWardBoundaries({ lga: "", wards: null, notice: "" });
-      return undefined;
-    }
-    const controller = new AbortController();
-    const appUrl = `${API}/boundaries/oyo/wards${lga ? `?lga=${encodeURIComponent(lga)}` : ""}`;
-    const providerParams = new URLSearchParams({
-      where: lga ? `state = 'Oyo' AND lga = '${String(lga).replaceAll("'", "''")}'` : "state = 'Oyo'",
-      outFields: "OBJECTID,state,lga,lga_alt_names,ward,ward_alt_names,source,date",
-      returnGeometry: "true",
-      outSR: "4326",
-      maxAllowableOffset: "0.0005",
-      geometryPrecision: "5",
-      f: "geojson",
-    });
-    fetch(appUrl, { signal: controller.signal })
-      .then(async response => {
-        if (response.ok) return response.json();
-        const providerResponse = await fetch(`https://services3.arcgis.com/BU6Aadhn6tbBEdyk/arcgis/rest/services/GRID3_NGA_operational_wards_v3_0/FeatureServer/0/query?${providerParams}`, { signal: controller.signal });
-        if (!providerResponse.ok) throw new Error("Ward boundary service unavailable");
-        const wards = await providerResponse.json();
-        return { wards, lga: lga || "Oyo State", notice: "Operational GRID3 ward boundaries; not authoritative." };
-      })
-      .then(data => setOyoWardBoundaries({ lga, wards: data.wards || null, notice: data.notice || "" }))
-      .catch(error => {
-        if (error.name !== "AbortError") setOyoWardBoundaries({ lga, wards: null, notice: error.message || "Ward boundaries unavailable" });
-      });
-    return () => controller.abort();
-  }, [historicalMapAnalysis?.selectedLga?.name, selectedWardBoundaryLga, showWardBorders]);
-
-  useEffect(() => {
-    if (!showWardBorders) setSelectedWardBoundaryLga("");
-  }, [showWardBorders]);
-
-  useEffect(() => {
-    const map = leaflet.current;
-    if (!map) return;
-    wardOverlay.current?.remove();
-    wardOverlay.current = null;
-    wardLabels.current.forEach(label => label.remove());
-    wardLabels.current = [];
-    const features = oyoWardBoundaries.wards?.features || [];
-    const historicalWardMode = Boolean(historicalMapAnalysis?.selectedLga && historicalMapAnalysis?.wardDetail);
-    if ((!historicalWardMode && !showWardBorders) || !features.length) return;
-    const layer = L.geoJSON({ type: "FeatureCollection", features }, {
-      pane: "overlayPane",
-      style: feature => {
-        const name = feature.properties?.ward || "";
-        const result = historicalWardForFeature(feature);
-        const fillColor = result ? historicalPartyColor(result.winner) : "#5a172b";
-        return { color: result ? "#f0abfc" : "#f5dc9a", weight: 2.7, dashArray: result ? "" : "5 4", fillColor, fillOpacity: result ? 0.28 : 0.06, opacity: 1 };
-      },
-      onEachFeature: (feature, wardLayer) => {
-        const name = feature.properties?.ward || feature.properties?.ward_alt_names || "Ward";
-        const result = historicalWardForFeature(feature);
-        const shares = compactPartyShares(result).map(item => `${escapeMapText(item.party)} ${escapeMapText(item.percentage)}%`).join(" · ");
-        wardLayer.bindTooltip(`<strong>${escapeMapText(name)}</strong><br>${result ? `Winner: ${escapeMapText(result.winner)}<br>${shares}` : "Historical result not matched"}`, { sticky: true, className: "nigeria-lga-tooltip" });
-        wardLayer.on({
-          mouseover: event => {
-            event.target.setStyle({ weight: 4, color: "#ffffff", fillOpacity: 0.42 });
-            event.target.bringToFront();
-          },
-          mouseout: event => layer.resetStyle(event.target),
-          click: event => {
-            L.DomEvent.stopPropagation(event);
-            const selectedWard = historicalWardForFeature(feature);
-            if (selectedWard && historicalMapAnalysis) onHistoricalWardSelect?.(selectedWard);
-            else onBoundarySelect?.(String(name).trim().toLowerCase().replace(/\s+/g, " "), name);
-          },
-        });
-        if (showBoundaryNames) {
-          const center = wardLayer.getBounds().getCenter();
-          wardLabels.current.push(L.marker(center, {
-            icon: L.divIcon({ className: "ward-name-label", html: `<div class="ward-label-text">${escapeMapText(name)}</div>`, iconSize: [110, 26], iconAnchor: [55, 13] }),
-            interactive: false,
-            pane: "overlayPane",
-          }).addTo(map));
-        }
-      },
-    }).addTo(map);
-    wardOverlay.current = layer;
-    layer.bringToFront();
-    return () => {
-      layer.remove();
-      wardLabels.current.forEach(label => label.remove());
-      wardLabels.current = [];
-    };
-  }, [oyoWardBoundaries.wards, historicalMapAnalysis, historicalMapAnalysis?.selectedLga, historicalMapAnalysis?.wardDetail, historicalWardResults, showWardBorders, showBoundaryNames, onHistoricalWardSelect, onBoundarySelect]);
+  }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
 
   useEffect(() => {
     const map = leaflet.current;
@@ -1882,39 +1787,6 @@ function MapView({
           <span><i className="losing" /> Losing</span>
           <span><i className="undecided" /> Tied / no result</span>
         </div>
-      )}
-      {historicalMapAnalysis && (
-        <aside className="historical-map-panel" aria-label="Previous election history">
-          <header>
-            <div><span>REAL TIME FEEDBACK</span><strong>{historicalMapAnalysis.year} {historicalMapAnalysis.election}</strong></div>
-            <button type="button" onClick={onHistoricalClose} aria-label="Close previous election history">×</button>
-          </header>
-          {historicalMapAnalysis.error && <p className="historical-map-error">{historicalMapAnalysis.error}</p>}
-          {historicalMapAnalysis.loading && <p className="historical-map-loading">Loading historical distribution…</p>}
-          {!historicalMapAnalysis.loading && !historicalMapAnalysis.selectedLga && <>
-            <div className="historical-level-heading"><span>LEVEL 1</span><strong>Local governments</strong><small>Select an LGA to review it and open its wards.</small></div>
-            <div className="historical-winner-legend">{Object.entries(historicalMapAnalysis.winnerCounts || {}).map(([party, count]) => <span key={party}><i style={{ background: historicalPartyColor(party) }} /> {displayParty(party)}: {count} LGA{count === 1 ? "" : "s"}</span>)}</div>
-            <div className="historical-area-list historical-lga-list">{(historicalMapAnalysis.areas || Object.values(historicalMapAnalysis.byLga || {})).map(area => <button type="button" className="historical-result-row" key={area.id || area.name} onClick={() => onHistoricalLgaSelect?.(area.name)}><span className="historical-row-heading"><span><i style={{ background: historicalPartyColor(area.winner) }} /><b>{area.name}</b></span><strong>{displayParty(area.winner) || "No result"}</strong></span><span className="historical-share-strip">{compactPartyShares(area).map(item => <small className="historical-share-chip" key={item.party}><i style={{ background: historicalPartyColor(item.party) }} /><b>{displayParty(item.party)}</b><em>{item.percentage}%</em></small>)}</span><span className="historical-row-action">Select LGA <b>→</b></span></button>)}</div>
-          </>}
-          {historicalMapAnalysis.selectedLga && <>
-            <div className="historical-breadcrumb">
-              <button type="button" onClick={() => onHistoricalBack?.("lgas")}>Oyo LGAs</button><span>›</span>
-              {historicalMapAnalysis.selectedWard ? <button type="button" onClick={() => onHistoricalBack?.("wards")}>{historicalMapAnalysis.selectedLga.name}</button> : <b>{historicalMapAnalysis.selectedLga.name}</b>}
-              {historicalMapAnalysis.selectedWard && <><span>›</span>{historicalMapAnalysis.selectedPollingUnit ? <button type="button" onClick={() => onHistoricalBack?.("polling-units")}>{historicalMapAnalysis.selectedWard.name}</button> : <b>{historicalMapAnalysis.selectedWard.name}</b>}</>}
-            </div>
-            <div className="historical-selected-summary">
-              <span className="historical-selection-level">{historicalMapAnalysis.selectedPollingUnit ? "POLLING UNIT" : historicalMapAnalysis.selectedWard ? "WARD" : "LOCAL GOVERNMENT"}</span>
-              <div className="historical-summary-heading"><strong>{historicalMapAnalysis.selectedPollingUnit?.name || historicalMapAnalysis.selectedWard?.name || historicalMapAnalysis.selectedLga.name}</strong><span><i style={{ background: historicalPartyColor(historicalMapAnalysis.selectedPollingUnit?.winner || historicalMapAnalysis.selectedWard?.winner || historicalMapAnalysis.selectedLga.winner) }} /> Winner: <b>{historicalMapAnalysis.selectedPollingUnit?.winner || historicalMapAnalysis.selectedWard?.winner || historicalMapAnalysis.selectedLga.winner || "No result"}</b></span></div>
-              <div className="historical-share-strip">{compactPartyShares(historicalMapAnalysis.selectedPollingUnit || historicalMapAnalysis.selectedWard || historicalMapAnalysis.selectedLga).map(item => <small className="historical-share-chip" key={item.party}><i style={{ background: historicalPartyColor(item.party) }} /><b>{item.party}</b><em>{item.percentage}%</em></small>)}</div>
-              {historicalMapAnalysis.selectedPollingUnit && <div className="historical-pu-meta"><small>Registered: {historicalMapAnalysis.selectedPollingUnit.registeredVoters?.toLocaleString?.() ?? "Unavailable"}</small><small>Accredited: {historicalMapAnalysis.selectedPollingUnit.accreditedVoters?.toLocaleString?.() ?? "Unavailable"}</small><small>Recorded votes: {historicalMapAnalysis.selectedPollingUnit.totalVotes?.toLocaleString?.() ?? "Unavailable"}</small>{historicalMapAnalysis.selectedPollingUnit.confidence != null && <small>Transcription confidence: {historicalMapAnalysis.selectedPollingUnit.confidence}%</small>}</div>}
-              {!historicalMapAnalysis.selectedWard && !historicalMapAnalysis.wardDetail && historicalMapAnalysis.availableLevels?.includes("ward") && <button type="button" className="historical-primary-action" onClick={onHistoricalShowWards}>Show wards on map <span>→</span></button>}
-              {historicalMapAnalysis.selectedWard && !historicalMapAnalysis.pollingUnitDetail && <button type="button" className="historical-primary-action" onClick={onHistoricalShowPollingUnits}>Show polling units <span>→</span></button>}
-            </div>
-            {historicalMapAnalysis.detailLoading && <p className="historical-map-loading">Loading the next level…</p>}
-            {!historicalMapAnalysis.detailLoading && !historicalMapAnalysis.selectedPollingUnit && historicalMapAnalysis.detail?.areas?.length > 0 && <><div className="historical-level-heading"><span>{historicalMapAnalysis.detail.level === "ward" ? "LEVEL 2" : "LEVEL 3"}</span><strong>{historicalMapAnalysis.detail.level === "ward" ? `Wards in ${historicalMapAnalysis.selectedLga.name}` : `Polling units in ${historicalMapAnalysis.selectedWard?.name || "selected ward"}`}</strong><small>Party percentages are shown for every area.</small></div><div className="historical-area-list">{historicalMapAnalysis.detail.areas.map(area => <button type="button" className="historical-result-row" key={area.id || area.code || area.name} onClick={() => historicalMapAnalysis.detail.level === "ward" ? onHistoricalWardSelect?.(area) : onHistoricalPollingUnitSelect?.(area)}><span className="historical-row-heading"><span><i style={{ background: historicalPartyColor(area.winner) }} /><b>{area.name}</b><em>{area.code}</em></span><strong>{area.winner || "No result"}</strong></span><span className="historical-share-strip">{compactPartyShares(area).map(item => <small className="historical-share-chip" key={item.party}><i style={{ background: historicalPartyColor(item.party) }} /><b>{item.party}</b><em>{item.percentage}%</em></small>)}</span><span className="historical-row-action">{historicalMapAnalysis.detail.level === "ward" ? "Select ward" : "View polling unit"} <b>→</b></span></button>)}</div></>}
-            {!historicalMapAnalysis.detailLoading && historicalMapAnalysis.detailMessage && <p className="historical-map-instruction">{historicalMapAnalysis.detailMessage}</p>}
-          </>}
-        </aside>
       )}
       {mapLayers.length > 0 && !layerPanelOpen && (
         <button
@@ -2373,8 +2245,8 @@ function AnalyticsPanel({
   );
 }
 
-function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", initialView = "pulse", onPartyMapChange, onShowHistoricalMap, onFocusLocation, onTool, onCsv, onClear }) {
-  const [view, setView] = useState(initialView);
+function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", onPartyMapChange, onFocusLocation, onTool, onCsv, onClear }) {
+  const [view, setView] = useState("pulse");
   const [resultSourceFilter, setResultSourceFilter] = useState("");
   const [focusParty, setFocusParty] = useState(initialFocusParty);
   const [outlook, setOutlook] = useState("");
@@ -2398,10 +2270,8 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
   const [irevCompareLoading, setIrevCompareLoading] = useState(false);
   const [fieldMismatchDetail, setFieldMismatchDetail] = useState(null);
   useEffect(() => {
-    if (view !== "news" || news.length) return;
-    setNewsLoading(true);
-    request("/news?q=Oyo State politics INEC elections parties security SBK PDP governorship 2027", authToken).then(data => setNews(data.articles || [])).catch(error => { setNews([]); setNewsError(error.message || "News service unavailable"); }).finally(() => setNewsLoading(false));
-  }, [view, news.length]);
+    if (view === "news") setView("pulse");
+  }, [view]);
   const loadIrevPilot = async (force = false) => {
     setIrevLoading(true);
     setIrevError("");
@@ -2418,8 +2288,14 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
   };
   useEffect(() => {
     if (!["irev", "post"].includes(view)) return undefined;
-    loadIrevPilot();
-    return undefined;
+    let stopped = false;
+    let timer = null;
+    const poll = async () => {
+      const pilot = await loadIrevPilot();
+      if (!stopped) timer = window.setTimeout(poll, Math.max(60_000, Number(pilot?.refreshIntervalMs) || 300_000));
+    };
+    poll();
+    return () => { stopped = true; window.clearTimeout(timer); };
   }, [view, authToken]);
   useEffect(() => {
     if (!["irev", "post"].includes(view) || irevPublishedResults) return;
@@ -2427,16 +2303,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
       .then(setIrevPublishedResults)
       .catch(error => setIrevError(error.message || "Prepared Osun results are unavailable."));
   }, [view, authToken, irevPublishedResults]);
-  const openIrevPreview = async (upload) => {
-    setIrevPreview({ ...upload, imageLoading: !upload.imageUrl, imageError: "" });
-    if (upload.imageUrl) return;
-    try {
-      const liveUpload = await request(`/irev/osun/uploads/${encodeURIComponent(upload.puCode)}`, authToken);
-      setIrevPreview((current) => current?.puCode === upload.puCode ? { ...current, ...liveUpload, imageLoading: false, imageError: "" } : current);
-    } catch (error) {
-      setIrevPreview((current) => current?.puCode === upload.puCode ? { ...current, imageLoading: false, imageError: error.message || "The official image is unavailable." } : current);
-    }
-  };
+  const openIrevPreview = (upload) => setIrevPreview(upload);
   const reports = useMemo(
     () => incidents.filter((item) => item.reportType === POLLING_RESULT_TYPE),
     [incidents],
@@ -2743,7 +2610,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
     const pilot = await loadIrevPilot();
     setIrevCompareLoading(false);
     if (pilot?.configured && pilot.uploads?.length) setCompareWithIrev(true);
-    else setIrevError("Oyo 2027 governorship IReV results are not available yet.");
+    else setIrevError("Osun IReV results are not available right now.");
   };
   const partyVoteFor = (row, party) => Number(row?.results?.find((result) => normalizeResultKeyPart(result.party) === normalizeResultKeyPart(party))?.votes || 0);
   const renderFieldVote = (row, party) => {
@@ -2770,16 +2637,16 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
     <div className="results-center">
       <header className="results-center-head">
         <div>
-          <span className="eyebrow">ELECTION ANALYSIS</span>
-          <h1>{view === "pre" ? "Pre-Election Analysis" : view === "post" ? "Post-Election Analysis" : "Election Operations"}</h1>
-          <p>{view === "pre" ? "Sentiment and previous election records." : view === "post" ? "Evidence, results, and operational lessons." : "Live operational pulse, election results, actions, and news."}</p>
+          <span className="eyebrow">INTELLIGENCE DASHBOARD</span>
+          <h1>Analytics Dashboard</h1>
+          <p>Live operational pulse, election results, and actions.</p>
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
-      {!['pre', 'post'].includes(view) && <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>}
+      <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>
       <main className="results-center-body">
         {view === "pulse" && <AnalyticsPanel incidents={incidents} officers={officers} mapLayers={mapLayers} selected={selected} onClose={onClose} onTool={onTool} onCsv={onCsv} onClear={onClear} embedded />}
-        {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} onShowHistoricalMap={onShowHistoricalMap} />}
+        {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} />}
         {["breakdown", "winloss", "winloss-lga"].includes(view) && <div className="wl-sub-tabs result-view-tabs"><button className={view === "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("breakdown")}>Polling Unit Breakdown</button><button className={view !== "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("winloss")}>Win / Loss Analysis</button></div>}
         {["winloss", "winloss-lga"].includes(view) && <section className="result-total-strip"><article className="result-total-card grand"><span>Current projection</span><strong>{forecast.leader || "—"}</strong><small>{forecast.confidence}% indicative confidence; not a final result</small></article><article className="result-total-card"><span>Vote margin</span><strong>{forecast.margin.toLocaleString()}</strong><small>Against second place</small></article><article className="result-total-card"><span>Units covered</span><strong>{forecast.coverage.toLocaleString()}</strong><small>Unique submitted units</small></article></section>}
         {view === "news" && <section className="result-table-card"><div className="result-table-title"><div><h2>Oyo State News</h2><p>General Oyo State coverage, including politics, INEC, elections, parties, governance, security, and major local developments.</p></div><div className="analysis-actions news-actions"><button className="primary action-btn refresh-news-btn" onClick={() => { setNews([]); setNewsSummary(""); setNewsSummaryError(""); setView("news"); }}><FaSyncAlt /> <span>Refresh</span></button><button className="secondary action-btn summary-action-btn" disabled={!news.length || newsSummaryLoading} onClick={() => { setNewsSummaryLoading(true); setNewsSummaryError(""); request("/news/summary", authToken, { method: "POST", body: JSON.stringify({ articles: news }) }).then((x) => { setNewsSummary(x.summary || "No summary available yet."); if (x.provider === "local") setNewsSummaryError("The summary service was unavailable, so a local fallback was generated."); else setNewsSummaryError(""); }).catch((error) => { setNewsSummary(""); setNewsSummaryError(error.message || "The summary request failed."); }).finally(() => setNewsSummaryLoading(false)); }}><MdFlashOn /> <span>{newsSummaryLoading ? "Working…" : "Summary"}</span></button></div></div>{newsSummary && <div className="news-summary">{cleanSummaryText(newsSummary)}</div>}{newsSummaryError && <p className="muted">{newsSummaryError}</p>}{newsLoading ? <p>Loading current headlines…</p> : <div className="news-list">{news.map(item => <article className="news-item" key={item.url}><a href={item.url} target="_blank" rel="noreferrer"><h3>{item.title}</h3></a><small>{item.source} · {item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "Recent"}</small></article>)}{!news.length && <p>No current Oyo State headlines available.</p>}</div>}</section>}
@@ -2866,12 +2733,12 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
         </>}
         {view === "irev" && <section className="irev-pilot-card">
           <header className="irev-pilot-head">
-            <div><span className="eyebrow">INEC ARCHIVE · SHOWCASE PILOT</span><h2>INEC IReV — Osun</h2><p>Shows the saved polling-unit archive and prepared Osun results.</p></div>
-            <div className="irev-pilot-actions"><a href={irevPilot?.portalUrl || "https://irev.inecnigeria.org/"} target="_blank" rel="noreferrer">Open IReV</a></div>
+            <div><span className="eyebrow">LIVE OFFICIAL SOURCE · SHOWCASE PILOT</span><h2>INEC IReV — Osun</h2><p>Reads public polling-unit upload metadata and original result-sheet images from IReV every 60 seconds.</p></div>
+            <div className="irev-pilot-actions"><a href={irevPilot?.portalUrl || "https://irev.inecnigeria.org/"} target="_blank" rel="noreferrer">Open IReV</a><button type="button" disabled={irevLoading} onClick={() => loadIrevPilot(true)}><FaSyncAlt /> {irevLoading ? "Checking…" : "Refresh now"}</button></div>
           </header>
           {irevError && <div className="error">{irevError}</div>}
           {irevPilot && <>
-            {irevSection === "results" && irevPublishedResults?.totals?.length > 0 && <section className="result-total-strip irev-result-totals" aria-label="Published party vote totals">{irevPublishedResults.totals.map(({ party, name, votes }) => <article className="result-total-card" key={party}><span>{name || party} <b>({party})</b></span><strong>{Number(votes || 0).toLocaleString()}</strong></article>)}</section>}
+            {irevSection === "results" && irevResultRows.length > 0 && <section className="result-total-strip irev-result-totals">{irevTopParties.map((party) => <article className="result-total-card" key={party}><span>{party}</span><strong>{irevOnlyTotals[party].toLocaleString()}</strong></article>)}</section>}
             <div className="irev-pilot-stats"><div><span>Uploaded</span><strong>{irevPilot.submitted.toLocaleString()}</strong></div><div><span>Expected</span><strong>{irevPilot.expected.toLocaleString()}</strong></div><div><span>Coverage</span><strong>{irevPilot.expected ? `${((irevPilot.submitted / irevPilot.expected) * 100).toFixed(1)}%` : "—"}</strong></div><div><span>Last checked</span><strong>{new Date(irevPilot.fetchedAt).toLocaleTimeString()}</strong></div></div>
             {irevPilot.notice && <p className="irev-verification-note"><MdWarning /> {irevPilot.notice}</p>}
             <div className="wl-sub-tabs irev-sub-tabs"><button className={irevSection === "uploads" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setIrevSection("uploads")}>Polling-unit uploads</button>{irevResultRows.length > 0 && <button className={irevSection === "results" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setIrevSection("results")}>Published results</button>}</div>
@@ -2880,15 +2747,16 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
             <div className="irev-table-scroll">
               <table className="result-progress-table irev-full-table">
                 <thead><tr><th>#</th><th>LGA</th><th>Ward</th><th>Polling unit</th><th>PU code</th><th>Uploaded</th><th>Status</th><th>Result sheet</th></tr></thead>
-                <tbody>{filteredIrevUploads.map((upload, index) => <tr key={upload.id}><td>{index + 1}</td><td><b>{upload.lga || "—"}</b></td><td>{upload.ward || "—"}</td><td>{upload.pollingUnit || "—"}</td><td><strong>{upload.puCode}</strong></td><td>{upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : "—"}</td><td><span className="irev-awaiting-badge">{upload.verificationStatus}</span></td><td><button className="irev-sheet-link" type="button" onClick={() => openIrevPreview(upload)}>{upload.imageUrl ? "View image" : "View result"}</button></td></tr>)}{!filteredIrevUploads.length && <tr><td className="result-empty" colSpan="8">No Osun result sheets are available from the saved archive.</td></tr>}</tbody>
+                <tbody>{filteredIrevUploads.map((upload, index) => <tr key={upload.id}><td>{index + 1}</td><td><b>{upload.lga || "—"}</b></td><td>{upload.ward || "—"}</td><td>{upload.pollingUnit || "—"}</td><td><strong>{upload.puCode}</strong></td><td>{upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : "—"}</td><td><span className="irev-awaiting-badge">{upload.verificationStatus}</span></td><td><button className="irev-sheet-link" type="button" onClick={() => openIrevPreview(upload)}>View image</button></td></tr>)}{!filteredIrevUploads.length && <tr><td className="result-empty" colSpan="8">No Osun result sheets are available from the live source right now.</td></tr>}</tbody>
               </table>
             </div>
             </>}
             {irevSection === "results" && <>
+              <p className="irev-verification-note"><MdWarning /> Prepared polling-unit vote figures for demonstration. No image reading is performed. Source: <a href={irevPublishedResults?.sourceUrl} target="_blank" rel="noreferrer">{irevPublishedResults?.sourceName}</a>.</p>
               <div className="irev-table-toolbar"><div><strong>Polling-unit result counts</strong><span>{filteredIrevResultRows.length.toLocaleString()} of {irevResultRows.length.toLocaleString()} units shown</span></div><label><FaSearch /><input value={irevSearch} onChange={(event) => setIrevSearch(event.target.value)} placeholder="Search LGA, ward, polling unit or PU code" />{irevSearch && <button type="button" onClick={() => setIrevSearch("")} aria-label="Clear result search"><FaTimes /></button>}</label></div>
               <div className="irev-table-scroll"><table className="result-progress-table irev-results-table"><thead><tr><th>LGA</th><th>Ward</th><th>Polling unit</th><th>PU code</th><th>Winner</th>{irevTopParties.slice(0, 3).map((party) => <th key={party}>{party}</th>)}</tr></thead><tbody>{filteredIrevResultRows.map((row) => <tr key={row.id}><td><b>{row.lga}</b></td><td>{row.ward}</td><td>{row.pollingUnit}</td><td><strong>{row.puCode}</strong></td><td><b>{row.winner}</b></td>{irevTopParties.slice(0, 3).map((party) => <td key={party}><strong>{Number(row.results.find((result) => result.party === party)?.votes || 0).toLocaleString()}</strong></td>)}</tr>)}{!filteredIrevResultRows.length && <tr><td className="result-empty" colSpan="8">No prepared polling-unit results match this search.</td></tr>}</tbody></table></div>
             </>}
-            {irevPreview && <div className="irev-preview-backdrop" onClick={() => setIrevPreview(null)}><section className="irev-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span className="eyebrow">INEC IREV RESULT SHEET</span><h2>{irevPreview.puCode}</h2><p>{irevPreview.lga} · {irevPreview.ward} · {irevPreview.pollingUnit}</p></div><button type="button" className="icon-btn" onClick={() => setIrevPreview(null)} aria-label="Close result preview"><FaTimes /></button></header><div className="irev-preview-body">{irevPreview.imageLoading ? <div className="irev-preview-image irev-result-sheet-fallback"><FaSyncAlt className="irev-compare-spinner" /><h3>Loading official result sheet…</h3><p className="muted">The image is fetched only when requested to keep the server stable.</p></div> : irevPreview.imageUrl ? <div className="irev-preview-image"><img src={irevPreview.imageUrl} alt={`INEC IReV result sheet for ${irevPreview.puCode}`} onError={() => setIrevPreview((current) => current ? { ...current, imageUrl: "", imageError: "The official image could not be displayed." } : current)} /></div> : <div className="irev-preview-image irev-result-sheet-fallback"><span className="eyebrow">PREPARED ARCHIVE</span><h3>{irevPreview.pollingUnit}</h3>{irevPreview.imageError && <p className="error">{irevPreview.imageError}</p>}{(() => { const result = irevResultRows.find(row => row.puCode === irevPreview.puCode); return result ? <div className="irev-fallback-votes">{result.results.map(item => <div key={item.party}><strong>{item.party}</strong><b>{Number(item.votes || 0).toLocaleString()}</b></div>)}</div> : <p className="muted">No vote figures are available for this polling unit.</p>; })()}</div>}<aside><div className="irev-preview-actions"><a href={irevPreview.imageUrl || irevPreview.sourceUrl} target="_blank" rel="noreferrer">{irevPreview.imageUrl ? "Open image" : "Open official source"}</a></div><h3>{irevPreview.imageLoading ? "Loading image" : irevPreview.imageUrl ? "Original result sheet" : "Saved result record"}</h3><p className="muted">{irevPreview.imageLoading ? "Please wait while the official sheet is retrieved." : irevPreview.imageUrl ? "This image is securely relayed from the official IReV source." : "The saved archive figures remain available even when the official image service is offline."}</p></aside></div></section></div>}
+            {irevPreview && <div className="irev-preview-backdrop" onClick={() => setIrevPreview(null)}><section className="irev-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span className="eyebrow">INEC IREV RESULT SHEET</span><h2>{irevPreview.puCode}</h2><p>{irevPreview.lga} · {irevPreview.ward} · {irevPreview.pollingUnit}</p></div><button type="button" className="icon-btn" onClick={() => setIrevPreview(null)} aria-label="Close image preview"><FaTimes /></button></header><div className="irev-preview-body"><div className="irev-preview-image"><img src={irevPreview.imageUrl} alt={`INEC IReV result sheet for ${irevPreview.puCode}`} /></div><aside><div className="irev-preview-actions"><a href={irevPreview.imageUrl} download target="_blank" rel="noreferrer">Download image</a></div><h3>Original result sheet</h3><p className="muted">This image is shown exactly as published on IReV. Prepared polling-unit vote figures are available in the Published results tab.</p></aside></div></section></div>}
           </>}
           {!irevPilot && irevLoading && <p className="muted">Connecting to the official IReV feed…</p>}
         </section>}
@@ -2897,7 +2765,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
           {fieldTopParties.map(party => <article className="result-total-card" key={party}><span>{party}</span><strong>{fieldResultTotals[party].toLocaleString()}</strong></article>)}
         </section>
         <section className="result-table-card">
-          <div className="result-table-title"><div><h2>Polling-unit breakdown</h2><p>{resultSourceFilter ? `${resultSourceFilter} submissions only. Select the active source card again to show all.` : "Agent and Supervisor counts with field evidence."}</p></div><div className="result-compare-actions"><button type="button" className={compareWithIrev ? "irev-compare-btn active" : "irev-compare-btn"} disabled={irevCompareLoading} onClick={toggleIrevComparison}>{irevCompareLoading ? <FaSyncAlt className="irev-compare-spinner" /> : <MdOutlineFactCheck />}<span>{irevCompareLoading ? "Loading IReV…" : compareWithIrev ? "IReV comparison on" : "Compare with IReV"}</span>{compareWithIrev && !irevCompareLoading && <i>ON</i>}</button><b>{displayedResultRows.length} shown</b></div></div>
+          <div className="result-table-title"><div><h2>Polling-unit breakdown</h2><p>{resultSourceFilter ? `${resultSourceFilter} submissions only. Select the active source card again to show all.` : "Agent and Supervisor counts with field evidence."}</p></div><div className="result-compare-actions"><button type="button" className={compareWithIrev ? "irev-compare-btn active" : "irev-compare-btn"} disabled={irevCompareLoading} onClick={toggleIrevComparison}>{irevCompareLoading ? "Loading IReV…" : compareWithIrev ? "IReV comparison on" : "Compare with IReV"}</button><b>{displayedResultRows.length} shown</b></div></div>
           <div className="result-table-scroll">
             <table className="result-progress-table">
               <thead><tr><th>Source</th><th>LGA</th><th>Ward</th><th>Polling unit</th>{fieldTopParties.map(party => <th key={party}>{party}</th>)}<th>Location</th><th>Evidence</th><th>Uploaded</th></tr></thead>
@@ -2938,11 +2806,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [notice, setNotice] = useState("");
   const [manageOfficers, setManageOfficers] = useState(false);
   const [mapDataPanel, setMapDataPanel] = useState(false);
+  const [focusedOfficerId, setFocusedOfficerId] = useState("");
   const [resultsOpen, setResultsOpen] = useState(false);
-  const [resultsInitialView, setResultsInitialView] = useState("pulse");
-  const [supervisorIncidentsOpen, setSupervisorIncidentsOpen] = useState(false);
   const [partyMapAnalysis, setPartyMapAnalysis] = useState(null);
-  const [historicalMapAnalysis, setHistoricalMapAnalysis] = useState(null);
   const [analysisLayers, setAnalysisLayers] = useState([]);
   const [pendingAreaAction, setPendingAreaAction] = useState(null);
   const [areaSearchResult, setAreaSearchResult] = useState(null);
@@ -2954,86 +2820,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [showBoundaryLayer, setShowBoundaryLayer] = useState(true);
   const [showStateBorders, setShowStateBorders] = useState(true);
   const [showLgaBorders, setShowLgaBorders] = useState(true);
-  const [showWardBorders, setShowWardBorders] = useState(false);
-  const [showBoundaryNames, setShowBoundaryNames] = useState(false);
+  const [showBoundaryNames, setShowBoundaryNames] = useState(true);
   const [selectedBoundaryState, setSelectedBoundaryState] = useState("");
+  const [selectedBoundaryLabel, setSelectedBoundaryLabel] = useState("");
   const [drawMode, setDrawMode] = useState("");
   const [areas, setAreas] = useState(() =>
     JSON.parse(localStorage.getItem("command-areas") || "[]"),
   );
 
-  const showHistoricalMap = async (dataset) => {
-    const office = dataset?.geography?.office;
-    if (!office) return;
-    setResultsOpen(false);
-    setPartyMapAnalysis(null);
-    setShowLgaBorders(true);
-    setHistoricalMapAnalysis({ year: dataset.year, election: dataset.election, office, loading: true, byLga: {}, availableLevels: dataset.geography.levels });
-    try {
-      const data = await request(`/history/oyo/${dataset.year}/${office}`, session.token);
-      const byLga = Object.fromEntries((data.areas || []).map(area => [area.name, area]));
-      const winnerCounts = (data.areas || []).reduce((counts, area) => ({ ...counts, [area.winner || "No result"]: (counts[area.winner || "No result"] || 0) + 1 }), {});
-      setHistoricalMapAnalysis(current => current?.office === office ? { ...current, ...data, election: dataset.election, loading: false, byLga, winnerCounts } : current);
-      mapRef.current?.flyTo(OYO_CENTER, 8);
-    } catch (error) {
-      setHistoricalMapAnalysis(current => current?.office === office ? { ...current, loading: false, error: error.message || "Historical map data is unavailable." } : current);
-    }
-  };
-
-  const selectHistoricalLga = (name) => {
-    const normalize = value => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-    const current = historicalMapAnalysis;
-    const lga = Object.values(current?.byLga || {}).find(area => normalize(area.name) === normalize(name));
-    if (!current || !lga) return;
-    const hasWardHistory = current.availableLevels?.includes("ward");
-    setHistoricalMapAnalysis({ ...current, selectedLga: lga, selectedWard: null, selectedPollingUnit: null, detail: null, wardDetail: null, pollingUnitDetail: null, detailMessage: hasWardHistory ? "" : "Ward and polling-unit transcriptions are not available for this election in the connected archive.", detailLoading: false });
-  };
-
-  const showHistoricalWards = async () => {
-    const current = historicalMapAnalysis;
-    const lga = current?.selectedLga;
-    if (!lga || !current.availableLevels?.includes("ward")) return;
-    setHistoricalMapAnalysis({ ...current, detail: null, wardDetail: null, selectedWard: null, selectedPollingUnit: null, pollingUnitDetail: null, detailMessage: "", detailLoading: true });
-    try {
-      const detail = await request(`/history/oyo/2023/presidential/lga/${lga.id}`, session.token);
-      setHistoricalMapAnalysis(latest => latest?.selectedLga?.id === lga.id ? { ...latest, detail, wardDetail: detail, detailLoading: false } : latest);
-    } catch (error) {
-      setHistoricalMapAnalysis(latest => latest?.selectedLga?.id === lga.id ? { ...latest, detailLoading: false, detailMessage: error.message || "Ward history is unavailable." } : latest);
-    }
-  };
-
-  const selectHistoricalWard = (ward) => {
-    const current = historicalMapAnalysis;
-    const lga = current?.selectedLga;
-    if (!lga || !ward?.code) return;
-    setHistoricalMapAnalysis({ ...current, selectedWard: ward, selectedPollingUnit: null, detail: null, pollingUnitDetail: null, detailMessage: "", detailLoading: false });
-  };
-
-  const showHistoricalPollingUnits = async () => {
-    const current = historicalMapAnalysis;
-    const lga = current?.selectedLga;
-    const ward = current?.selectedWard;
-    if (!lga || !ward?.code) return;
-    setHistoricalMapAnalysis({ ...current, detail: null, selectedPollingUnit: null, pollingUnitDetail: null, detailMessage: "", detailLoading: true });
-    try {
-      const wardCode = ward.code.replaceAll("/", "-");
-      const detail = await request(`/history/oyo/2023/presidential/lga/${lga.id}/ward/${wardCode}`, session.token);
-      setHistoricalMapAnalysis(latest => latest?.selectedWard?.code === ward.code ? { ...latest, detail, pollingUnitDetail: detail, detailLoading: false } : latest);
-    } catch (error) {
-      setHistoricalMapAnalysis(latest => latest?.selectedWard?.code === ward.code ? { ...latest, detailLoading: false, detailMessage: error.message || "Polling-unit history is unavailable." } : latest);
-    }
-  };
-
-  const selectHistoricalPollingUnit = pollingUnit => setHistoricalMapAnalysis(current => current ? { ...current, selectedPollingUnit: pollingUnit } : current);
-  const backHistoricalMap = level => setHistoricalMapAnalysis(current => {
-    if (!current) return current;
-    if (level === "polling-units") return { ...current, selectedPollingUnit: null, detail: current.pollingUnitDetail, detailMessage: "", detailLoading: false };
-    if (level === "wards") return { ...current, selectedWard: null, selectedPollingUnit: null, detail: current.wardDetail, detailMessage: "", detailLoading: false };
-    return { ...current, selectedLga: null, selectedWard: null, selectedPollingUnit: null, detail: null, wardDetail: null, pollingUnitDetail: null, detailMessage: "", detailLoading: false };
-  });
-
   const clearBoundarySelection = () => {
     setSelectedBoundaryState("");
+    setSelectedBoundaryLabel("");
   };
   const [measurePoints, setMeasurePoints] = useState([]);
   const [routePoints, setRoutePoints] = useState([]);
@@ -3046,7 +2843,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [cameraPanel, setCameraPanel] = useState(false);
   const [phoneShares, setPhoneShares] = useState([]);
   const [remoteStreams, setRemoteStreams] = useState({});
-  const [turnStatus, setTurnStatus] = useState({ provider: "checking", fallbackProvider: "", region: "", route: "pending" });
+  const [turnStatus, setTurnStatus] = useState({ provider: "checking", region: "", route: "pending" });
   const [sharingCamera, setSharingCamera] = useState(false);
   const [selfCameraPreview, setSelfCameraPreview] = useState(false);
   const [cameraPreviewMode, setCameraPreviewMode] = useState(true); // true = show preview, false = background mode
@@ -3063,14 +2860,19 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [liveIncidentsOpen, setLiveIncidentsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [gpsRequiredBlocked, setGpsRequiredBlocked] = useState(String(session.user.role || "").trim().toLowerCase() === "agent");
+  const [gpsRequiredBlocked, setGpsRequiredBlocked] = useState(session.user.role === "Agent");
+  const [supervisorMapOpen, setSupervisorMapOpen] = useState(false);
   const [chatPanel, setChatPanel] = useState(false);
   const [chatRooms, setChatRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [assignIncident, setAssignIncident] = useState(null);
-  const [notificationDetail, setNotificationDetail] = useState(null);
+  const [assignIncidentOpen, setAssignIncidentOpen] = useState(false);
+  const [incidentToAssign, setIncidentToAssign] = useState(null);
+  const [supervisorIncidentsOpen, setSupervisorIncidentsOpen] = useState(false);
+  const [notificationModalOpen, setNotificationModalOpen] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState(null);
+  const [selectedIncident, setSelectedIncident] = useState(null);
   const [updateReady, setUpdateReady] = useState(false);
   const [mapMenu, setMapMenu] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(
@@ -3085,7 +2887,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const localCameraStreamRef = useRef(null);
   const cameraMicMutedRef = useRef(false);
   const rtcPeersRef = useRef({});
-  const pendingCameraSignalsRef = useRef({});
   const sharingCameraRef = useRef(false);
   const offlineRecorderRef = useRef(null);
   const offlineChunksRef = useRef([]);
@@ -3101,15 +2902,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         .filter((u) => ["Response Team", "Agent"].includes(u.role))
         .map((u, index) => {
           const live = gpsPositions[u.id];
+          const hasLiveLocation = Number.isFinite(Number(live?.lat)) && Number.isFinite(Number(live?.lng));
+          const hasStoredLocation = Number.isFinite(Number(u.lat)) && Number.isFinite(Number(u.lng));
           return {
             ...u,
             lat:
-              live?.lat ??
-              (Number(u.lat) ||
+              (hasLiveLocation ? Number(live.lat) : null) ??
+              (hasStoredLocation ? Number(u.lat) :
                 FIELD_TEAM_POSITIONS[index % FIELD_TEAM_POSITIONS.length][0]),
             lng:
-              live?.lng ??
-              (Number(u.lng) ||
+              (hasLiveLocation ? Number(live.lng) : null) ??
+              (hasStoredLocation ? Number(u.lng) :
                 FIELD_TEAM_POSITIONS[index % FIELD_TEAM_POSITIONS.length][1]),
             status: live?.offline
               ? "Offline"
@@ -3122,35 +2925,73 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             heading: live?.heading,
             lastSeen: live?.timestamp,
             unit: u.unit || `Field Unit ${String(index + 1).padStart(2, "0")}`,
+            hasLiveLocation,
+            hasLastKnownLocation: hasLiveLocation || hasStoredLocation,
+            locationName:
+              u.pollingUnit ||
+              [u.ward, u.lga, u.state].filter(Boolean).join(", ") ||
+              u.unit ||
+              "Last known location",
           };
         }),
     [users, gpsPositions],
   );
+  const focusOfficerOnMap = (officer) => {
+    if (focusedOfficerId === officer?.id) {
+      setFocusedOfficerId("");
+      return;
+    }
+    if (!officer?.hasLastKnownLocation) {
+      setNotice(`No last seen location is available for ${officer?.name || "this user"}`);
+      setTimeout(() => setNotice(""), 2500);
+      return;
+    }
+    const lat = Number(officer.lat);
+    const lng = Number(officer.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    setFocusedOfficerId(officer.id);
+    setSelected(null);
+    setCoords(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+    mapRef.current?.flyTo([lat, lng], 17);
+    setNotice(`${officer.name} — ${officer.locationName}`);
+    setTimeout(() => setNotice(""), 2500);
+  };
   const canAdmin = ["Admin", "Super Admin"].includes(session.user.role);
-  const userRole = String(session.user.role || "").trim();
-  const isAgent = userRole.toLowerCase() === "agent";
-  const isSupervisor = userRole.toLowerCase() === "supervisor";
+  const isAgent = session.user.role === "Agent";
+  const isSupervisor = session.user.role === "Supervisor";
   const isFieldRole = isAgent || isSupervisor;
+  const formatWardList = (value) =>
+    String(value || "")
+      .split(",")
+      .map((ward) => ward.trim())
+      .filter(Boolean);
   const canCreateCustomReportType = ["Admin", "Super Admin"].includes(
     session.user.role,
   );
   const canManagePersonnel =
     ["Super Admin", "Admin"].includes(session.user.role);
-  const parseWardList = (value) => String(value || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const parseWardList = (value) =>
+    String(value || "")
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean);
   const wardInScope = (itemWard, viewerWard) => {
     const viewerWards = new Set(parseWardList(viewerWard));
     return parseWardList(itemWard).some((ward) => viewerWards.has(ward));
   };
   const isSupervisorWardRelevant = (item) => {
-    if (!isSupervisor || !session.user.lga || !session.user.ward || !item) return false;
-    return String(item.lga || "").trim().toLowerCase() === String(session.user.lga).trim().toLowerCase()
-      && wardInScope(item.ward, session.user.ward);
+    if (!isSupervisor || !session.user.lga || !session.user.ward) return false;
+    if (!item) return false;
+    const sameLga = String(item.lga || "").trim().toLowerCase() === String(session.user.lga || "").trim().toLowerCase();
+    const sameWard = wardInScope(item.ward, session.user.ward);
+    const isSos = item.reportType === "SOS-Emergency" || item.style?.source === "sos";
+    return sameLga && (sameWard || isSos);
   };
   const canSeeReport = (item) =>
     canAdmin ||
     (isSupervisor && (item.assignedTo === session.user.id || isSupervisorWardRelevant(item))) ||
-    item.createdBy === session.user.id ||
     item.assignedTo === session.user.id ||
+    item.createdBy === session.user.id ||
     (item.visibleTo || []).includes(session.user.id);
   const flushOfflineVideoQueue = async () => {
     if (offlineUploadRef.current || !navigator.onLine) return;
@@ -3262,9 +3103,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       request("/map-layers", session.token),
       request("/chat/rooms", session.token),
       request("/parties", session.token),
-      request("/notifications", session.token),
     ])
-      .then(([a, b, viewers, c, d, e, partyList, notificationList]) => {
+      .then(([a, b, viewers, c, d, e, partyList]) => {
         setIncidents(a);
         setUsers(b);
         setReportUsers(viewers.filter((user) => user.role !== "Super Admin"));
@@ -3272,13 +3112,15 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         setMapLayers(d);
         setChatRooms(e);
         setParties(partyList);
-        setNotifications(notificationList);
       })
       .catch((err) => {
-        if (err.message.includes("Session expired")) onLogout();
-        else setNotice(err.message);
+        if (err.status === 401) {
+          setNotice("Unable to verify your session right now. Your login has been kept; please try again shortly.");
+        } else {
+          setNotice(err.message);
+        }
       });
-    const socket = io({
+    const socket = io(API_BASE_URL || undefined, {
       transports: ["polling", "websocket"],
       auth: { token: session.token },
       reconnectionAttempts: 10,
@@ -3332,22 +3174,19 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     const iceConfigurationPromise = request("/turn/credentials", session.token)
       .then((result) => {
         const provider = result?.provider || "stun-fallback";
-        const fallbackProvider = result?.fallbackProvider || "";
         const region = result?.region || "";
         const iceServers = Array.isArray(result?.iceServers) && result.iceServers.length
           ? result.iceServers
           : fallbackIceServers;
-        const turnReady = ["cloudflare", "expressturn", "metered"].includes(provider);
-        setTurnStatus({ provider, fallbackProvider, region, route: turnReady ? "ready" : "fallback" });
-        return { iceServers, provider, fallbackProvider, region };
+        setTurnStatus({ provider, region, route: ["metered", "cloudflare", "expressturn"].includes(provider) ? "ready" : "fallback" });
+        return { iceServers, provider, region };
       })
       .catch((error) => {
-        console.error("[turn] Credential request failed", error);
         console.warn("[camera] TURN credentials unavailable; using STUN fallback", error);
-        setTurnStatus({ provider: "stun-fallback", fallbackProvider: "", region: "", route: "fallback" });
-        return { iceServers: fallbackIceServers, provider: "stun-fallback", fallbackProvider: "", region: "" };
+        setTurnStatus({ provider: "stun-fallback", region: "", route: "fallback" });
+        return { iceServers: fallbackIceServers, provider: "stun-fallback", region: "" };
       });
-    const detectIceRoute = async (pc, iceConfiguration) => {
+    const detectIceRoute = async (pc) => {
       try {
         const stats = await pc.getStats();
         let selectedPair = null;
@@ -3363,17 +3202,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         }
         const localCandidate = selectedPair?.localCandidateId ? stats.get(selectedPair.localCandidateId) : null;
         const remoteCandidate = selectedPair?.remoteCandidateId ? stats.get(selectedPair.remoteCandidateId) : null;
-        const relayCandidate = [localCandidate, remoteCandidate].find((candidate) => candidate?.candidateType === "relay");
-        if (!relayCandidate) return { route: "direct", provider: iceConfiguration.provider };
-        const relayUrl = String(relayCandidate.url || "").toLowerCase();
-        const provider = relayUrl.includes("cloudflare.com")
-          ? "cloudflare"
-          : iceConfiguration.provider === "cloudflare" && iceConfiguration.fallbackProvider === "expressturn" && relayUrl
-            ? "expressturn"
-            : iceConfiguration.provider;
-        return { route: "turn", provider };
+        return [localCandidate, remoteCandidate].some((candidate) => candidate?.candidateType === "relay") ? "turn" : "direct";
       } catch {
-        return { route: "direct", provider: iceConfiguration.provider };
+        return "direct";
       }
     };
     const makePeer = async (key, remoteUserId) => {
@@ -3381,7 +3212,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       const pc = new RTCPeerConnection({
         iceServers: iceConfiguration.iceServers,
       });
-      pc.pendingIceCandidates = [];
       const connectionTimer = setTimeout(() => {
         if (pc.connectionState !== "connected" && localCameraStreamRef.current)
           startOfflineVideoRecording("Live video could not connect");
@@ -3390,18 +3220,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         if (pc.connectionState === "connected") {
           clearTimeout(connectionTimer);
           stopOfflineVideoRecording();
-          const selectedIce = await detectIceRoute(pc, iceConfiguration);
-          const providerLabel = selectedIce.provider === "cloudflare" ? "Cloudflare TURN" : selectedIce.provider === "expressturn" ? "ExpressTURN" : "TURN relay";
-          setTurnStatus({ provider: selectedIce.provider, fallbackProvider: iceConfiguration.fallbackProvider, region: iceConfiguration.region, route: selectedIce.route });
-          setNotice(selectedIce.route === "turn" ? `Live video connected via ${providerLabel}` : "Live video connected directly");
+          const route = await detectIceRoute(pc);
+          setTurnStatus({ provider: iceConfiguration.provider, region: iceConfiguration.region, route });
+          setNotice(route === "turn" ? "Live video connected via Metered TURN" : "Live video connected directly");
           setTimeout(() => setNotice(""), 2500);
         } else if (["failed", "disconnected"].includes(pc.connectionState)) {
-          console.warn("[camera] WebRTC connection issue", {
-            peer: key,
-            state: pc.connectionState,
-            iceState: pc.iceConnectionState,
-            provider: iceConfiguration.provider,
-          });
           startOfflineVideoRecording(
             pc.connectionState === "failed"
               ? "Live video could not connect"
@@ -3417,10 +3240,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           });
       };
       if (remoteUserId)
-        pc.ontrack = (event) => {
-          const stream = event.streams?.[0] || new MediaStream([event.track]);
-          setRemoteStreams((old) => ({ ...old, [remoteUserId]: stream }));
-        };
+        pc.ontrack = (event) =>
+          setRemoteStreams((old) => ({
+            ...old,
+            [remoteUserId]: event.streams[0],
+          }));
       rtcPeersRef.current[key] = pc;
       return pc;
     };
@@ -3441,10 +3265,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
     socket.on("incident:deleted", (id) => {
       setIncidents((old) => old.filter((i) => i.id !== id));
       setSelected((old) => (old?.id === id ? null : old));
-    });
-    socket.on("notification:new", (item) => {
-      setNotifications((old) => [item, ...old.filter((notification) => notification.id !== item.id)]);
-      setNotice(`New assignment: ${item.incidentType || "Incident"}`);
     });
     socket.on("emergency:alert", (alert) => {
       const normalized = {
@@ -3477,6 +3297,8 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       if (session.user.role !== "Super Admin" && x.role === "Super Admin") {
         return;
       }
+      if (session.user.role === "Supervisor" && !(x.role === "Agent" && String(x.lga || "").trim().toLowerCase() === String(session.user.lga || "").trim().toLowerCase() && String(x.ward || "").trim().toLowerCase() === String(session.user.ward || "").trim().toLowerCase())) return;
+      if (session.user.role === "Agent") return;
       setUsers((old) => (old.some((u) => u.id === x.id) ? old : [...old, x]));
       setReportUsers((old) =>
         x.id === session.user.id || old.some((u) => u.id === x.id)
@@ -3548,6 +3370,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         setChatMessages([]);
       }
     });
+    socket.on("notification:new", (notification) => {
+      setNotifications((old) => [notification, ...old.filter((item) => item.id !== notification.id)]);
+      if (isFieldRole) playFieldNotification(notification);
+    });
     socket.on("camera:shares:list", (feeds) => setPhoneShares(feeds));
     socket.on("camera:share:start", (feed) =>
       setPhoneShares((old) =>
@@ -3580,30 +3406,17 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       let pc = rtcPeersRef.current[from];
       if (data.sdp?.type === "offer") {
         pc ||= await makePeer(from, fromUserId);
-        pc.pendingIceCandidates.push(...(pendingCameraSignalsRef.current[from] || []));
-        delete pendingCameraSignalsRef.current[from];
         await pc.setRemoteDescription(data.sdp);
-        for (const candidate of pc.pendingIceCandidates.splice(0))
-          await pc.addIceCandidate(candidate).catch(() => {});
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit("camera:signal", {
           target: from,
           data: { sdp: pc.localDescription },
         });
-      } else if (data.sdp?.type === "answer" && pc) {
-        pc.pendingIceCandidates.push(...(pendingCameraSignalsRef.current[from] || []));
-        delete pendingCameraSignalsRef.current[from];
-        await pc.setRemoteDescription(data.sdp).then(async () => {
-          for (const candidate of pc.pendingIceCandidates.splice(0))
-            await pc.addIceCandidate(candidate).catch(() => {});
-        });
-      } else if (data.candidate) {
-        if (!pc) {
-          (pendingCameraSignalsRef.current[from] ||= []).push(data.candidate);
-        } else if (pc.remoteDescription) await pc.addIceCandidate(data.candidate).catch(() => {});
-        else pc.pendingIceCandidates.push(data.candidate);
-      }
+      } else if (data.sdp?.type === "answer" && pc)
+        await pc.setRemoteDescription(data.sdp);
+      else if (data.candidate && pc)
+        await pc.addIceCandidate(data.candidate).catch(() => {});
     });
     // Restart camera stream when app returns to foreground after being backgrounded
     const handleVisibilityChange = async () => {
@@ -3674,16 +3487,134 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       stopSilentAudio();
     };
   }, []);
-  const visible = incidents.filter(
-    (i) => filter === "All" || i.severity === filter || i.status === filter,
-  );
+  const unreadCount = notifications.filter((item) => !item.read).length;
+  const fetchNotifications = async () => {
+    try {
+      const data = await request("/notifications", session.token);
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn("Unable to load notifications", error);
+    }
+  };
+  const handleAssignIncident = async ({ incidentId, assignedUserId, message }) => {
+    const result = await request(`/incidents/${incidentId}/assign`, session.token, {
+      method: "POST",
+      body: JSON.stringify({ assignedUserId, message }),
+    });
+    setIncidents((old) =>
+      old.map((item) => (item.id === incidentId ? { ...item, assignedTo: assignedUserId, status: "In Progress" } : item)),
+    );
+    setSelected((old) =>
+      old && old.id === incidentId ? { ...old, assignedTo: assignedUserId, status: "In Progress" } : old,
+    );
+    if (result?.notification?.userId === session.user.id) {
+      setNotifications((old) => [result.notification, ...old.filter((item) => item.id !== result.notification.id)]);
+    }
+    return result;
+  };
+  const handleClaimIncident = async (incidentId) => {
+    const message = `I am claiming this incident for myself.`;
+    return handleAssignIncident({
+      incidentId,
+      assignedUserId: session.user.id,
+      message,
+    });
+  };
+  const handleNotificationClick = async (notification) => {
+    const markRead = () => {
+      if (notification.read) return Promise.resolve(notification);
+      return request(`/notifications/${notification.id}/read`, session.token, { method: "PUT" })
+        .then((updated) => {
+          setNotifications((old) => old.map((item) => (item.id === updated.id ? updated : item)));
+          return updated;
+        })
+        .catch(() => notification);
+    };
+    if (notification.roomId) {
+      await markRead();
+      let room = chatRooms.find((item) => item.id === notification.roomId);
+      if (!room) {
+        const rooms = await request("/chat/rooms", session.token);
+        setChatRooms(rooms);
+        room = rooms.find((item) => item.id === notification.roomId);
+      }
+      if (room) await selectChatRoom(room);
+      else setNotice("This admin chat is no longer available");
+      return;
+    }
+    let incident = incidents.find((item) => item.id === notification.incidentId)
+      || (selectedIncident?.id === notification.incidentId ? selectedIncident : null);
+    if (!incident && notification.incidentId) {
+      try {
+        incident = await request(`/incidents/${notification.incidentId}`, session.token);
+        setIncidents((old) => old.some((item) => item.id === incident.id)
+          ? old.map((item) => item.id === incident.id ? incident : item)
+          : [incident, ...old]);
+      } catch {
+        incident = null;
+      }
+    }
+    setSelectedIncident(incident || null);
+    setSelectedNotification(notification);
+    setNotificationModalOpen(true);
+    if (incident && Number.isFinite(Number(incident.lat)) && Number.isFinite(Number(incident.lng))) {
+      request(`/location/reverse?lat=${encodeURIComponent(incident.lat)}&lng=${encodeURIComponent(incident.lng)}`, session.token)
+        .then((location) => setSelectedIncident((current) => current?.id === incident.id ? { ...current, location } : current))
+        .catch(() => {});
+    }
+    markRead();
+  };
+  const handleNotificationDone = async (incidentId) => {
+    if (!selectedNotification) return;
+    const updated = await request(`/notifications/${selectedNotification.id}/read`, session.token, {
+      method: "PUT",
+    });
+    setNotifications((old) => old.map((item) => (item.id === updated.id ? updated : item)));
+    setSelectedIncident((old) => (old && old.id === incidentId ? { ...old, status: "Resolved" } : old));
+    setIncidents((old) => old.map((item) => (item.id === incidentId ? { ...item, status: "Resolved" } : item)));
+    if (incidentId) {
+      await request(`/incidents/${incidentId}`, session.token, {
+        method: "PUT",
+        body: JSON.stringify({ status: "Resolved" }),
+      }).catch(() => {});
+    }
+    setNotificationModalOpen(false);
+    setSelectedNotification(null);
+    setSelectedIncident(null);
+  };
+  const handleOpenNotificationChat = async (incidentId) => {
+    if (!incidentId) throw new Error("Incident details are still loading. Please close this alert and try again.");
+    let incident = incidents.find((item) => item.id === incidentId)
+      || (selectedIncident?.id === incidentId ? selectedIncident : null);
+    if (!incident) {
+      incident = await request(`/incidents/${incidentId}`, session.token);
+      setIncidents((old) => old.some((item) => item.id === incident.id) ? old : [incident, ...old]);
+    }
+    if (!incident) throw new Error("Incident not found");
+    setNotificationModalOpen(false);
+    await openIncidentChat(incident);
+  };
+  useEffect(() => {
+    fetchNotifications();
+  }, [session.token]);
+  const visible = incidents.filter((i) => {
+    if (i.reportType === POLLING_RESULT_TYPE) return false;
+    if (isSupervisor) {
+      const isRelevant =
+        i.assignedTo === session.user.id ||
+        isSupervisorWardRelevant(i) ||
+        (i.visibleTo || []).includes(session.user.id);
+      if (!isRelevant) return false;
+    }
+    return filter === "All" || i.severity === filter || i.status === filter;
+  });
+  const liveIncidentCount = incidents.filter((item) => item.reportType !== POLLING_RESULT_TYPE).length;
   const mapVisibleIncidents = showReports
-    ? incidents.filter(
-        (i) =>
-          !hiddenReportIds.includes(i.id) &&
-          (showSosIncidents ||
-            (i.reportType !== "SOS-Emergency" && i.style?.source !== "sos")),
-      )
+    ? incidents.filter((i) => {
+        if (isSupervisor && !canSeeReport(i)) return false;
+        if (hiddenReportIds.includes(i.id)) return false;
+        return showSosIncidents || (i.reportType !== "SOS-Emergency" && i.style?.source !== "sos");
+      })
     : [];
   const save = async (form) => {
     const item = await request("/incidents", session.token, {
@@ -4151,11 +4082,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   };
   const sendChatMessage = async (payload) => {
     if (!activeRoom) return;
-    const messagePayload = typeof payload === "string" ? { body: payload, attachments: [] } : payload;
+    const body = typeof payload === "string" ? payload : payload?.body || "";
+    const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
     const message = await request(
       `/chat/rooms/${activeRoom.id}/messages`,
       session.token,
-      { method: "POST", body: JSON.stringify(messagePayload) },
+      { method: "POST", body: JSON.stringify({ body, attachments }) },
     );
     setChatMessages((old) =>
       old.some((x) => x.id === message.id) ? old : [...old, message],
@@ -4201,45 +4133,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         : [room, ...old],
     );
     await selectChatRoom(room);
-  };
-  const assignIncidentToField = async ({ incidentId, assignedUserId, message }) => {
-    const result = await request(`/incidents/${incidentId}/assign`, session.token, {
-      method: "POST",
-      body: JSON.stringify({ assignedUserId, message }),
-    });
-    setIncidents((old) => old.map((item) => item.id === result.incident.id ? result.incident : item));
-    setSelected((old) => old?.id === result.incident.id ? result.incident : old);
-    setNotice("Incident assigned and field user notified");
-    return result;
-  };
-  const claimIncident = async (incidentId) => assignIncidentToField({
-    incidentId,
-    assignedUserId: session.user.id,
-    message: 'Claimed by the assigned-area supervisor for response and follow-up.',
-  });
-  const openNotification = async (notification) => {
-    let incident = incidents.find((item) => item.id === notification.incidentId) || null;
-    if (!incident && notification.incidentId) {
-      try { incident = await request(`/incidents/${notification.incidentId}`, session.token); } catch {}
-    }
-    if (!notification.read) {
-      try {
-        const updated = await request(`/notifications/${notification.id}/read`, session.token, { method: "PUT" });
-        setNotifications((old) => old.map((item) => item.id === updated.id ? updated : item));
-        notification = updated;
-      } catch {}
-    }
-    setNotificationDetail({ notification, incident });
-  };
-  const resolveNotificationIncident = async (incident) => {
-    if (!incident) return;
-    const updated = await request(`/incidents/${incident.id}`, session.token, {
-      method: "PUT", body: JSON.stringify({ status: "Resolved" }),
-    });
-    setIncidents((old) => old.map((item) => item.id === updated.id ? updated : item));
-    setSelected((old) => old?.id === updated.id ? updated : old);
-    setNotificationDetail(null);
-    setNotice("Assignment marked resolved");
   };
   const deleteOfficer = async (officer) => {
     if (
@@ -4337,7 +4230,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   };
   const toggleGps = () => {
     if (sharingGps) {
-      if (isAgent) { setNotice("Location sharing is required for Agent accounts"); return; }
+      if (isAgent) {
+        setNotice("GPS tracking is required for Agent accounts and cannot be turned off");
+        return;
+      }
       if (gpsWatchRef.current != null)
         navigator.geolocation.clearWatch(gpsWatchRef.current);
       gpsWatchRef.current = null;
@@ -4352,6 +4248,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
       return;
     }
     setSharingGps(true);
+    if (isAgent) setGpsRequiredBlocked(false);
     setNotice("Acquiring GPS fix...");
     gpsBestRef.current = null;
 
@@ -5017,22 +4914,14 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const getCameraStream = async (facingMode, includeAudio = true, exact = false) => {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
       throw new Error("Camera sharing requires HTTPS and a supported browser");
-    const constraints = {
+    return navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: exact ? { exact: facingMode } : { ideal: facingMode },
         width: { ideal: 1280 },
         height: { ideal: 720 },
       },
       audio: includeAudio,
-    };
-    try {
-      return await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (error) {
-      if (includeAudio && ["NotFoundError", "OverconstrainedError"].includes(error.name)) {
-        return navigator.mediaDevices.getUserMedia({ ...constraints, audio: false });
-      }
-      throw error;
-    }
+    });
   };
   const toggleCamera = async () => {
     if (sharingCamera) {
@@ -5222,11 +5111,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         );
       setNotice("Could not save layer change");
       setTimeout(() => setNotice(""), 2500);
-      throw err;
     }
   };
-  const toggleMapLayer = (id, visible) => updateMapLayer(id, { visible }).catch(() => {});
-  const updateLayerOpacity = (id, opacity) => updateMapLayer(id, { opacity }).catch(() => {});
+  const toggleMapLayer = (id, visible) => updateMapLayer(id, { visible });
+  const updateLayerOpacity = (id, opacity) => updateMapLayer(id, { opacity });
   const deleteMapLayer = async (item) => {
     if (!window.confirm(`Delete map layer "${item.name}"?`)) return;
     await request(`/map-layers/${item.id}`, session.token, {
@@ -5335,13 +5223,16 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </span>
             <div>
               <b>{session.user.name}</b>
-              <small>
-                {session.user.role === "Admin"
+              {(() => {
+                const roleLabel = session.user.role === "Admin"
                   ? "Admin"
                   : session.user.role === "Super Admin"
                     ? "System Administrator"
-                    : session.user.role}
-              </small>
+                    : session.user.role === "Supervisor"
+                      ? "Ward Supervisor"
+                      : session.user.role;
+                return roleLabel !== session.user.name ? <small>{roleLabel}</small> : null;
+              })()}
               {(session.user.role === "Admin" || session.user.role === "Super Admin") && (
                 <span className="role-pill">
                   {session.user.role === "Super Admin" ? "SUPER ADMIN" : "ADMIN"}
@@ -5391,14 +5282,14 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           </form>
             <>
               {isSupervisor && <div className="sidebar-actions supervisor-actions">
-                <button onClick={() => setSupervisorIncidentsOpen(true)}>
-                  <FaChartBar /> Incident Queue
-                </button>
                 <button onClick={openPollingUnitResultForm}>
                   <ReportIcon iconKey="POI" size={15} /> Polling Result
                 </button>
                 <button onClick={openIncidentPointForm}>
                   <ReportIcon iconKey="IP" size={15} /> Report Incident
+                </button>
+                <button onClick={() => setSupervisorIncidentsOpen(true)}>
+                  <FaClipboardList /> View Ward Incidents
                 </button>
                 <button className={sharingGps ? "sharing" : ""} onClick={toggleGps}>
                   <FaBullseye /> {sharingGps ? "Stop GPS" : "Share GPS"}
@@ -5484,14 +5375,20 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 {situationalOpen && (
                   <div className="sidebar-dropdown-body">
                     {officers.map((o) => (
-                      <div className="officer-row" key={o.id}>
+                      <button
+                        type="button"
+                        className={`officer-row ${focusedOfficerId === o.id ? "focused" : ""}`}
+                        key={o.id}
+                        onClick={() => focusOfficerOnMap(o)}
+                        title={o.hasLastKnownLocation ? `Show ${o.name} at ${o.locationName}` : `No last seen location for ${o.name}`}
+                      >
                         <i className={o.status.toLowerCase()}></i>
                         <div>
                           <b>{o.rank ? `${o.rank} ${o.name}` : o.name}</b>
-                          <small>{o.unit}</small>
+                          <small>{o.locationName}</small>
                         </div>
                         <span>{o.status}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -5509,7 +5406,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                     return next;
                   })}
                 >
-                  <h2>Live Incidence <em>{incidents.length}</em></h2>
+                  <h2>Live Incidence <em>{liveIncidentCount}</em></h2>
                   <span>{liveIncidentsOpen ? "−" : "+"}</span>
                 </button>
                 {liveIncidentsOpen && (
@@ -5637,43 +5534,19 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                    SOS <span>{showSosIncidents ? "Hide" : "Show"}</span>
                 </button>
                 <button
-                  className={showStateBorders ? "active" : ""}
+                  className={(showStateBorders || showLgaBorders) ? "active" : ""}
                   onClick={() => {
-                    setShowStateBorders(value => !value);
-                    setMapMenu("");
-                  }}
-                >
-                  State Border <span>{showStateBorders ? "Hide" : "Show"}</span>
-                </button>
-                <button
-                  className={showLgaBorders ? "active" : ""}
-                  onClick={() => {
-                    const next = !showLgaBorders;
+                    const next = !(showStateBorders || showLgaBorders);
+                    setShowStateBorders(next);
                     setShowLgaBorders(next);
-                    if (next) setShowWardBorders(false);
                     setMapMenu("");
                   }}
                 >
-                  LGA Borders <span>{showLgaBorders ? "Hide" : "Show"}</span>
-                </button>
-                <button
-                  className={showWardBorders ? "active" : ""}
-                  onClick={() => {
-                    const next = !showWardBorders;
-                    setShowWardBorders(next);
-                    if (next) {
-                      setShowLgaBorders(false);
-                      setNotice("Loading ward borders for Oyo State.");
-                    }
-                    setMapMenu("");
-                  }}
-                  title={showWardBorders ? "Hide ward borders" : "Show Oyo ward borders"}
-                >
-                  Ward Borders <span>{showWardBorders ? "Hide" : "Show"}</span>
+                  Borders <span>{showStateBorders || showLgaBorders ? "Hide" : "Show"}</span>
                 </button>
                 <button
                   className={showBoundaryNames ? "active" : ""}
-                  disabled={!showStateBorders && !showLgaBorders && !showWardBorders}
+                  disabled={!showStateBorders && !showLgaBorders}
                   onClick={() => {
                     setShowBoundaryNames(value => !value);
                     setMapMenu("");
@@ -5783,13 +5656,15 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
                 <FaEraser />
               </button>
             )}
-            <button
-              className={`map-action share-location-action ${sharingGps ? "active" : ""}`}
-              onClick={toggleGps}
-              title={sharingGps ? "Stop location sharing" : "Share location"}
-            >
-              <LuLocateFixed />
-            </button>
+            {!isAgent && (
+              <button
+                className={`map-action share-location-action ${sharingGps ? "active" : ""}`}
+                onClick={toggleGps}
+                title={sharingGps ? "Stop location sharing" : "Share location"}
+              >
+                <LuLocateFixed />
+              </button>
+            )}
             <button
               className={`map-action camera-share-action ${sharingCamera ? "active" : ""}`}
               onClick={toggleCamera}
@@ -5797,20 +5672,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             >
               <FaVideo />
             </button>
-            <button
-              className="map-action result-center-open"
-              onClick={() => {
-                setResultsInitialView("pulse");
-                setResultsOpen(true);
-              }}
-              title="Election Dashboard"
-              aria-label="Election Dashboard"
-            >
-              <FaChartBar />
-            </button>
-           
-           
-           
             {canAdmin && (
               <button
                 className="map-action camera-count"
@@ -5836,26 +5697,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               Result
             </button>}
             <button
-              className={`map-action election-phase-action pre-election-action${resultsOpen && resultsInitialView === "pre" ? " active" : ""}`}
-              onClick={() => {
-                setResultsInitialView("pre");
-                setResultsOpen(true);
-              }}
-              title="Pre-Election analysis"
-              aria-label="Open Pre-Election analysis"
+              className="map-action result-center-open icon-only"
+              onClick={() => setResultsOpen(true)}
+              title="Dashboard"
+              aria-label="Dashboard"
             >
-              <MdHowToVote />
-            </button>
-            <button
-              className="map-action election-phase-action post-election-action"
-              onClick={() => {
-                setResultsInitialView("post");
-                setResultsOpen(true);
-              }}
-              title="Post-Election analysis"
-              aria-label="Open Post-Election analysis"
-            >
-              <MdAssessment />
+              <FaChartBar />
             </button>
             <button
               className={`map-action emergency-open ${sosHolding ? "sos-holding" : ""}`}
@@ -5866,7 +5713,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </button>
           </div>
           <div className="map-top-right">
-            <NotificationCenter notifications={notifications} onOpen={openNotification} />
+            {!isFieldRole && <NotificationCenter notifications={notifications} unreadCount={unreadCount} onNotificationClick={handleNotificationClick} />}
             {!isFieldRole && <form className="coord-jump" onSubmit={jump}>
               <span>COORD</span>
               <input
@@ -5876,6 +5723,12 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               />
               <button>GO</button>
             </form>}
+            {selectedBoundaryLabel && showBoundaryLayer && (
+              <div className="boundary-info-card">
+                <strong>Selected</strong>
+                <span>{selectedBoundaryLabel}</span>
+              </div>
+            )}
             <div className={`profile-menu ${profileMenuOpen ? "open" : ""}`}>
               <button className="map-action logout-btn" onClick={() => setProfileMenuOpen(value => !value)} title="Profile menu"><span>{session.user.name?.[0] || "U"}</span></button>
               <div className="profile-dropdown"><div><b>{session.user.name}</b><small>{session.user.role}</small></div><button onClick={() => setProfileOpen(true)}><FaKey /> Profile</button><button onClick={onLogout}><FaSignOutAlt /> Logout</button></div>
@@ -5883,7 +5736,9 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           </div>
         </div>
         {isAgent && <div className="agent-field-screen">
-          <div className="agent-notification-anchor"><NotificationCenter notifications={notifications} onOpen={openNotification} /></div>
+          <div className="field-alerts-top">
+            <NotificationCenter notifications={notifications} unreadCount={unreadCount} onNotificationClick={handleNotificationClick} />
+          </div>
           <img className="agent-brand-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
           <span className="eyebrow">FIELD REPORTING</span>
           <h1>{session.user.pollingUnit || "Polling unit agent"}</h1>
@@ -5894,10 +5749,10 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               <b>Report result</b>
               <span>Add counts and signed-result photo</span>
             </button>
-            <button className={`agent-action-card ${sharingGps ? "active" : ""}`} onClick={toggleGps}>
-              <LuLocateFixed />
-              <b>{sharingGps ? "Stop GPS" : "Share GPS & location"}</b>
-              <span>{sharingGps ? "Your live position is being shared" : "Send your current field position"}</span>
+            <button className="agent-action-card incident" onClick={openIncidentPointForm}>
+              <ReportIcon iconKey="IP" size={22} />
+              <b>Report incident</b>
+              <span>Log a field issue, hazard, or security concern</span>
             </button>
             <button className={`agent-action-card ${sharingCamera ? "active" : ""}`} onClick={toggleCamera}>
               <FaVideo />
@@ -5912,7 +5767,117 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           </div>
           <button className="agent-logout" onClick={onLogout}><FaSignOutAlt /> Logout</button>
         </div>}
-        {!isAgent && <MapView
+        {isSupervisor && !supervisorMapOpen && <div className="agent-field-screen supervisor-field-screen">
+          <div className="field-alerts-top">
+            <NotificationCenter notifications={notifications} unreadCount={unreadCount} onNotificationClick={handleNotificationClick} />
+            <button className="supervisor-alert-btn" onClick={() => setEmergencyOpen(true)} title="Alerts">
+              <FaVolumeDown />
+              {emergencyAlerts.length > 0 && <span>{Math.min(emergencyAlerts.length, 9)}</span>}
+            </button>
+          </div>
+          <img className="agent-brand-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
+          <span className="eyebrow">WARD SUPERVISOR</span>
+          <h1>{session.user.lga || "Ward Supervisor"}</h1>
+          <p>
+            {[session.user.state, session.user.lga].filter(Boolean).join(" • ")}
+            {formatWardList(session.user.ward).length > 0 && (
+              <>
+                <br />
+                Wards supervised: {formatWardList(session.user.ward).join(" • ")}
+              </>
+            )}
+          </p>
+          <div className="agent-action-grid supervisor-action-grid">
+            <button className="agent-action-card result" onClick={() => {
+              setOperationsOpen(true);
+              setLiveIncidentsOpen(true);
+              setSituationalOpen(false);
+              setToolsOpen(false);
+            }}>
+              <FaUserCog />
+              <b>Assign</b>
+              <span>See assigned incidents and ward emergencies</span>
+            </button>
+            <button className="agent-action-card result" onClick={openPollingUnitResultForm}>
+              <ReportIcon iconKey="POI" size={22} />
+              <b>Report result</b>
+              <span>Submit the latest polling unit result</span>
+            </button>
+            <button className={`agent-action-card ${sharingCamera ? "active" : ""}`} onClick={toggleCamera}>
+              <FaVideo />
+              <b>{sharingCamera ? "Stop video" : "Share video"}</b>
+              <span>Send a live video feed to command</span>
+            </button>
+            <button className="agent-action-card incident" onClick={openIncidentPointForm}>
+              <ReportIcon iconKey="IP" size={22} />
+              <b>Report incident</b>
+              <span>Log a field incident or security issue</span>
+            </button>
+            <button className="agent-action-card map" onClick={() => setSupervisorMapOpen(true)}>
+              <FaMapMarkedAlt />
+              <b>Map</b>
+              <span>Open the agent map and locations</span>
+            </button>
+            <button className={`agent-action-card sos ${sosHolding ? "sos-holding" : ""}`} {...sosHoldProps}>
+              <strong>SOS</strong>
+              <b>Send emergency alert</b>
+              <span>Trigger an urgent field alert immediately</span>
+            </button>
+          </div>
+          <button className="agent-logout" onClick={onLogout}><FaSignOutAlt /> Logout</button>
+        </div>}
+        {isSupervisor && supervisorMapOpen && (
+          <div className="supervisor-map-page">
+            <button className="supervisor-map-back" onClick={() => setSupervisorMapOpen(false)}>
+              <FaTimes /> Back
+            </button>
+            <MapView
+              incidents={mapVisibleIncidents}
+              officers={officers}
+              cameras={mapCameras}
+              mapLayers={mapLayers}
+              emergencyAlerts={showSosIncidents ? emergencyAlerts : []}
+              analysisLayers={analysisLayers}
+              selected={selected}
+              onSelect={setSelected}
+              onMapClick={(p, copyOnly) => {
+                setCoords(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
+                navigator.clipboard?.writeText(
+                  `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`,
+                );
+                if (!copyOnly) setNewPoint(p);
+              }}
+              mapRef={mapRef}
+              layer={layer}
+              drawMode={drawMode}
+              areas={areas}
+              measurePoints={measurePoints}
+              routePoints={routePoints}
+              routeResult={routeResult}
+              routeUserPoint={routeUserPoint}
+              onAreaCreated={addArea}
+              onToolPoint={addToolPoint}
+              onMarkerTool={startToolFromPoint}
+              isAdmin={canAdmin}
+              onLayerToggle={toggleMapLayer}
+              onLayerOpacity={updateLayerOpacity}
+              showBoundaryLayer={showBoundaryLayer}
+              showStateBorders={showStateBorders}
+              showLgaBorders={showLgaBorders}
+              showBoundaryNames={showBoundaryNames}
+              partyMapAnalysis={partyMapAnalysis}
+              selectedBoundaryState={selectedBoundaryState}
+              onBoundarySelect={(id, label) => {
+                setSelectedBoundaryState(id);
+                setSelectedBoundaryLabel(label);
+              }}
+              onBoundaryClear={clearBoundarySelection}
+              focusedOfficerId={focusedOfficerId}
+              onClearOfficerFocus={setFocusedOfficerId}
+            />
+          </div>
+        )}
+        {!isAgent && !isSupervisor && <MapView
           incidents={mapVisibleIncidents}
           officers={officers}
           cameras={mapCameras}
@@ -5945,22 +5910,16 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           showBoundaryLayer={showBoundaryLayer}
           showStateBorders={showStateBorders}
           showLgaBorders={showLgaBorders}
-          showWardBorders={showWardBorders}
           showBoundaryNames={showBoundaryNames}
           partyMapAnalysis={partyMapAnalysis}
-          historicalMapAnalysis={historicalMapAnalysis}
-          onHistoricalLgaSelect={selectHistoricalLga}
-          onHistoricalWardSelect={selectHistoricalWard}
-          onHistoricalShowWards={showHistoricalWards}
-          onHistoricalShowPollingUnits={showHistoricalPollingUnits}
-          onHistoricalPollingUnitSelect={selectHistoricalPollingUnit}
-          onHistoricalBack={backHistoricalMap}
-          onHistoricalClose={() => setHistoricalMapAnalysis(null)}
           selectedBoundaryState={selectedBoundaryState}
-          onBoundarySelect={(id) => {
+          onBoundarySelect={(id, label) => {
             setSelectedBoundaryState(id);
+            setSelectedBoundaryLabel(label);
           }}
           onBoundaryClear={clearBoundarySelection}
+          focusedOfficerId={focusedOfficerId}
+          onClearOfficerFocus={setFocusedOfficerId}
         />}
         {!isAgent && <button
           className="my-location-target"
@@ -6142,49 +6101,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               </dd>
             </div>
             <div>
-              <dt>ASSIGNED UNIT</dt>
-              <dd>
-                {canAdmin ? (
-                  <select
-                    className="assign-select"
-                    value={selected.assignedTo || ""}
-                    onChange={async (e) => {
-                      const item = await request(`/incidents/${selected.id}`, session.token, {
-                        method: "PUT",
-                        body: JSON.stringify({ assignedTo: e.target.value }),
-                      });
-                      setIncidents((old) => old.map((i) => (i.id === item.id ? item : i)));
-                      setSelected(item);
-                    }}
-                  >
-                    <option value="">— Unassigned —</option>
-                    {users
-                      .filter((u) => u.role === "Response Team")
-                      .map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}{u.station ? ` · ${u.station}` : ""}
-                        </option>
-                      ))}
-                    {users.filter((u) => u.role === "Agent").length > 0 && (
-                      <optgroup label="── Agents ──">
-                        {users
-                          .filter((u) => u.role === "Agent")
-                          .map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.name}{u.pollingUnit ? ` · ${u.pollingUnit}` : ""}
-                            </option>
-                          ))}
-                      </optgroup>
-                    )}
-                  </select>
-                ) : (
-                  reportUsers.find((x) => x.id === selected.assignedTo)?.name ||
-                  officers.find((x) => x.id === selected.assignedTo)?.name ||
-                  "Unassigned"
-                )}
-              </dd>
-            </div>
-            <div>
               <dt>VISIBLE TO</dt>
               <dd>
                 {canAdmin
@@ -6200,21 +6116,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               <dd>{new Date(selected.createdAt).toLocaleString()}</dd>
             </div>
           </dl>
-          <label>
-            Response status
-            <select
-              value={
-                ["In Progress", "Resolved"].includes(selected.status)
-                  ? selected.status
-                  : "In Progress"
-              }
-              onChange={(e) => updateStatus(e.target.value)}
-            >
-              {["In Progress", "Resolved"].map((x) => (
-                <option key={x}>{x}</option>
-              ))}
-            </select>
-          </label>
           <button
             className="primary wide"
             onClick={() =>
@@ -6224,58 +6125,20 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             Center on incident
           </button>
           <button
-            className="ghost wide"
-            onClick={() => toggleReportOnMap(selected)}
-          >
-            {hiddenReportIds.includes(selected.id)
-              ? "Show incident on my map"
-              : "Hide incident from my map"}
-          </button>
-          <div className="detail-tool-row">
-            <button
-              onClick={() =>
-                startToolFromPoint("measure", {
-                  lat: selected.lat,
-                  lng: selected.lng,
-                  label: selected.title,
-                })
-              }
-            >
-              Measure from incident
-            </button>
-            <button
-              onClick={() =>
-                startToolFromPoint("route", {
-                  lat: selected.lat,
-                  lng: selected.lng,
-                  label: selected.title,
-                })
-              }
-            >
-              Route from incident
-            </button>
-          </div>
-          <button
-            className="share-map-tool wide"
-            onClick={() =>
-              shareMap({
-                filePrefix: "election-monitor-incident",
-                title: `Incident: ${selected.title}`,
-                text: `${selected.title} - ${selected.reportType || "Incident"} - ${selected.severity} - ${selected.status}\nLocation: ${selected.lat.toFixed(5)}, ${selected.lng.toFixed(5)}\n${selected.description || ""}`,
-              })
-            }
-          >
-            Share incident
-          </button>
-          <button
             className="primary wide"
             onClick={() => openIncidentChat(selected)}
           >
             Open incident chat
           </button>
-          {(canAdmin || isSupervisor) && selected.reportType !== POLLING_RESULT_TYPE && (
-            <button className="assignment-action wide" onClick={() => setAssignIncident(selected)}>
-              Assign & notify field personnel
+          {canAdmin && (
+            <button
+              className="primary wide"
+              onClick={() => {
+                setIncidentToAssign(selected);
+                setAssignIncidentOpen(true);
+              }}
+            >
+              Assign
             </button>
           )}
           {canAdmin && (
@@ -6285,7 +6148,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           )}
         </section>
       )}
-      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} initialView={resultsInitialView} onPartyMapChange={setPartyMapAnalysis} onShowHistoricalMap={showHistoricalMap} onFocusLocation={(point) => { setResultsOpen(false); mapRef.current?.flyTo([point.lat, point.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
       {activeEmergency && (
         <div className="emergency-alert-card">
           <b>Emergency from {activeEmergency.name}</b>
@@ -6326,6 +6188,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           />
         </Suspense>
       )}
+      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} onFocusLocation={(item) => { setResultsOpen(false); setSelected(null); setCoords(`${item.lat.toFixed(6)}, ${item.lng.toFixed(6)}`); mapRef.current?.flyTo([item.lat, item.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
       {pendingAreaAction && (
         <div className="modal-backdrop">
           <section className="modal area-action-modal">
@@ -6368,9 +6231,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
         </div>
       )}
       {newResultPoint && <Suspense fallback={<div className="modal-backdrop"><div className="modal">Loading result form…</div></div>}><PollingResultForm user={session.user} point={newResultPoint} parties={parties} onClose={() => setNewResultPoint(null)} onSave={savePollingResult} /></Suspense>}
-      {assignIncident && <AssignIncidentModal incident={assignIncident} users={users} currentUser={session.user} onClose={() => setAssignIncident(null)} onAssign={assignIncidentToField} />}
-      {supervisorIncidentsOpen && isSupervisor && <SupervisorIncidentListModal incidents={incidents} currentUser={session.user} users={users} onClose={() => setSupervisorIncidentsOpen(false)} onAssign={assignIncidentToField} onClaim={claimIncident} />}
-      {notificationDetail && <IncidentNotificationModal notification={notificationDetail.notification} incident={notificationDetail.incident} users={users} onClose={() => setNotificationDetail(null)} onOpenChat={async (incident) => { setNotificationDetail(null); await openIncidentChat(incident); }} onResolve={resolveNotificationIncident} />}
       {profileOpen && <ProfileModal session={session} onClose={() => setProfileOpen(false)} onSave={saveProfile} />}
       {ipLogOpen && canAdmin && (
         <div className="modal-backdrop" onClick={() => setIpLogOpen(false)}>
@@ -6430,7 +6290,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           </div>
         </div>
       )}
-      {gpsRequiredBlocked && isAgent && <div className="modal-backdrop gps-required-gate"><div className="modal"><span className="eyebrow">LOCATION REQUIRED</span><h2>Allow Location</h2><p>Location sharing is mandatory for Agent accounts. The app will remain locked until you allow access and a valid location is received.</p><button className="primary wide" onClick={toggleGps} disabled={sharingGps}><LuLocateFixed /> {sharingGps ? "Waiting for Location…" : "Allow Location"}</button></div></div>}
+      {gpsRequiredBlocked && isAgent && !sharingGps && <div className="modal-backdrop gps-required-gate"><div className="modal"><span className="eyebrow">LOCATION REQUIRED</span><h2>Allow Location</h2><p>Location sharing is mandatory for Agent accounts. The app will remain locked until you allow access and a valid location is received.</p><button className="primary wide" onClick={toggleGps} disabled={sharingGps}><LuLocateFixed /> {sharingGps ? "Waiting for Location…" : "Allow Location"}</button></div></div>}
       {partyManagerOpen && canAdmin && <Suspense fallback={<div className="modal-backdrop"><div className="modal">Loading party manager…</div></div>}><PartyManager parties={parties} onClose={() => setPartyManagerOpen(false)} onSave={saveParties} /></Suspense>}
       {emergencyOpen && (
         <DashboardEmergencyPanel
@@ -6438,7 +6298,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           onSend={sendEmergency}
         />
       )}
-      {manageOfficers && (
+      {manageOfficers && canManagePersonnel && (
         <Suspense fallback={<div className="modal-backdrop"><div className="modal">Loading personnel manager…</div></div>}>
           <OfficerManager
             users={users}
@@ -6485,6 +6345,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           messages={chatMessages}
           users={users}
           currentUser={session.user}
+          users={users}
           isAdmin={canManagePersonnel}
           onClose={() => setChatPanel(false)}
           onCreateRoom={createChatRoom}
@@ -6492,6 +6353,41 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           onSend={sendChatMessage}
           onAddMember={addChatMember}
           onDeleteRoom={deleteChatRoom}
+        />
+      )}
+      {assignIncidentOpen && incidentToAssign && (
+        <AssignIncidentModal
+          incident={incidentToAssign}
+          users={users}
+          onClose={() => {
+            setAssignIncidentOpen(false);
+            setIncidentToAssign(null);
+          }}
+          onAssign={handleAssignIncident}
+        />
+      )}
+      {supervisorIncidentsOpen && isSupervisor && (
+        <SupervisorIncidentListModal
+          incidents={incidents}
+          currentUser={session.user}
+          users={users}
+          onClose={() => setSupervisorIncidentsOpen(false)}
+          onAssign={handleAssignIncident}
+          onClaim={handleClaimIncident}
+        />
+      )}
+      {notificationModalOpen && selectedNotification && (
+        <IncidentNotificationModal
+          notification={selectedNotification}
+          incident={selectedIncident || incidents.find((item) => item.id === selectedNotification.incidentId) || null}
+          currentUser={session.user}
+          onClose={() => {
+            setNotificationModalOpen(false);
+            setSelectedNotification(null);
+            setSelectedIncident(null);
+          }}
+          onMarkDone={handleNotificationDone}
+          onOpenChat={handleOpenNotificationChat}
         />
       )}
       {notice && <Toast message={notice} />}

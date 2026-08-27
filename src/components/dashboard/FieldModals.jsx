@@ -735,8 +735,8 @@ export function OfficerManager({
       lga,
       ward,
       pollingUnit,
-      lat: String(currentUser.lat || "7.3775"),
-      lng: String(currentUser.lng || "3.9470"),
+      lat: String(currentUser.lat || "8.4799"),
+      lng: String(currentUser.lng || "4.5418"),
       role: defaultRole,
     };
   };

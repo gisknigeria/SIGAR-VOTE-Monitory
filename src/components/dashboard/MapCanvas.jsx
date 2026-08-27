@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { FaMapMarkedAlt, FaTimes } from "react-icons/fa";
 import { MdAdjust, MdFilterHdr, MdHexagon, MdImage, MdLocationPin, MdPolyline } from "react-icons/md";
+import { API } from "../../config.js";
 
-const API = "/api";
-const OYO_CENTER = [7.3775, 3.947];
+const OYO_CENTER = [8.4799, 4.5418];
 
 const CATEGORY_ICON_COMPONENTS = {
   Point: MdLocationPin,
@@ -336,6 +336,12 @@ export default function MapCanvas({
           </div>
         )}
       </div>
+      {selectedBoundaryState && showBoundaryLayer && (
+        <div className="boundary-info-card">
+          <strong>Selected</strong>
+          <span>{selectedBoundaryState}</span>
+        </div>
+      )}
       {emergencyAlerts.length > 0 && (
         <div className="emergency-alert-card">
           <b>Emergency from {emergencyAlerts[0].name}</b>

@@ -1,56 +1,83 @@
-import { useEffect, useRef, useState } from "react";
-import { FaBell, FaTimes } from "react-icons/fa";
+import { useState } from "react";
+import { FaBell } from "react-icons/fa";
 
-export default function NotificationCenter({ notifications = [], onOpen }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  const unread = notifications.filter((item) => !item.read).length;
+export default function NotificationCenter({
+  notifications,
+  unreadCount,
+  onNotificationClick,
+}) {
+  const [panelOpen, setPanelOpen] = useState(false);
 
-  useEffect(() => {
-    const close = (event) => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, []);
+  const handleBellClick = () => {
+    setPanelOpen(!panelOpen);
+  };
+
+  const handleNotificationClick = (notification) => {
+    setPanelOpen(false);
+    onNotificationClick(notification);
+  };
 
   return (
-    <div className="notification-center" ref={rootRef}>
+    <div className="notification-center">
       <button
-        type="button"
-        className={`notification-bell ${unread ? "has-unread" : ""}`}
-        onClick={() => setOpen((value) => !value)}
-        aria-label={`${unread} unread notifications`}
-        title="Assignments and command notifications"
+        className={`notification-bell ${unreadCount > 0 ? "has-unread" : ""}`}
+        onClick={handleBellClick}
+        title={
+          unreadCount > 0
+            ? `${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}`
+            : "Notifications"
+        }
       >
-        <FaBell />
-        {unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}
+        <FaBell size={20} />
+        {unreadCount > 0 && (
+          <span className="notification-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+        )}
       </button>
-      {open && (
-        <section className="notification-panel" aria-label="Notifications">
-          <header>
-            <div><b>Notifications</b><small>{unread ? `${unread} unread` : "All caught up"}</small></div>
-            <button type="button" className="icon-btn" onClick={() => setOpen(false)} aria-label="Close notifications"><FaTimes /></button>
-          </header>
-          <div className="notification-list">
-            {notifications.map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                className={`notification-item ${item.read ? "" : "unread"}`}
-                onClick={() => { setOpen(false); onOpen(item); }}
-              >
-                <i />
-                <span>
-                  <b>{item.incidentType || "Command update"}</b>
-                  <em>{item.message || "Open this notification for details."}</em>
-                  <small>{item.createdAt ? new Date(item.createdAt).toLocaleString() : "Just now"}</small>
-                </span>
-              </button>
-            ))}
-            {!notifications.length && <p className="notification-empty">No notifications yet.</p>}
+
+      {panelOpen && (
+        <div className="notification-panel">
+          <div className="notification-panel-header">
+            <h3>Notifications</h3>
+            {unreadCount > 0 && (
+              <span className="unread-badge">{unreadCount} unread</span>
+            )}
           </div>
-        </section>
+
+          <div className="notification-list">
+            {notifications.length === 0 ? (
+              <div className="empty-notifications">
+                <p>No notifications yet</p>
+              </div>
+            ) : (
+              notifications.map((notification) => (
+                <button
+                  key={notification.id}
+                  className={`notification-item ${
+                    !notification.read ? "unread" : ""
+                  }`}
+                  onClick={() => handleNotificationClick(notification)}
+                >
+                  <div className="notification-content">
+                    <p className="notification-title">
+                      {notification.incidentType || "Incident Assignment"}
+                    </p>
+                    <p className="notification-preview">
+                      {notification.message?.substring(0, 60) ||
+                        "You have a new incident assignment"}
+                      {(notification.message?.length || 0) > 60 ? "..." : ""}
+                    </p>
+                    <p className="notification-time">
+                      {new Date(notification.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  {!notification.read && (
+                    <div className="notification-unread-dot" />
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,13 +1,21 @@
-import { useState } from "react";
-import { FaEye, FaEyeSlash, FaShieldAlt } from "react-icons/fa";
+import { useEffect, useState } from "react";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { API } from "../../config.js";
+import { getInstallState, requestAppInstall, subscribeToInstallState } from "../../pwaInstall.js";
 
-const API = "/api";
-const safeError = (status, body, contentType = "") => {
-  const message = typeof body === "object" && body ? body.message : typeof body === "string" ? body.trim() : "";
-  const html = contentType.includes("text/html") || /<!doctype|<html[\s>]|<style[\s>]/i.test(message);
+const safeApiErrorMessage = (status, body, contentType = "") => {
+  const message = typeof body === "object" && body
+    ? body?.message
+    : typeof body === "string"
+      ? body.trim()
+      : "";
+  const isHtml = contentType.toLowerCase().includes("text/html")
+    || /<!doctype\s+html|<html[\s>]|<style[\s>]|data:font\//i.test(message);
+
   if (status === 429) return "Too many requests. Please wait a moment and try again.";
-  if (!html && message && message.length <= 300) return message;
-  return status >= 500 ? "Service temporarily unavailable. Please try again shortly." : `Request failed (${status})`;
+  if (!isHtml && message && message.length <= 300) return message;
+  if (status >= 500) return "Service temporarily unavailable. Please try again shortly.";
+  return `Request failed (${status})`;
 };
 
 async function request(path, token, options = {}) {
@@ -25,9 +33,12 @@ async function request(path, token, options = {}) {
 
   const contentType = response.headers.get("content-type") || "";
   if (!response.ok) {
-    const body = contentType.includes("application/json") ? await response.json().catch(() => ({})) : await response.text().catch(() => "");
-    throw new Error(safeError(response.status, body, contentType));
+    const body = contentType.includes("application/json")
+      ? await response.json().catch(() => ({}))
+      : await response.text().catch(() => "");
+    throw new Error(safeApiErrorMessage(response.status, body, contentType));
   }
+
   if (contentType.includes("application/json")) return response.json();
   return null;
 }
@@ -39,9 +50,25 @@ export default function Login({ onLogin }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [installState, setInstallState] = useState(getInstallState);
+  const [installMessage, setInstallMessage] = useState("");
 
-  const installApp = () => {
-    setError("Use your browser menu and choose Install app / Add to Home screen.");
+  useEffect(() => subscribeToInstallState(setInstallState), []);
+
+  const installApp = async () => {
+    setInstallMessage("");
+    const result = await requestAppInstall();
+
+    if (result.status === "accepted")
+      setInstallMessage("Installation started. The app will appear on your device shortly.");
+    else if (result.status === "installed")
+      setInstallMessage("The app is already installed on this device.");
+    else if (result.status === "dismissed")
+      setInstallMessage("Installation was cancelled. Reload the page when ready, then press Install again.");
+    else if (result.status === "ios-help")
+      setInstallMessage("On iPhone or iPad: tap Share, then choose Add to Home Screen.");
+    else
+      setInstallMessage("Install is not available yet. Use a secure HTTPS page in Chrome or Edge, then try again.");
   };
 
   const submit = async (e) => {
@@ -67,20 +94,16 @@ export default function Login({ onLogin }) {
   return (
     <main className="login-shell">
       <section className="login-brand">
-        <img className="campaign-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
+        <img className="campaign-logo-bare" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
         <p className="command-kicker">Election Intelligence Platform</p>
         <h1 className="command-title">Election Monitoring Command Center</h1>
         <p className="command-copy">
           Real-time monitoring, coordinated field operations and location-based election intelligence.
         </p>
-        <div className="security-line">
-          <FaShieldAlt size={12} />
-          <span>Secure operations access</span>
-        </div>
       </section>
 
       <form className="login-card" onSubmit={submit}>
-        <img className="login-card-logo" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
+        <img className="login-card-logo-bare" src="/bsa-logo.png" alt="BSA Oyo Ahead logo" />
         <div className="eyebrow">SECURE ACCESS</div>
         <h2>Welcome back</h2>
         <p className="muted">Sign in with your authorized election operations credentials.</p>
@@ -90,8 +113,7 @@ export default function Login({ onLogin }) {
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            type="text"
-            autoComplete="email"
+            type="email"
           />
         </label>
 
@@ -102,7 +124,6 @@ export default function Login({ onLogin }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
             />
             <button
               type="button"
@@ -133,8 +154,10 @@ export default function Login({ onLogin }) {
         </button>
 
         <button type="button" className="install-login" onClick={installApp}>
-          Install command center app
+          {installState.installed ? "App installed" : installState.canPrompt ? "Install command center app" : "Install app"}
         </button>
+
+        {installMessage && <div className="install-status" role="status">{installMessage}</div>}
 
         <p className="powered-by">SIGAR Vote Oyo</p>
       </form>

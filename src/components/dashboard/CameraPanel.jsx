@@ -221,18 +221,18 @@ export default function CameraPanel({
     Drone: cameraFeeds.filter((x) => x.feedType === "Drone").length,
   };
 
-  const turnProviderLabel = turnStatus?.provider === "cloudflare" ? "Cloudflare TURN" : turnStatus?.provider === "expressturn" ? "ExpressTURN" : "TURN relay";
-  const turnStatusLabel = turnStatus?.route === "turn"
-    ? `Connected via ${turnProviderLabel}`
-    : turnStatus?.provider === "cloudflare" && turnStatus?.route === "direct"
-      ? "Cloudflare ready · direct route"
-      : turnStatus?.provider === "cloudflare"
-        ? `Cloudflare TURN ready${turnStatus?.fallbackProvider === "expressturn" ? " · ExpressTURN backup" : ""}`
+  const relayName = turnStatus?.provider === "cloudflare"
+    ? "Cloudflare TURN"
     : turnStatus?.provider === "expressturn"
-          ? "ExpressTURN ready"
-        : turnStatus?.provider === "stun-fallback"
-          ? "STUN fallback only"
-          : "Checking TURN";
+      ? "ExpressTURN"
+      : "Metered TURN";
+  const turnStatusLabel = turnStatus?.route === "turn"
+    ? `Connected via ${relayName}`
+    : turnStatus?.provider !== "stun-fallback" && turnStatus?.route === "direct"
+      ? `${relayName} ready · direct route`
+      : turnStatus?.provider !== "stun-fallback"
+        ? `${relayName} ready${turnStatus?.region ? ` · ${turnStatus.region}` : ""}`
+        : "STUN fallback only";
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -240,21 +240,13 @@ export default function CameraPanel({
     requestedFeedsRef.current.forEach((id) => {
       if (!availableIds.has(String(id))) requestedFeedsRef.current.delete(id);
     });
-    const retryTimers = [];
     phoneFeeds.forEach((feed) => {
       const id = String(feed.userId);
       if (!remoteStreams[feed.userId] && !requestedFeedsRef.current.has(id)) {
         requestedFeedsRef.current.add(id);
         onView(feed.userId);
-        retryTimers.push(window.setTimeout(() => {
-          if (!remoteStreams[feed.userId]) {
-            requestedFeedsRef.current.delete(id);
-            onView(feed.userId);
-          }
-        }, 10000));
       }
     });
-    return () => retryTimers.forEach((timer) => window.clearTimeout(timer));
   }, [isAdmin, phoneShares, remoteStreams, onView]);
 
   const saveFeedRecording = (feed, chunks, mimeType) => {
@@ -390,7 +382,7 @@ export default function CameraPanel({
           <h2>{view === "Drone" ? "Drone view" : "Camera feeds"}</h2>
         </div>
         <div className="camera-head-actions">
-          <span className={`turn-status ${turnStatus?.route === "turn" ? "relayed" : ["cloudflare", "expressturn"].includes(turnStatus?.provider) ? "ready" : "fallback"}`}>
+          <span className={`turn-status ${turnStatus?.route === "turn" ? "relayed" : turnStatus?.provider !== "stun-fallback" ? "ready" : "fallback"}`}>
             {turnStatusLabel}
           </span>
           <button className="icon-btn" onClick={onClose}>
@@ -429,7 +421,7 @@ export default function CameraPanel({
             >
               <div className="video-shell">
                 {remoteStreams[feed.userId] ? (
-                  <StreamVideo stream={remoteStreams[feed.userId]} muted watermark={feed} />
+                  <StreamVideo stream={remoteStreams[feed.userId]} watermark={feed} />
                 ) : (
                   <button
                     className="connect-feed"

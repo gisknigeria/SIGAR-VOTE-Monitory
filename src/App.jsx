@@ -1,10 +1,9 @@
 ﻿import { useState } from "react";
 import Login from "./components/auth/Login.jsx";
 import { lazy, Suspense } from "react";
+import { API } from "./config.js";
 
 const Dashboard = lazy(() => import("./components/dashboard/Dashboard.jsx"));
-
-const API = "/api";
 
 export default function App() {
   const [session, setSession] = useState(() => {

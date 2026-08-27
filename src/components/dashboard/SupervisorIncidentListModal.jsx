@@ -163,7 +163,7 @@ export default function SupervisorIncidentListModal({
           </div>
 
           {/* Incidents List */}
-          <div style={{ flex: 1, overflow: "auto", borderTop: "1px solid #6d2638" }}>
+          <div style={{ flex: 1, overflow: "auto", borderTop: "1px solid #e5e7eb" }}>
             {filteredIncidents.length === 0 ? (
               <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>
                 <FaClipboardList size={32} style={{ marginBottom: "1rem", opacity: 0.5 }} />
@@ -177,14 +177,14 @@ export default function SupervisorIncidentListModal({
                     style={{
                       padding: "1rem",
                       marginBottom: "0.5rem",
-                      border: "1px solid #6d2638",
+                      border: "1px solid #e5e7eb",
                       borderRadius: "0.375rem",
-                      backgroundColor: "#210b13",
+                      backgroundColor: "#f9fafb",
                       cursor: "pointer",
                       transition: "all 0.2s",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.backgroundColor = "#35121c";
+                      e.currentTarget.backgroundColor = "#f3f4f6";
                       e.currentTarget.boxShadow = "0 1px 3px rgba(0,0,0,0.1)";
                     }}
                   >
@@ -220,16 +220,16 @@ export default function SupervisorIncidentListModal({
                             padding: "0.25rem 0.75rem",
                             backgroundColor:
                               incident.status === "Resolved"
-                                ? "#193b2b"
+                                ? "#d1fae5"
                                 : incident.status === "In Progress"
-                                  ? "#3c2c09"
-                                  : "#35121c",
+                                  ? "#fef3c7"
+                                  : "#e0e7ff",
                             color:
                               incident.status === "Resolved"
-                                ? "#86efac"
+                                ? "#065f46"
                                 : incident.status === "In Progress"
-                                  ? "#fde68a"
-                                  : "#f5dc9a",
+                                  ? "#92400e"
+                                  : "#3730a3",
                             borderRadius: "0.25rem",
                             fontSize: "0.75rem",
                             fontWeight: "500",
@@ -264,7 +264,7 @@ export default function SupervisorIncidentListModal({
                           onClick={() => handleClaim(incident)}
                           style={{
                             padding: "0.5rem 1rem",
-                            backgroundColor: "#6d2638",
+                            backgroundColor: "#10b981",
                             color: "white",
                             border: "none",
                             borderRadius: "0.375rem",
@@ -283,7 +283,7 @@ export default function SupervisorIncidentListModal({
                         onClick={() => handleAssignClick(incident)}
                         style={{
                           padding: "0.5rem 1rem",
-                          backgroundColor: incident.assignedTo ? "#842044" : "#6d2638",
+                          backgroundColor: incident.assignedTo ? "#3b82f6" : "#6366f1",
                           color: "white",
                           border: "none",
                           borderRadius: "0.375rem",
@@ -319,7 +319,7 @@ export default function SupervisorIncidentListModal({
           >
             <div
               style={{
-                backgroundColor: "#16080e",
+                backgroundColor: "white",
                 borderRadius: "0.5rem",
                 padding: "1.5rem",
                 maxWidth: "500px",
@@ -344,7 +344,7 @@ export default function SupervisorIncidentListModal({
                     style={{
                       width: "100%",
                       padding: "0.5rem",
-                      border: "1px solid #6d2638",
+                      border: "1px solid #d1d5db",
                       borderRadius: "0.375rem",
                     }}
                   >
@@ -368,7 +368,7 @@ export default function SupervisorIncidentListModal({
                     style={{
                       width: "100%",
                       padding: "0.5rem",
-                      border: "1px solid #6d2638",
+                      border: "1px solid #d1d5db",
                       borderRadius: "0.375rem",
                       fontFamily: "inherit",
                       fontSize: "1rem",
@@ -392,8 +392,7 @@ export default function SupervisorIncidentListModal({
                     }}
                     style={{
                       padding: "0.5rem 1rem",
-                      backgroundColor: "#35121c",
-                      color: "#f5dc9a",
+                      backgroundColor: "#e5e7eb",
                       border: "none",
                       borderRadius: "0.375rem",
                       cursor: "pointer",
@@ -406,7 +405,7 @@ export default function SupervisorIncidentListModal({
                     disabled={loading || !assignedUserId}
                     style={{
                       padding: "0.5rem 1rem",
-                      backgroundColor: loading || !assignedUserId ? "#6b4452" : "#842044",
+                      backgroundColor: loading || !assignedUserId ? "#9ca3af" : "#3b82f6",
                       color: "white",
                       border: "none",
                       borderRadius: "0.375rem",
