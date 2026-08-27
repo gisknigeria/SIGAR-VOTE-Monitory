@@ -1443,18 +1443,7 @@ const loadOsunIrevImageLookup = async () => {
 };
 const loadOsunIrevPilot = async (force = false) => {
   await ensureOsunIrevArchiveLoaded();
-  if (!force) {
-    const archivedUploads = new Map((irevOsunCache?.data?.uploads || []).map(item => [item.puCode, item]));
-    return {
-      ...preparedOsunPilot,
-      uploads: preparedOsunPilot.uploads.map((item, index) => index < 10 && archivedUploads.has(item.puCode)
-        ? { ...item, ...archivedUploads.get(item.puCode), verificationStatus: 'Archived IReV image' }
-        : item),
-      notice: '',
-    };
-  }
   if (!force && irevOsunCache?.expiresAt > Date.now()) return irevOsunCache.data;
-  if (!force && irevOsunCache?.data) return { ...irevOsunCache.data, offline: true, notice: 'Showing the saved Osun IReV archive.' };
   try {
     const [stats, allUnits] = await Promise.all([
       fetchIrevJson(`elections/${IREV_OSUN_ELECTION_ID}/result/stats`),
@@ -1464,8 +1453,11 @@ const loadOsunIrevPilot = async (force = false) => {
       .map(normalizeOsunIrevUpload)
       .filter(item => item.id && item.puCode && item.imageUrl);
     const mergedUploads = new Map((irevOsunCache?.data?.uploads || []).map(upload => [upload.id, upload]));
+    preparedOsunPilot.uploads.forEach(upload => mergedUploads.set(upload.id, upload));
     liveUploads.forEach(upload => mergedUploads.set(upload.id, upload));
-    const uploads = [...mergedUploads.values()].sort((a, b) => `${a.lga}|${a.ward}|${a.puCode}`.localeCompare(`${b.lga}|${b.ward}|${b.puCode}`));
+    const uploads = [...mergedUploads.values()]
+      .map(upload => upload.imageUrl ? upload : { ...upload, imageUrl: liveUploads.find(item => item.puCode === upload.puCode)?.imageUrl || '' })
+      .sort((a, b) => `${a.lga}|${a.ward}|${a.puCode}`.localeCompare(`${b.lga}|${b.ward}|${b.puCode}`));
     const data = {
       pilot: true,
       configured: true,
@@ -1489,6 +1481,7 @@ const loadOsunIrevPilot = async (force = false) => {
     if (changed) await store.setSetting(IREV_OSUN_ARCHIVE_KEY, data);
     return data;
   } catch (error) {
+    if (!force && irevOsunCache?.data) return { ...irevOsunCache.data, offline: true, notice: 'Showing the saved Osun IReV archive.' };
     if (irevOsunCache?.data?.uploads?.length) {
       console.warn('[irev] Live source unavailable; serving persistent archive:', error.message);
       return { ...irevOsunCache.data, offline: true, refreshIntervalMs: 300_000, notice: '' };
