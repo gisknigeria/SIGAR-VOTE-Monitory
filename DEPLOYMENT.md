@@ -1,5 +1,29 @@
 # Live deployment
 
+## Vercel frontend with Render backend
+
+This repository is configured so Vercel serves the compiled Vite frontend while Render continues to run Express, Socket.IO, PostgreSQL access, IReV endpoints and other server-only features.
+
+1. Import this Git repository into Vercel.
+2. Keep the detected framework as **Vite**. The included `vercel.json` runs `npm run build`, publishes `dist`, and sends SPA routes to `index.html`.
+3. In **Vercel → Project Settings → Environment Variables**, add the following for Production and Preview:
+
+   ```env
+   VITE_API_URL=https://e-monitoring.onrender.com
+   ```
+
+   Replace that value if the Render service uses a different public URL. Redeploy Vercel after changing it because Vite embeds this value during the build.
+
+4. After Vercel supplies the final frontend domain, update Render's `CORS_ORIGIN` to contain both exact origins, separated by a comma:
+
+   ```env
+   CORS_ORIGIN=https://e-monitoring.onrender.com,https://YOUR-PROJECT.vercel.app
+   ```
+
+5. Keep `IREV_AUTO_SYNC=false` on Render. If the live IReV source is unavailable, the API now serves the bundled archive, reports that polling has stopped, and waits for an administrator to press **Refresh now** before trying the source again.
+
+Do not add database URLs, JWT secrets, passwords, TURN credentials or private API keys to Vercel. They belong only on Render.
+
 ## Render deployment (recommended for this repository)
 
 1. Commit and push the included `render.yaml` and `Dockerfile` to the repository.

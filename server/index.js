@@ -1400,6 +1400,8 @@ let irevOsunArchiveLoadPromise = null;
 let irevOsunLiveLookupPromise = null;
 let irevOsunLiveLookupExpiresAt = 0;
 let irevOsunLiveLookupError = null;
+let irevOsunPollingStopped = false;
+let irevOsunPollingStopReason = '';
 const irevOsunLiveUploadsByCode = new Map();
 const irevOsunLiveUploadsById = new Map();
 const ensureOsunIrevArchiveLoaded = () => {
@@ -1458,6 +1460,20 @@ const loadOsunIrevImageLookup = async () => {
 };
 const loadOsunIrevPilot = async (force = false) => {
   await ensureOsunIrevArchiveLoaded();
+  if (irevOsunPollingStopped && !force) {
+    const fallback = irevOsunCache?.data || preparedOsunPilot;
+    return {
+      ...fallback,
+      offline: true,
+      pollingStopped: true,
+      refreshIntervalMs: 0,
+      notice: 'Live IReV polling is stopped because the source is unavailable. Use Refresh now to retry manually.',
+    };
+  }
+  if (force) {
+    irevOsunPollingStopped = false;
+    irevOsunPollingStopReason = '';
+  }
   if (!force && irevOsunCache?.expiresAt > Date.now()) return irevOsunCache.data;
   try {
     const [stats, allUnits] = await Promise.all([
@@ -1487,6 +1503,7 @@ const loadOsunIrevPilot = async (force = false) => {
       fetchedAt: new Date().toISOString(),
       archivedAt: new Date().toISOString(),
       offline: false,
+      pollingStopped: false,
       refreshIntervalMs: 60_000,
       notice: '',
     };
@@ -1496,15 +1513,33 @@ const loadOsunIrevPilot = async (force = false) => {
     if (changed) await store.setSetting(IREV_OSUN_ARCHIVE_KEY, data);
     return data;
   } catch (error) {
-    if (!force && irevOsunCache?.data) return { ...irevOsunCache.data, offline: true, notice: 'Showing the saved Osun IReV archive.' };
+    irevOsunPollingStopped = true;
+    irevOsunPollingStopReason = error.message;
+    if (!force && irevOsunCache?.data) {
+      return {
+        ...irevOsunCache.data,
+        offline: true,
+        pollingStopped: true,
+        refreshIntervalMs: 0,
+        notice: 'Live IReV polling is stopped because the source is unavailable. Showing the saved archive; use Refresh now to retry manually.',
+      };
+    }
     if (irevOsunCache?.data?.uploads?.length) {
       console.warn('[irev] Live source unavailable; serving persistent archive:', error.message);
-      return { ...irevOsunCache.data, offline: true, refreshIntervalMs: 300_000, notice: '' };
+      return {
+        ...irevOsunCache.data,
+        offline: true,
+        pollingStopped: true,
+        refreshIntervalMs: 0,
+        notice: 'Live IReV polling is stopped because the source is unavailable. Use Refresh now to retry manually.',
+      };
     }
     console.warn('[irev] Live source unavailable; serving prepared Osun results:', error.message);
     return {
       ...preparedOsunPilot,
-      notice: 'Live IReV is temporarily unavailable. Showing the prepared Osun polling-unit archive.',
+      pollingStopped: true,
+      refreshIntervalMs: 0,
+      notice: 'Live IReV polling is stopped because the source is unavailable. Showing the prepared archive; use Refresh now to retry manually.',
     };
   }
 };

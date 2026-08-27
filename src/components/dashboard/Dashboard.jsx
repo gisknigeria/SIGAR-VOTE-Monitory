@@ -2293,7 +2293,10 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
     let timer = null;
     const poll = async () => {
       const pilot = await loadIrevPilot();
-      if (!stopped) timer = window.setTimeout(poll, Math.max(60_000, Number(pilot?.refreshIntervalMs) || 300_000));
+      const refreshInterval = Number(pilot?.refreshIntervalMs || 0);
+      if (!stopped && !pilot?.pollingStopped && refreshInterval > 0) {
+        timer = window.setTimeout(poll, Math.max(60_000, refreshInterval));
+      }
     };
     poll();
     return () => { stopped = true; window.clearTimeout(timer); };
