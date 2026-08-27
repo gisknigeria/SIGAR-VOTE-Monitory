@@ -79,6 +79,8 @@ import {
   MdFilterHdr,
   MdCropSquare,
   MdAdjust,
+  MdAssessment,
+  MdHowToVote,
 } from "react-icons/md";
 import ProfileModal from "./ProfileModal.jsx";
 import DashboardChatPanel from "./ChatPanel.jsx";
@@ -2663,7 +2665,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
-      <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button></div>
+      <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "irev" ? "rc-tab irev-tab active" : "rc-tab irev-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button></div>
       <main className="results-center-body">
         {view === "pulse" && <AnalyticsPanel incidents={incidents} officers={officers} mapLayers={mapLayers} selected={selected} onClose={onClose} onTool={onTool} onCsv={onCsv} onClear={onClear} embedded />}
         {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} />}
@@ -5276,11 +5278,6 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               </button>
             </div>
           </div>
-          <nav className="election-mode-switch" aria-label="Election phase">
-            <button className={resultsOpen && resultsInitialView === "pre" ? "active" : ""} onClick={() => { setResultsInitialView("pre"); setResultsOpen(true); setOperationsOpen(false); }}>Pre-Election</button>
-            <button className={resultsOpen && resultsInitialView === "pulse" ? "active" : ""} onClick={() => { setResultsInitialView("pulse"); setResultsOpen(true); setOperationsOpen(false); }}>Election</button>
-            <button className={resultsOpen && resultsInitialView === "post" ? "active" : ""} onClick={() => { setResultsInitialView("post"); setResultsOpen(true); setOperationsOpen(false); }}>Post-Election</button>
-          </nav>
           <form className="sidebar-search" onSubmit={geocode}>
             <svg
               viewBox="0 0 20 20"
@@ -5722,12 +5719,28 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               Result
             </button>}
             <button
-              className="map-action result-center-open icon-only"
+              className={`map-action election-phase-action pre-election-action${resultsOpen && resultsInitialView === "pre" ? " active" : ""}`}
+              onClick={() => { setResultsInitialView("pre"); setResultsOpen(true); }}
+              title="Pre-Election analysis"
+              aria-label="Open Pre-Election analysis"
+            >
+              <MdHowToVote />
+            </button>
+            <button
+              className={`map-action result-center-open election-phase-action election-day-action${resultsOpen && resultsInitialView === "pulse" ? " active" : ""}`}
               onClick={() => { setResultsInitialView("pulse"); setResultsOpen(true); }}
-              title="Dashboard"
-              aria-label="Dashboard"
+              title="Election dashboard"
+              aria-label="Open Election dashboard"
             >
               <FaChartBar />
+            </button>
+            <button
+              className={`map-action election-phase-action post-election-action${resultsOpen && resultsInitialView === "post" ? " active" : ""}`}
+              onClick={() => { setResultsInitialView("post"); setResultsOpen(true); }}
+              title="Post-Election analysis"
+              aria-label="Open Post-Election analysis"
+            >
+              <MdAssessment />
             </button>
             <button
               className={`map-action emergency-open ${sosHolding ? "sos-holding" : ""}`}
