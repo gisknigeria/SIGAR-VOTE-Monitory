@@ -2245,20 +2245,14 @@ function AnalyticsPanel({
   );
 }
 
-function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", onPartyMapChange, onFocusLocation, onTool, onCsv, onClear }) {
-  const [view, setView] = useState("pulse");
+function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", initialView = "pulse", onPartyMapChange, onFocusLocation, onTool, onCsv, onClear }) {
+  const [view, setView] = useState(initialView);
   const [resultSourceFilter, setResultSourceFilter] = useState("");
   const [focusParty, setFocusParty] = useState(initialFocusParty);
   const [outlook, setOutlook] = useState("");
   const [outlookLoading, setOutlookLoading] = useState(false);
   const [postElectionBrief, setPostElectionBrief] = useState("");
   const [postElectionLoading, setPostElectionLoading] = useState(false);
-  const [news, setNews] = useState([]);
-  const [newsLoading, setNewsLoading] = useState(false);
-  const [newsError, setNewsError] = useState("");
-  const [newsSummary, setNewsSummary] = useState("");
-  const [newsSummaryError, setNewsSummaryError] = useState("");
-  const [newsSummaryLoading, setNewsSummaryLoading] = useState(false);
   const [irevPilot, setIrevPilot] = useState(null);
   const [irevPublishedResults, setIrevPublishedResults] = useState(null);
   const [irevLoading, setIrevLoading] = useState(false);
@@ -2270,9 +2264,6 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
   const [compareWithIrev, setCompareWithIrev] = useState(false);
   const [irevCompareLoading, setIrevCompareLoading] = useState(false);
   const [fieldMismatchDetail, setFieldMismatchDetail] = useState(null);
-  useEffect(() => {
-    if (view === "news") setView("pulse");
-  }, [view]);
   const loadIrevPilot = async (force = false) => {
     setIrevLoading(true);
     setIrevError("");
@@ -2672,13 +2663,12 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
-      <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "news" ? "rc-tab active" : "rc-tab"} onClick={() => setView("news")}>News</button></div>
+      <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button><button className={view === "irev" ? "rc-tab active" : "rc-tab"} onClick={() => setView("irev")}>IReV</button></div>
       <main className="results-center-body">
         {view === "pulse" && <AnalyticsPanel incidents={incidents} officers={officers} mapLayers={mapLayers} selected={selected} onClose={onClose} onTool={onTool} onCsv={onCsv} onClear={onClear} embedded />}
         {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} />}
         {["breakdown", "winloss", "winloss-lga"].includes(view) && <div className="wl-sub-tabs result-view-tabs"><button className={view === "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("breakdown")}>Polling Unit Breakdown</button><button className={view !== "breakdown" ? "wl-sub-tab active" : "wl-sub-tab"} onClick={() => setView("winloss")}>Win / Loss Analysis</button></div>}
         {["winloss", "winloss-lga"].includes(view) && <section className="result-total-strip"><article className="result-total-card grand"><span>Current projection</span><strong>{forecast.leader || "—"}</strong><small>{forecast.confidence}% indicative confidence; not a final result</small></article><article className="result-total-card"><span>Vote margin</span><strong>{forecast.margin.toLocaleString()}</strong><small>Against second place</small></article><article className="result-total-card"><span>Units covered</span><strong>{forecast.coverage.toLocaleString()}</strong><small>Unique submitted units</small></article></section>}
-        {view === "news" && <section className="result-table-card"><div className="result-table-title"><div><h2>Oyo State News</h2><p>General Oyo State coverage, including politics, INEC, elections, parties, governance, security, and major local developments.</p></div><div className="analysis-actions news-actions"><button className="primary action-btn refresh-news-btn" onClick={() => { setNews([]); setNewsSummary(""); setNewsSummaryError(""); setView("news"); }}><FaSyncAlt /> <span>Refresh</span></button><button className="secondary action-btn summary-action-btn" disabled={!news.length || newsSummaryLoading} onClick={() => { setNewsSummaryLoading(true); setNewsSummaryError(""); request("/news/summary", authToken, { method: "POST", body: JSON.stringify({ articles: news }) }).then((x) => { setNewsSummary(x.summary || "No summary available yet."); if (x.provider === "local") setNewsSummaryError("The summary service was unavailable, so a local fallback was generated."); else setNewsSummaryError(""); }).catch((error) => { setNewsSummary(""); setNewsSummaryError(error.message || "The summary request failed."); }).finally(() => setNewsSummaryLoading(false)); }}><MdFlashOn /> <span>{newsSummaryLoading ? "Working…" : "Summary"}</span></button></div></div>{newsSummary && <div className="news-summary">{cleanSummaryText(newsSummary)}</div>}{newsSummaryError && <p className="muted">{newsSummaryError}</p>}{newsLoading ? <p>Loading current headlines…</p> : <div className="news-list">{news.map(item => <article className="news-item" key={item.url}><a href={item.url} target="_blank" rel="noreferrer"><h3>{item.title}</h3></a><small>{item.source} · {item.publishedAt ? new Date(item.publishedAt).toLocaleString() : "Recent"}</small></article>)}{!news.length && <p>No current Oyo State headlines available.</p>}</div>}</section>}
         {view === "action" && <section className="result-table-card" style={{ marginBottom: 16 }}>
           <div className="result-table-title">
             <div><h2>Insight</h2><p>Realtime analysis of performance, insight &amp; operational intelligence</p></div>
@@ -2837,6 +2827,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
   const [mapDataPanel, setMapDataPanel] = useState(false);
   const [focusedOfficerId, setFocusedOfficerId] = useState("");
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [resultsInitialView, setResultsInitialView] = useState("pulse");
   const [partyMapAnalysis, setPartyMapAnalysis] = useState(null);
   const [analysisLayers, setAnalysisLayers] = useState([]);
   const [pendingAreaAction, setPendingAreaAction] = useState(null);
@@ -5285,6 +5276,11 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
               </button>
             </div>
           </div>
+          <nav className="election-mode-switch" aria-label="Election phase">
+            <button className={resultsOpen && resultsInitialView === "pre" ? "active" : ""} onClick={() => { setResultsInitialView("pre"); setResultsOpen(true); setOperationsOpen(false); }}>Pre-Election</button>
+            <button className={resultsOpen && resultsInitialView === "pulse" ? "active" : ""} onClick={() => { setResultsInitialView("pulse"); setResultsOpen(true); setOperationsOpen(false); }}>Election</button>
+            <button className={resultsOpen && resultsInitialView === "post" ? "active" : ""} onClick={() => { setResultsInitialView("post"); setResultsOpen(true); setOperationsOpen(false); }}>Post-Election</button>
+          </nav>
           <form className="sidebar-search" onSubmit={geocode}>
             <svg
               viewBox="0 0 20 20"
@@ -5727,7 +5723,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
             </button>}
             <button
               className="map-action result-center-open icon-only"
-              onClick={() => setResultsOpen(true)}
+              onClick={() => { setResultsInitialView("pulse"); setResultsOpen(true); }}
               title="Dashboard"
               aria-label="Dashboard"
             >
@@ -6217,7 +6213,7 @@ function Dashboard({ session, onLogout, onSessionUpdate }) {
           />
         </Suspense>
       )}
-      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} onPartyMapChange={setPartyMapAnalysis} onFocusLocation={(item) => { setResultsOpen(false); setSelected(null); setCoords(`${item.lat.toFixed(6)}, ${item.lng.toFixed(6)}`); mapRef.current?.flyTo([item.lat, item.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
+      {resultsOpen && <ResultsCenter incidents={incidents} parties={parties} officers={officers} personnel={users} mapLayers={mapLayers} selected={selected} onClose={() => setResultsOpen(false)} authToken={session.token} canAdmin={canAdmin} initialFocusParty={partyMapAnalysis?.party || ""} initialView={resultsInitialView} onPartyMapChange={setPartyMapAnalysis} onFocusLocation={(item) => { setResultsOpen(false); setSelected(null); setCoords(`${item.lat.toFixed(6)}, ${item.lng.toFixed(6)}`); mapRef.current?.flyTo([item.lat, item.lng], 15); }} onTool={runAnalyticTool} onCsv={importCsvPoints} onClear={clearMapTools} />}
       {pendingAreaAction && (
         <div className="modal-backdrop">
           <section className="modal area-action-modal">

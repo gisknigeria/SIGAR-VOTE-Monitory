@@ -8091,3 +8091,28 @@ body.resizing-sidebar {
     grid-column: auto;
   }
 }
+.election-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #572036;
+  background: #190711;
+}
+.election-mode-switch button {
+  min-height: 38px;
+  padding: 7px 5px;
+  border: 1px solid #6f2940;
+  border-radius: 8px;
+  background: #260a15;
+  color: #d9b7c4 !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+}
+.election-mode-switch button:hover,
+.election-mode-switch button.active {
+  border-color: #d9aa4b;
+  background: #6a1833;
+  color: #fff8e8 !important;
+  box-shadow: 0 5px 14px #09010466;
+}
