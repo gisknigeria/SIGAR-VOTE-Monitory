@@ -23,6 +23,17 @@ sharp.cache({ memory: 16, files: 0, items: 10 });
 sharp.concurrency(1);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataFile = process.env.DATA_FILE || join(__dirname, 'data.json');
+const bundledOsunIrevArchiveFile = join(__dirname, 'data', 'osunIrevArchive.json');
+const bundledOsunIrevArchive = (() => {
+  if (!existsSync(bundledOsunIrevArchiveFile)) return null;
+  try {
+    const archive = JSON.parse(readFileSync(bundledOsunIrevArchiveFile, 'utf8'));
+    return archive?.electionId && Array.isArray(archive.uploads) ? archive : null;
+  } catch (error) {
+    console.warn('[irev] Bundled Osun archive could not be read:', error.message);
+    return null;
+  }
+})();
 const secret = process.env.JWT_SECRET || randomBytes(32).toString('hex');
 if (!process.env.JWT_SECRET) {
   console.warn('JWT_SECRET is not set. Using a generated ephemeral secret for this process.');
@@ -1393,8 +1404,12 @@ const irevOsunLiveUploadsByCode = new Map();
 const irevOsunLiveUploadsById = new Map();
 const ensureOsunIrevArchiveLoaded = () => {
   if (!irevOsunArchiveLoadPromise) irevOsunArchiveLoadPromise = store.setting(IREV_OSUN_ARCHIVE_KEY, null).then(archive => {
-    if (archive?.electionId === IREV_OSUN_ELECTION_ID && Array.isArray(archive.uploads)) {
-      irevOsunCache = { data: { ...archive, offline: true }, expiresAt: 0 };
+    const savedArchive = archive?.electionId === IREV_OSUN_ELECTION_ID && Array.isArray(archive.uploads) ? archive : null;
+    const selectedArchive = savedArchive?.uploads?.length >= (bundledOsunIrevArchive?.uploads?.length || 0)
+      ? savedArchive
+      : bundledOsunIrevArchive;
+    if (selectedArchive) {
+      irevOsunCache = { data: { ...selectedArchive, offline: true }, expiresAt: 0 };
     }
   });
   return irevOsunArchiveLoadPromise;
@@ -1486,7 +1501,11 @@ const loadOsunIrevPilot = async (force = false) => {
       console.warn('[irev] Live source unavailable; serving persistent archive:', error.message);
       return { ...irevOsunCache.data, offline: true, refreshIntervalMs: 300_000, notice: '' };
     }
-    throw error;
+    console.warn('[irev] Live source unavailable; serving prepared Osun results:', error.message);
+    return {
+      ...preparedOsunPilot,
+      notice: 'Live IReV is temporarily unavailable. Showing the prepared Osun polling-unit archive.',
+    };
   }
 };
 app.get('/api/irev/osun', auth, rateLimit, asyncRoute(async (req, res) => {

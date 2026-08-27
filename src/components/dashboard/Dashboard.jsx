@@ -2266,7 +2266,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
   const [irevSection, setIrevSection] = useState("uploads");
   const [irevSearch, setIrevSearch] = useState("");
   const [irevPreview, setIrevPreview] = useState(null);
-  const [irevOcrLoading, setIrevOcrLoading] = useState("");
+  const [irevPreviewLoading, setIrevPreviewLoading] = useState("");
   const [compareWithIrev, setCompareWithIrev] = useState(false);
   const [irevCompareLoading, setIrevCompareLoading] = useState(false);
   const [fieldMismatchDetail, setFieldMismatchDetail] = useState(null);
@@ -2304,24 +2304,30 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
       .then(setIrevPublishedResults)
       .catch(error => setIrevError(error.message || "Prepared Osun results are unavailable."));
   }, [view, authToken, irevPublishedResults]);
-  const openIrevPreview = (upload) => setIrevPreview(upload);
-  const extractIrevVotes = async (upload) => {
-    setIrevOcrLoading(upload.id);
+  const closeIrevPreview = () => {
+    if (irevPreview?.objectUrl) URL.revokeObjectURL(irevPreview.imageUrl);
+    setIrevPreview(null);
+  };
+  const openIrevPreview = async (upload) => {
     setIrevError("");
+    if (upload.imageUrl) {
+      setIrevPreview(upload);
+      return;
+    }
+    setIrevPreviewLoading(upload.id);
     try {
-      const extraction = await request("/irev/oyo/ocr", authToken, {
-        method: "POST",
-        body: JSON.stringify({ uploadId: upload.id }),
+      const liveUpload = await request(`/irev/osun/uploads/${encodeURIComponent(upload.puCode)}`, authToken);
+      const imageResponse = await fetch(`${API_BASE_URL}${liveUpload.imageUrl}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
       });
-      setIrevPilot((current) => current ? {
-        ...current,
-        uploads: current.uploads.map((item) => item.id === upload.id ? { ...item, extraction } : item),
-      } : current);
-      setIrevPreview((current) => current?.id === upload.id ? { ...current, extraction } : current);
+      if (!imageResponse.ok) throw new Error(`The official result sheet could not be loaded (${imageResponse.status}).`);
+      const imageBlob = await imageResponse.blob();
+      if (!imageBlob.type.startsWith("image/")) throw new Error("The official result-sheet file is not an image.");
+      setIrevPreview({ ...upload, ...liveUpload, imageUrl: URL.createObjectURL(imageBlob), objectUrl: true });
     } catch (error) {
-      setIrevError(error.message || "The result-sheet votes could not be extracted.");
+      setIrevError(error.message || "The official result-sheet image is temporarily unavailable.");
     } finally {
-      setIrevOcrLoading("");
+      setIrevPreviewLoading("");
     }
   };
   const reports = useMemo(
@@ -2767,7 +2773,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
             <div className="irev-table-scroll">
               <table className="result-progress-table irev-full-table">
                 <thead><tr><th>#</th><th>LGA</th><th>Ward</th><th>Polling unit</th><th>PU code</th><th>Uploaded</th><th>Status</th><th>Result sheet</th></tr></thead>
-                <tbody>{filteredIrevUploads.map((upload, index) => <tr key={upload.id}><td>{index + 1}</td><td><b>{upload.lga || "—"}</b></td><td>{upload.ward || "—"}</td><td>{upload.pollingUnit || "—"}</td><td><strong>{upload.puCode}</strong></td><td>{upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : "—"}</td><td><span className="irev-awaiting-badge">{upload.verificationStatus}</span>{upload.extraction && <div className="irev-ocr-draft"><strong>Vote draft</strong><pre>{upload.extraction.results.map((item) => `${item.party}: ${item.votes}`).join("\n")}</pre></div>}</td><td><div className="irev-upload-actions"><button className="irev-sheet-link" type="button" onClick={() => openIrevPreview(upload)}>View image</button>{canAdmin && upload.imageUrl && <button className="irev-sheet-link" type="button" disabled={irevOcrLoading === upload.id} onClick={() => extractIrevVotes(upload)}>{irevOcrLoading === upload.id ? "Extracting…" : upload.extraction ? "Extract again" : "Extract votes"}</button>}</div></td></tr>)}{!filteredIrevUploads.length && <tr><td className="result-empty" colSpan="8">No Oyo result sheets are available from the live source right now.</td></tr>}</tbody>
+                <tbody>{filteredIrevUploads.map((upload, index) => <tr key={upload.id}><td>{index + 1}</td><td><b>{upload.lga || "—"}</b></td><td>{upload.ward || "—"}</td><td>{upload.pollingUnit || "—"}</td><td><strong>{upload.puCode}</strong></td><td>{upload.uploadedAt ? new Date(upload.uploadedAt).toLocaleString() : "—"}</td><td><span className="irev-awaiting-badge">{upload.verificationStatus}</span></td><td><button className="irev-sheet-link" type="button" disabled={irevPreviewLoading === upload.id} onClick={() => openIrevPreview(upload)}>{irevPreviewLoading === upload.id ? "Loading…" : "View image"}</button></td></tr>)}{!filteredIrevUploads.length && <tr><td className="result-empty" colSpan="8">No Osun result sheets are available from the live source right now.</td></tr>}</tbody>
               </table>
             </div>
             </>}
@@ -2776,7 +2782,7 @@ function ResultsCenter({ incidents, parties = [], officers = [], personnel = [],
               <div className="irev-table-toolbar"><div><strong>Polling-unit result counts</strong><span>{filteredIrevResultRows.length.toLocaleString()} of {irevResultRows.length.toLocaleString()} units shown</span></div><label><FaSearch /><input value={irevSearch} onChange={(event) => setIrevSearch(event.target.value)} placeholder="Search LGA, ward, polling unit or PU code" />{irevSearch && <button type="button" onClick={() => setIrevSearch("")} aria-label="Clear result search"><FaTimes /></button>}</label></div>
               <div className="irev-table-scroll"><table className="result-progress-table irev-results-table"><thead><tr><th>LGA</th><th>Ward</th><th>Polling unit</th><th>PU code</th><th>Winner</th>{irevTopParties.slice(0, 3).map((party) => <th key={party}>{party}</th>)}</tr></thead><tbody>{filteredIrevResultRows.map((row) => <tr key={row.id}><td><b>{row.lga}</b></td><td>{row.ward}</td><td>{row.pollingUnit}</td><td><strong>{row.puCode}</strong></td><td><b>{row.winner}</b></td>{irevTopParties.slice(0, 3).map((party) => <td key={party}><strong>{Number(row.results.find((result) => result.party === party)?.votes || 0).toLocaleString()}</strong></td>)}</tr>)}{!filteredIrevResultRows.length && <tr><td className="result-empty" colSpan="8">No prepared polling-unit results match this search.</td></tr>}</tbody></table></div>
             </>}
-            {irevPreview && <div className="irev-preview-backdrop" onClick={() => setIrevPreview(null)}><section className="irev-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span className="eyebrow">INEC IREV RESULT SHEET</span><h2>{irevPreview.puCode}</h2><p>{irevPreview.lga} · {irevPreview.ward} · {irevPreview.pollingUnit}</p></div><button type="button" className="icon-btn" onClick={() => setIrevPreview(null)} aria-label="Close image preview"><FaTimes /></button></header><div className="irev-preview-body"><div className="irev-preview-image"><img src={irevPreview.imageUrl} alt={`INEC IReV result sheet for ${irevPreview.puCode}`} /></div><aside><div className="irev-preview-actions"><a href={irevPreview.imageUrl} download target="_blank" rel="noreferrer">Download image</a>{canAdmin && irevPreview.imageUrl && <button type="button" className="irev-sheet-link" disabled={irevOcrLoading === irevPreview.id} onClick={() => extractIrevVotes(irevPreview)}>{irevOcrLoading === irevPreview.id ? "Extracting…" : irevPreview.extraction ? "Extract again" : "Extract votes"}</button>}</div><h3>Original result sheet</h3><p className="muted">This image is shown exactly as published on IReV. Prepared polling-unit vote figures are available in the Published results tab.</p>{irevPreview.extraction && <div className="irev-ocr-draft"><strong>Extracted vote draft</strong><pre>{irevPreview.extraction.results.map((item) => `${item.party}: ${item.votes}`).join("\n")}</pre></div>}</aside></div></section></div>}
+            {irevPreview && <div className="irev-preview-backdrop" onClick={closeIrevPreview}><section className="irev-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span className="eyebrow">INEC IREV RESULT SHEET</span><h2>{irevPreview.puCode}</h2><p>{irevPreview.lga} · {irevPreview.ward} · {irevPreview.pollingUnit}</p></div><button type="button" className="icon-btn" onClick={closeIrevPreview} aria-label="Close image preview"><FaTimes /></button></header><div className="irev-preview-body"><div className="irev-preview-image"><img src={irevPreview.imageUrl} alt={`INEC IReV result sheet for ${irevPreview.puCode}`} /></div><aside><div className="irev-preview-actions"><a href={irevPreview.imageUrl} download target="_blank" rel="noreferrer">Download image</a></div><h3>Original result sheet</h3><p className="muted">This image is shown exactly as published on IReV. Prepared polling-unit vote figures are available in the Published results tab.</p></aside></div></section></div>}
           </>}
           {!irevPilot && irevLoading && <p className="muted">Connecting to the official IReV feed…</p>}
         </section>}
