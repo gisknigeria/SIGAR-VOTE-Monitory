@@ -157,7 +157,7 @@ const POINT_ICONS = [
   { key: "accessible", label: "Accessible", Component: MdAccessible },
   { key: "recycle", label: "Recycle", Component: MdRecycling },
 ];
-// Render a point icon component by key (for React UI)
+
 const PointIconComponent = ({ iconKey, size = 18, color = "currentColor" }) => {
   const entry = POINT_ICONS.find((p) => p.key === iconKey);
   const Ic = entry?.Component || MdLocationPin;
