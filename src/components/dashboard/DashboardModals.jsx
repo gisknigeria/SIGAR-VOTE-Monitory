@@ -304,7 +304,6 @@ export default function DashboardModals({ controller }) {
           messages={chatMessages}
           users={users}
           currentUser={session.user}
-          users={users}
           isAdmin={canManagePersonnel}
           onClose={() => setChatPanel(false)}
           onCreateRoom={createChatRoom}
@@ -357,4 +356,3 @@ export default function DashboardModals({ controller }) {
     </>
   );
 }
-

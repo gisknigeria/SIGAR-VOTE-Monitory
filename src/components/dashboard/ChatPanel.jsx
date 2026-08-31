@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FaFile, FaImage, FaPaperclip, FaTimes, FaTrash, FaVideo } from "react-icons/fa";
 
 const MAX_CHAT_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -37,7 +37,13 @@ export default function ChatPanel({
   const [attachments, setAttachments] = useState([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [sending, setSending] = useState(false);
+  const [createRoomOpen, setCreateRoomOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
+  }, [activeRoom?.id, messages.length]);
 
   const names = useMemo(
     () =>
@@ -167,7 +173,17 @@ export default function ChatPanel({
             </div>
           )}
           {isAdmin && (
-            <form className="chat-create" onSubmit={submitRoom}>
+            <button
+              type="button"
+              className="chat-create-toggle"
+              aria-expanded={createRoomOpen}
+              onClick={() => setCreateRoomOpen((open) => !open)}
+            >
+              {createRoomOpen ? "Cancel room creation" : "Create room"}
+            </button>
+          )}
+          {isAdmin && (
+            <form className={`chat-create ${createRoomOpen ? "mobile-open" : ""}`} onSubmit={submitRoom}>
               <h3>Create room</h3>
               <input
                 value={newRoom.name}
@@ -266,6 +282,7 @@ export default function ChatPanel({
                     <span>Send the first update.</span>
                   </div>
                 )}
+                <div ref={messagesEndRef} aria-hidden="true" />
               </div>
               <form className="chat-send" onSubmit={submitMessage}>
                 {!!attachments.length && <div className="chat-selected-files">{attachments.map((attachment, index) => <span key={`${attachment.name}-${index}`}>{attachment.type === "image" ? <FaImage /> : attachment.type === "video" ? <FaVideo /> : <FaFile />}<b>{attachment.name}</b><button type="button" title="Remove attachment" onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><FaTrash /></button></span>)}</div>}
