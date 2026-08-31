@@ -2,6 +2,7 @@
 import Login from "./components/auth/Login.jsx";
 import { lazy, Suspense } from "react";
 import { API } from "./config.js";
+import { queryClient } from "./queryClient.js";
 
 const Dashboard = lazy(() => import("./components/dashboard/Dashboard.jsx"));
 
@@ -27,9 +28,13 @@ export default function App() {
   };
 
   const logout = () => {
-    fetch(`${API}/auth/logout`, { method: "POST", credentials: "same-origin" }).catch(() => {});
+    fetch(`${API}/auth/logout`, {
+      method: "POST",
+      credentials: "same-origin",
+    }).catch(() => {});
     localStorage.removeItem("command-session");
     sessionStorage.removeItem("command-session");
+    queryClient.clear();
     setSession(null);
   };
 
@@ -44,8 +49,24 @@ export default function App() {
   };
 
   return session ? (
-    <Suspense fallback={<div className="app-loading" role="status"><span></span><b>Loading command center…</b></div>}>
-      <Dashboard session={session} onLogout={logout} onSessionUpdate={updateSession} />
+    <Suspense
+      fallback={
+        <div
+          className="grid min-h-screen place-content-center justify-items-center gap-3.5 bg-[#1b050d] text-[#f5dc9a]"
+          role="status"
+        >
+          <span className="size-[34px] animate-spin rounded-full border-[3px] border-[#8b1e46] border-t-[#ecc86f]"></span>
+          <b className="font-[Arial,sans-serif] text-xs font-semibold tracking-[0.08em]">
+            Loading command center…
+          </b>
+        </div>
+      }
+    >
+      <Dashboard
+        session={session}
+        onLogout={logout}
+        onSessionUpdate={updateSession}
+      />
     </Suspense>
   ) : (
     <Login onLogin={login} />

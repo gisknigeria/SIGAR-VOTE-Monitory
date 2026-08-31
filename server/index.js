@@ -2333,5 +2333,21 @@ if (enableIrevAutoSync) {
   console.log('[irev] Background sync disabled; serving the persistent archive.');
 }
 
-if (process.env.NODE_ENV === 'production') { app.use(express.static(join(__dirname, '..', 'dist'))); app.get(/.*/, (_, res) => res.sendFile(join(__dirname, '..', 'dist', 'index.html'))); }
+if (process.env.NODE_ENV === 'production') {
+  const distDirectory = join(__dirname, '..', 'dist');
+  app.use(express.static(distDirectory, {
+    setHeaders: (res, filePath) => {
+      const normalizedPath = filePath.replace(/\\/g, '/');
+      if (normalizedPath.includes('/assets/')) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (normalizedPath.endsWith('/service-worker.js') || normalizedPath.endsWith('/index.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }));
+  app.get(/.*/, (_, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(join(distDirectory, 'index.html'));
+  });
+}
 server.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log(`Election Monitoring Command API listening on port ${process.env.PORT || 5000}`));

@@ -12,6 +12,8 @@
     "security:check": "node scripts/security-check.js"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/react-query": "^5.102.8",
     "@vitejs/plugin-react": "latest",
     "bcryptjs": "latest",
     "cors": "latest",
@@ -28,6 +30,7 @@
     "shpjs": "^6.2.0",
     "socket.io": "latest",
     "socket.io-client": "latest",
+    "tailwindcss": "^4.3.3",
     "vite": "latest"
   },
   "devDependencies": {
