@@ -475,6 +475,10 @@ const RESULTS_HELPERS = {
 };
 
 import DashboardView from "./DashboardView.jsx";
+import { useAdminChatOperations } from "./hooks/useAdminChatOperations.js";
+import { useAnalyticsOperations } from "./hooks/useAnalyticsOperations.js";
+import { useGpsEmergencyOperations } from "./hooks/useGpsEmergencyOperations.js";
+import { useMapOperations } from "./hooks/useMapOperations.js";
 
 function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const dashboardQueries = useDashboardQueries(session);
@@ -1424,1151 +1428,153 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     }
     setNotice("Location not found");
   };
-  const currentUserPoint = () => {
-    const point = gpsPositions[session.user.id] || session.user;
-    return Number.isFinite(Number(point?.lat)) && Number.isFinite(Number(point?.lng))
-      ? { lat: Number(point.lat), lng: Number(point.lng), label: "My location" }
-      : null;
-  };
-  const geocodePlace = async (value) => {
-    const text = String(value || "").trim();
-    if (!text) throw new Error("Enter a start and destination");
-    if (/^(my location|current location|here)$/i.test(text)) {
-      const here = currentUserPoint();
-      if (!here) throw new Error("Your location is not available yet");
-      return here;
-    }
-    const coordMatch = text.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
-    if (coordMatch) {
-      return { lat: Number(coordMatch[1]), lng: Number(coordMatch[2]), label: text };
-    }
-    const queries = [text, `${text}, Nigeria`, `${text}, Oyo State, Nigeria`];
-    for (const q of queries) {
-      const data = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&q=${encodeURIComponent(q)}`,
-      )
-        .then((r) => r.json())
-        .catch(() => []);
-      if (data[0]) {
-        return { lat: Number(data[0].lat), lng: Number(data[0].lon), label: data[0].display_name || text };
-      }
-    }
-    throw new Error(`Could not find "${text}"`);
-  };
-  const loadRoute = async (points) => {
-    if (points.length < 2) return;
-    const [a, b] = points;
-    setNotice("Calculating route...");
-    try {
-      const data = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`,
-      ).then((r) => r.json());
-      if (!data.routes?.[0])
-        throw new Error("No road route found between those points");
-      const route = data.routes[0];
-      const result = {
-        points: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
-        distance: route.distance,
-        duration: route.duration,
-        start: a,
-        end: b,
-      };
-      setRouteResult(result);
-      mapRef.current?.fitBounds(L.latLngBounds(result.points).pad(0.18));
-      setNotice(
-        `Route ready: ${formatDistance(route.distance)} - ${formatDuration(route.duration)}`,
-      );
-    } catch (error) {
-      setRouteResult(null);
-      setNotice(error.message || "Unable to calculate route");
-    }
-    setTimeout(() => setNotice(""), 3500);
-  };
-  const addToolPoint = (mode, latlng) => {
-    const point = { lat: latlng.lat, lng: latlng.lng };
-    setCoords(`${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`);
-    if (mode === "measure") {
-      setRoutePoints([]);
-      setRouteResult(null);
-      setMeasurePoints((old) => {
-        const next = [...old, point];
-        if (next.length > 1)
-          setNotice(
-            `Measured distance: ${formatDistance(totalDistance(next))}`,
-          );
-        return next;
-      });
-      return;
-    }
-    setMeasurePoints([]);
-    setRoutePoints((old) => {
-      const next = old.length >= 2 ? [point] : [...old, point];
-      setRouteResult(null);
-      setNotice(
-        next.length === 1
-          ? "Route start set. Pick destination."
-          : "Calculating route...",
-      );
-      if (next.length === 2) loadRoute(next);
-      return next;
-    });
-  };
-  const startToolFromPoint = (mode, point) => {
-    const start = { lat: Number(point.lat), lng: Number(point.lng) };
-    setDrawMode(mode);
-    setCoords(`${start.lat.toFixed(6)}, ${start.lng.toFixed(6)}`);
-    if (mode === "measure") {
-      setMeasurePoints([start]);
-      setRoutePoints([]);
-      setRouteResult(null);
-      setNotice(`Measurement started from ${point.label || "selected point"}`);
-    } else {
-      setRoutePoints([start]);
-      setMeasurePoints([]);
-      setRouteResult(null);
-      setNotice(
-        `Route start set from ${point.label || "selected point"}. Pick destination.`,
-      );
-    }
-    mapRef.current?.closePopup();
-  };
-  const clearMapTools = () => {
-    setMeasurePoints([]);
-    setRoutePoints([]);
-    setRouteResult(null);
-    setAnalysisLayers([]);
-    setDrawMode("");
-    setMapMenu("");
-  };
-  const routeFromInputs = async (event) => {
-    event?.preventDefault();
-    try {
-      const start = await geocodePlace(routeStartInput);
-      const end = await geocodePlace(routeEndInput);
-      setDrawMode("route");
-      setMeasurePoints([]);
-      setRoutePoints([start, end]);
-      await loadRoute([start, end]);
-    } catch (error) {
-      setNotice(error.message || "Unable to find route");
-      setTimeout(() => setNotice(""), 3500);
-    }
-  };
-  const rerouteFromHere = async () => {
-    if (!routeResult?.end) {
-      setNotice("Create a route first");
-      return;
-    }
-    const here = currentUserPoint();
-    if (!here) {
-      setNotice("Your location is not available yet");
-      return;
-    }
-    setRouteStartInput("My location");
-    setRoutePoints([here, routeResult.end]);
-    await loadRoute([here, routeResult.end]);
-  };
-  const currentMapPoint = () => {
-    const live = gpsBestRef.current;
-    if (Number.isFinite(Number(live?.lat)) && Number.isFinite(Number(live?.lng)))
-      return { lat: Number(live.lat), lng: Number(live.lng) };
-    const center = mapRef.current?.getCenter();
-    return center
-      ? { lat: center.lat, lng: center.lng }
-      : { lat: OYO_CENTER[0], lng: OYO_CENTER[1] };
-  };
-  const openIncidentPointForm = () => {
-    clearMapTools();
-    setNewPoint(currentMapPoint());
-    setNotice("Incident point ready. Complete the incident form.");
-  };
-  const openPollingUnitResultForm = () => {
-    clearMapTools();
-    const point = gpsBestRef.current || currentMapPoint();
-    setNewResultPoint({ lat: Number(point.lat), lng: Number(point.lng) });
-    setNotice("Result form ready with your polling unit, location and current time.");
-  };
-  const savePollingResult = async (payload) => {
-    const item = await request("/results", session.token, { method: "POST", body: JSON.stringify(payload) });
-    setIncidents(old => old.some(entry => entry.id === item.id) ? old : [item, ...old]);
-    setNewResultPoint(null);
-    setNotice("Polling unit result submitted successfully");
-    setTimeout(() => setNotice(""), 3000);
-  };
-  const saveParties = async (partyList) => {
-    const saved = await request("/parties", session.token, { method: "PUT", body: JSON.stringify({ parties: partyList }) });
-    setParties(saved); setPartyManagerOpen(false); setNotice("Political-party list updated");
-  };
-  const pickIncidentPoint = () => {
-    clearMapTools();
-    setNotice("Click the map to pick an incident point.");
-  };
-  const startIncidentArea = (mode) => {
-    clearMapTools();
-    setDrawMode(mode);
-    setNotice(
-      mode === "circle"
-        ? "Click center, then edge, to create an incident area."
-        : "Draw the incident area by hand.",
-    );
-  };
-  const setMapDrawTool = (mode) => {
-    setMapMenu("");
-    setDrawMode((current) => (current === mode ? "" : mode));
-    if (mode === "measure") {
-      setRoutePoints([]);
-      setRouteResult(null);
-    }
-    if (mode === "route") setMeasurePoints([]);
-  };
-  const hasMapTools =
-    measurePoints.length > 0 ||
-    routePoints.length > 0 ||
-    !!routeResult ||
-    analysisLayers.length > 0 ||
-    !!drawMode;
-  const fitToPoints = (points, fallbackBounds = OYO_BOUNDS) => {
-    const valid = points.filter(
-      (point) =>
-        Number.isFinite(Number(point.lat)) &&
-        Number.isFinite(Number(point.lng)),
-    );
-    if (valid.length > 1)
-      mapRef.current?.fitBounds(
-        L.latLngBounds(
-          valid.map((point) => [Number(point.lat), Number(point.lng)]),
-        ).pad(0.18),
-      );
-    else if (valid.length === 1)
-      mapRef.current?.flyTo([Number(valid[0].lat), Number(valid[0].lng)], 14);
-    else mapRef.current?.fitBounds(fallbackBounds);
-  };
-  const routeUserPoint = currentUserPoint();
-  const routeGuide = routeResult
-    ? (() => {
-        const destination = routeResult.end;
-        const remaining =
-          routeUserPoint && destination
-            ? L.latLng(routeUserPoint.lat, routeUserPoint.lng).distanceTo([
-                destination.lat,
-                destination.lng,
-              ])
-            : null;
-        return remaining
-          ? `${formatDistance(remaining)} from destination. Route: ${formatDistance(routeResult.distance)} - ${formatDuration(routeResult.duration)}`
-          : `Route: ${formatDistance(routeResult.distance)} - ${formatDuration(routeResult.duration)}`;
-      })()
-    : "";
-  const focusDefaultExtent = () => {
-    const user = session.user;
-    const unitType = String(user.unitType || user.role || "").toLowerCase();
-    const isHeadquarters =
-      canAdmin ||
-      unitType.includes("command center");
-    if (isHeadquarters) {
-      mapRef.current?.fitBounds(OYO_BOUNDS);
-      return;
-    }
-    const localUsers = users.filter(
-      (item) =>
-        (user.lga && item.lga === user.lga) ||
-        (user.unit && item.unit === user.unit),
-    );
-    const localIds = new Set(localUsers.map((item) => item.id));
-    const localReports = incidents.filter(
-      (item) =>
-        localIds.has(item.assignedTo) ||
-        localIds.has(item.createdBy) ||
-        (item.visibleTo || []).some((id) => localIds.has(id)),
-    );
-    fitToPoints(
-      [...localUsers, ...localReports, user],
-      isHeadquarters
-        ? OYO_BOUNDS
-        : [
-            [Number(user.lat) - 0.08, Number(user.lng) - 0.08],
-            [Number(user.lat) + 0.08, Number(user.lng) + 0.08],
-          ],
-    );
-  };
-  const createOfficer = async (form) => {
-    const user = await request("/users", session.token, {
-      method: "POST",
-      body: JSON.stringify(form),
-    });
-    setUsers((old) =>
-      old.some((u) => u.id === user.id) ? old : [...old, user],
-    );
-    setNotice(`${user.name} created`);
-    setTimeout(() => setNotice(""), 2500);
-  };
-  const updateOfficer = async (form) => {
-    if (!form?.id) throw new Error("No user selected for update");
-    const user = await request(`/users/${form.id}`, session.token, {
-      method: "PUT",
-      body: JSON.stringify(form),
-    });
-    setUsers((old) => old.map((u) => (u.id === user.id ? user : u)));
-    setNotice(`${user.name} updated`);
-    setTimeout(() => setNotice(""), 2500);
-    return user;
-  };
-  const updateUserPassword = async (user, password) => {
-    await request(`/users/${user.id}/password`, session.token, {
-      method: "PUT",
-      body: JSON.stringify({ password }),
-    });
-    setNotice(`Password updated for ${user.name}`);
-    setTimeout(() => setNotice(""), 2500);
-  };
-  const changeUserRole = async (user, changes) => {
-    const updated = await request(`/users/${user.id}/role`, session.token, {
-      method: "PUT",
-      body: JSON.stringify(changes),
-    });
-    setUsers((old) => old.map((u) => (u.id === updated.id ? updated : u)));
-    const action = updated.role !== user.role
-      ? (updated.role === "Supervisor" ? "promoted to Supervisor" : "demoted to Agent")
-      : "ward updated";
-    setNotice(`${updated.name} ${action}`);
-    setTimeout(() => setNotice(""), 3000);
-    return updated;
-  };
-  const changeOwnPassword = async () => {
-    const password = window.prompt("Enter your new password");
-    if (!password) return;
-    await updateUserPassword(session.user, password);
-  };
-  const saveProfile = async (form) => {
-    const updated = await request("/profile", session.token, { method: "PUT", body: JSON.stringify(form) });
-    onSessionUpdate(updated);
-    setProfileOpen(false);
-    setProfileMenuOpen(false);
-    setNotice("Profile updated");
-  };
-  const refreshApp = async () => {
-    const reg = await navigator.serviceWorker?.getRegistration();
-    await reg?.update();
-    if (reg?.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-    setNotice(
-      updateReady ? "Installing new update..." : "Checking for update...",
-    );
-    setTimeout(() => window.location.reload(), 800);
-  };
-  const selectChatRoom = async (room) => {
-    setActiveRoom(room);
-    setChatPanel(true);
-    setChatMessages(
-      await request(`/chat/rooms/${room.id}/messages`, session.token),
-    );
-  };
-  const createChatRoom = async (form) => {
-    const room = await request("/chat/rooms", session.token, {
-      method: "POST",
-      body: JSON.stringify({
-        name: form.name,
-        memberIds: form.userId ? [form.userId] : [],
-      }),
-    });
-    setChatRooms((old) =>
-      old.some((x) => x.id === room.id) ? old : [room, ...old],
-    );
-    await selectChatRoom(room);
-  };
-  const sendChatMessage = async (payload) => {
-    if (!activeRoom) return;
-    const body = typeof payload === "string" ? payload : payload?.body || "";
-    const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
-    const message = await request(
-      `/chat/rooms/${activeRoom.id}/messages`,
-      session.token,
-      { method: "POST", body: JSON.stringify({ body, attachments }) },
-    );
-    setChatMessages((old) =>
-      old.some((x) => x.id === message.id) ? old : [...old, message],
-    );
-  };
-  const addChatMember = async (room, userId) => {
-    const updated = await request(
-      `/chat/rooms/${room.id}/members`,
-      session.token,
-      { method: "POST", body: JSON.stringify({ userId }) },
-    );
-    setChatRooms((old) => old.map((x) => (x.id === updated.id ? updated : x)));
-    setActiveRoom(updated);
-    setNotice("Personnel added to chat");
-    setTimeout(() => setNotice(""), 2500);
-  };
-  const deleteChatRoom = async (room) => {
-    if (
-      !room ||
-      !window.confirm(`Delete chat "${room.name}"? Messages will be removed.`)
-    )
-      return;
-    await request(`/chat/rooms/${room.id}`, session.token, {
-      method: "DELETE",
-    });
-    setChatRooms((old) => old.filter((x) => x.id !== room.id));
-    if (activeRoom?.id === room.id) {
-      setActiveRoom(null);
-      setChatMessages([]);
-    }
-    setNotice("Chat deleted");
-    setTimeout(() => setNotice(""), 2500);
-  };
-  const openIncidentChat = async (incident) => {
-    const room = await request(
-      `/incidents/${incident.id}/chat`,
-      session.token,
-      { method: "POST" },
-    );
-    setChatRooms((old) =>
-      old.some((x) => x.id === room.id)
-        ? old.map((x) => (x.id === room.id ? room : x))
-        : [room, ...old],
-    );
-    await selectChatRoom(room);
-  };
-  const deleteOfficer = async (officer) => {
-    if (
-      !window.confirm(
-        `Delete ${officer.name}? Their assigned incidents will become unassigned.`,
-      )
-    )
-      return;
-    await request(`/users/${officer.id}`, session.token, { method: "DELETE" });
-    setUsers((old) => old.filter((u) => u.id !== officer.id));
-    setNotice(`${officer.name} deleted`);
-    setTimeout(() => setNotice(""), 2500);
-  };
-  const addArea = (area) => {
-    const center = reportCenter(area);
-    if (canAdmin) {
-      setPendingAreaAction(area);
-      setDrawMode("");
-      return;
-    }
-    setNewPoint({
-      ...(center || { lat: OYO_CENTER[0], lng: OYO_CENTER[1] }),
-      geometry: area,
-    });
-    setDrawMode("");
-    setNotice("Incident area captured. Complete the incident form.");
-    setTimeout(() => setNotice(""), 2500);
-  };
-  const reportPendingArea = () => {
-    const area = pendingAreaAction;
-    if (!area) return;
-    const center = reportCenter(area);
-    setPendingAreaAction(null);
-    setNewPoint({ ...(center || { lat: OYO_CENTER[0], lng: OYO_CENTER[1] }), geometry: area });
-  };
-  const searchPendingArea = () => {
-    const area = pendingAreaAction;
-    if (!area) return;
-    const inside = (point) => {
-      if (!Number.isFinite(Number(point.lat)) || !Number.isFinite(Number(point.lng))) return false;
-      if (area.type === "circle") return L.latLng(area.center).distanceTo(L.latLng(point.lat, point.lng)) <= area.radius;
-      return L.polygon(area.points).getBounds().contains([point.lat, point.lng]);
-    };
-    const agents = officers.filter(inside);
-    const foundIncidents = incidents.filter(inside);
-    const pollingUnits = [...new Set(agents.map((agent) => agent.pollingUnit).filter(Boolean))];
-    const result = {
-      id: `search-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      area,
-      agents,
-      incidents: foundIncidents,
-      pollingUnits,
-      mapLayerCount: mapLayers.length,
-      radius: area.type === "circle" ? area.radius : null,
-      diameter: area.type === "circle" ? area.radius * 2 : null,
-    };
-    setAreas((old) => [...old, { ...area, title: "Saved area search" }]);
-    setPendingAreaAction(null);
-    setAreaSearchResult(result);
-  };
-  const areaSearchText = (result) => [
-    `Area search — ${new Date(result.createdAt).toLocaleString()}`,
-    `Agents: ${result.agents.length}`,
-    `Polling units: ${result.pollingUnits.length}`,
-    `Incidents: ${result.incidents.length}`,
-    `Map layers: ${result.mapLayerCount}`,
-    result.radius ? `Radius: ${formatDistance(result.radius)}` : null,
-    result.diameter ? `Diameter: ${formatDistance(result.diameter)}` : null,
-    result.pollingUnits.length ? `Polling units: ${result.pollingUnits.join(", ")}` : null,
-  ].filter(Boolean).join("\n");
-  const saveAreaSearch = (result) => {
-    const saved = JSON.parse(localStorage.getItem("command-saved-area-searches") || "[]");
-    localStorage.setItem("command-saved-area-searches", JSON.stringify([result, ...saved].slice(0, 50)));
-    setNotice("Area search saved on this device");
-    setTimeout(() => setNotice(""), 2500);
-  };
-  const shareAreaSearch = async (result) => {
-    const text = areaSearchText(result);
-    try {
-      if (navigator.share) await navigator.share({ title: "Election monitoring area search", text });
-      else {
-        await navigator.clipboard.writeText(text);
-        setNotice("Search result copied — paste it into your messaging app");
-      }
-    } catch (error) {
-      if (error.name !== "AbortError") setNotice("Could not share this search result");
-    }
-  };
-  const clearAreas = () => {
-    if (!areas.length || !window.confirm("Remove all drawn operational areas?"))
-      return;
-    setAreas([]);
-    localStorage.removeItem("command-areas");
-  };
-  const toggleGps = () => {
-    if (sharingGps) {
-      if (isAgent) {
-        setNotice("GPS tracking is required for Agent accounts and cannot be turned off");
-        return;
-      }
-      if (gpsWatchRef.current != null)
-        navigator.geolocation.clearWatch(gpsWatchRef.current);
-      gpsWatchRef.current = null;
-      gpsBestRef.current = null;
-      socketRef.current?.emit("gps:stop", { userId: session.user.id });
-      setSharingGps(false);
-      setNotice("Location sharing stopped");
-      return;
-    }
-    if (!navigator.geolocation) {
-      setNotice("GPS is not available in this browser");
-      return;
-    }
-    setSharingGps(true);
-    if (isAgent) setGpsRequiredBlocked(false);
-    setNotice("Acquiring GPS fix...");
-    gpsBestRef.current = null;
-
-    // Accuracy thresholds — only accept fixes within these bounds
-    const ACCURACY_GOOD = 25;
-    const ACCURACY_MAX = 150;
-    const BROADCAST_INTERVAL = 4000;
-    let lastBroadcast = 0;
-    let warmUpCount = 0;
-
-    const onPosition = (position) => {
-      const { latitude, longitude, accuracy, speed, heading } = position.coords;
-
-      const fixAge = Date.now() - Number(position.timestamp || Date.now());
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy)) return;
-      if (accuracy > ACCURACY_MAX || fixAge > 15000) {
-        setNotice(`Waiting for accurate GPS… current accuracy ±${Math.round(accuracy || 0)} m`);
-        return;
-      }
-
-      const prev = gpsBestRef.current;
-      const now = Date.now();
-      let lat = latitude;
-      let lng = longitude;
-      if (prev) {
-        const elapsedSeconds = Math.max(1, (now - new Date(prev.timestamp).getTime()) / 1000);
-        const distance = L.latLng(prev.lat, prev.lng).distanceTo([latitude, longitude]);
-        const impliedSpeed = distance / elapsedSeconds;
-        const jumpAllowance = Math.max(80, accuracy * 3, Number(prev.accuracy || 0) * 3);
-        if (distance > jumpAllowance && impliedSpeed > 75 && accuracy >= Number(prev.accuracy || accuracy)) {
-          setNotice("Ignoring an inaccurate GPS jump; checking again…");
-          return;
-        }
-        if (distance <= jumpAllowance) {
-          const currentWeight = Math.min(0.85, Math.max(0.55, Number(prev.accuracy || accuracy) / (Number(prev.accuracy || accuracy) + accuracy)));
-          lat = prev.lat * (1 - currentWeight) + latitude * currentWeight;
-          lng = prev.lng * (1 - currentWeight) + longitude * currentWeight;
-        }
-      }
-      gpsBestRef.current = {
-        userId: session.user.id,
-        lat,
-        lng,
-        accuracy,
-        speed: speed ?? 0,
-        heading: heading ?? 0,
-        timestamp: new Date(now).toISOString(),
-      };
-      // Agent accounts remain locked until a fresh, acceptably accurate fix exists.
-      if (isAgent) setGpsRequiredBlocked(false);
-
-      warmUpCount++;
-
-      // During warm-up (first 3 fixes) only show notice, don't broadcast yet
-      // unless the fix is already very good
-      const isGood = accuracy <= ACCURACY_GOOD;
-      if (warmUpCount < 3 && !isGood) {
-        setNotice(`GPS warming up… accuracy ±${Math.round(accuracy)} m`);
-        return;
-      }
-
-      const best = gpsBestRef.current;
-      // Throttle broadcasts — don't flood the server
-      if (now - lastBroadcast < BROADCAST_INTERVAL && !isGood) return;
-      lastBroadcast = now;
-
-      const point = {
-        userId: session.user.id,
-        lat: best.lat,
-        lng: best.lng,
-        accuracy: best.accuracy,
-        speed: best.speed,
-        heading: best.heading,
-        timestamp: new Date().toISOString(),
-      };
-
-      socketRef.current?.emit("gps:update", point);
-      setGpsPositions((old) => ({
-        ...old,
-        [session.user.id]: { ...point, offline: false },
-      }));
-
-      const accuracyLabel = best.accuracy <= ACCURACY_GOOD
-        ? `±${Math.round(best.accuracy)} m (good)`
-        : `±${Math.round(best.accuracy)} m`;
-      setNotice(`GPS live — ${accuracyLabel}`);
-      setTimeout(() => setNotice(""), 4000);
-    };
-
-    const onError = (error) => {
-      if (gpsWatchRef.current != null)
-        navigator.geolocation.clearWatch(gpsWatchRef.current);
-      gpsWatchRef.current = null;
-      gpsBestRef.current = null;
-      setSharingGps(false);
-      if (isAgent) setGpsRequiredBlocked(true);
-      setNotice(error.code === 1
-        ? "Location permission was denied — enable location in your browser settings and try again"
-        : "A valid location could not be obtained — check GPS and try again");
-    };
-
-    gpsWatchRef.current = navigator.geolocation.watchPosition(
-      onPosition,
-      onError,
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,        // never use a cached position
-        timeout: 20000,       // allow longer to get a proper fix
-      },
-    );
-  };
-  useEffect(() => {
-    if (isAgent && !sharingGps) toggleGps();
-  }, []);
-  useEffect(() => () => clearTimeout(sosHoldTimerRef.current), []);
-  const locateMe = () => {
-    const flyToPoint = (point, message = "Centered on your location") => {
-      if (!point) return;
-      mapRef.current?.flyTo([Number(point.lat), Number(point.lng)], 17);
-      setCoords(`${Number(point.lat).toFixed(6)}, ${Number(point.lng).toFixed(6)}`);
-      setNotice(message);
-      setTimeout(() => setNotice(""), 2500);
-    };
-    // Use the best GPS fix we already have if it's recent (< 10 s old)
-    const best = gpsBestRef.current;
-    if (best && (Date.now() - new Date(best.timestamp).getTime()) < 10000) {
-      flyToPoint(best, `Centered on your location ±${Math.round(best.accuracy)} m`);
-      return;
-    }
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) =>
-          flyToPoint({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          }, `Centered on your location ±${Math.round(position.coords.accuracy)} m`),
-        () =>
-          flyToPoint(
-            gpsPositions[session.user.id] || session.user,
-            "Centered on last known location",
-          ),
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
-      );
-      return;
-    }
-    flyToPoint(gpsPositions[session.user.id] || session.user, "Centered on last known location");
-  };
-  const sendEmergency = async (details) => {
-    const verified = gpsBestRef.current;
-    const verifiedFresh = verified && Date.now() - new Date(verified.timestamp).getTime() < 30000;
-    const fallback = (verifiedFresh ? verified : null) || gpsPositions[session.user.id] || session.user;
-    const dispatch = async (point) => {
-      const alert = {
-        id: `em-${Date.now()}`,
-        userId: session.user.id,
-        name: session.user.name,
-        role: session.user.role,
-        rank: session.user.rank,
-        unit: session.user.unit,
-        unitType: session.user.unitType,
-        command: session.user.command,
-        division: session.user.division,
-        station: session.user.station,
-        type: details.type || "Emergency",
-        text: details.text || "",
-        lat: Number(point.lat),
-        lng: Number(point.lng),
-        timestamp: new Date().toISOString(),
-      };
-      try {
-        const saved = await request("/incidents", session.token, {
-          method: "POST",
-          body: JSON.stringify({
-            title: `SOS - ${alert.type}`,
-            description: `${alert.name}${alert.text ? `: ${alert.text}` : ""}`,
-            reportType: "SOS-Emergency",
-            severity: "Critical",
-            status: "Open",
-            lat: alert.lat,
-            lng: alert.lng,
-            assignedTo: "",
-            visibleTo: [],
-            media: [],
-            style: {
-              source: "sos",
-              icon: "SOS",
-              color: "#dc2626",
-              fillColor: "#ef4444",
-              opacity: 0.95,
-            },
-          }),
-        });
-        alert.incidentId = saved.id;
-        setIncidents((old) =>
-          old.some((item) => item.id === saved.id) ? old : [saved, ...old],
-        );
-      } catch (error) {
-        setNotice(error.message || "SOS sent, but could not store incident");
-      }
-      socketRef.current?.emit("emergency:send", alert);
-      setEmergencyOpen(false);
-      setEmergencyAlerts((old) => [alert, ...old].slice(0, 12));
-      setNotice("Emergency alert sent to app users");
-      mapRef.current?.flyTo([alert.lat, alert.lng], 17);
-    };
-    if (navigator.geolocation)
-      navigator.geolocation.getCurrentPosition(
-        (p) => dispatch(
-          p.coords.accuracy <= 100
-            ? { lat: p.coords.latitude, lng: p.coords.longitude }
-            : { lat: fallback.lat || OYO_CENTER[0], lng: fallback.lng || OYO_CENTER[1] },
-        ),
-        () =>
-          dispatch({
-            lat: fallback.lat || OYO_CENTER[0],
-            lng: fallback.lng || OYO_CENTER[1],
-          }),
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
-      );
-    else
-      dispatch({
-        lat: fallback.lat || OYO_CENTER[0],
-        lng: fallback.lng || OYO_CENTER[1],
-      });
-  };
-  const startSosHold = (event) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    clearTimeout(sosHoldTimerRef.current);
-    sosLongTriggeredRef.current = false;
-    setSosHolding(true);
-    sosHoldTimerRef.current = setTimeout(() => {
-      sosLongTriggeredRef.current = true;
-      setSosHolding(false);
-      sendEmergency({ type: "Emergency", text: "" });
-    }, 5000);
-  };
-  const cancelSosHold = () => {
-    clearTimeout(sosHoldTimerRef.current);
-    sosHoldTimerRef.current = null;
-    setSosHolding(false);
-  };
-  const openSosNormally = (event) => {
-    if (sosLongTriggeredRef.current) {
-      event.preventDefault();
-      sosLongTriggeredRef.current = false;
-      return;
-    }
-    setEmergencyOpen(true);
-  };
-  const sosHoldProps = {
-    onPointerDown: startSosHold,
-    onPointerUp: cancelSosHold,
-    onPointerCancel: cancelSosHold,
-    onPointerLeave: cancelSosHold,
-    onContextMenu: (event) => event.preventDefault(),
-    onClick: openSosNormally,
-  };
-  const dismissEmergency = () => {
-    stopEmergencyRing();
-    setActiveEmergency(null);
-  };
-  const deleteEmergency = (alert) => {
-    stopEmergencyRing();
-    setEmergencyAlerts((old) => old.filter((item) => item.id !== alert.id));
-    setActiveEmergency((old) => (old?.id === alert.id ? null : old));
-    setNotice("SOS removed from this map");
-    setTimeout(() => setNotice(""), 2200);
-  };
-  const runAnalyticTool = async (tool) => {
-    const points = incidents.filter(
-      (item) =>
-        Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng)),
-    );
-    const clearAnalysis = () => {
-      setAnalysisLayers([]);
-      setMeasurePoints([]);
-      setRoutePoints([]);
-      setRouteResult(null);
-    };
-    if (tool === "Measure Distance") {
-      clearAnalysis();
-      setDrawMode("measure");
-      return "Click points on the map. The yellow line will show the real measured distance.";
-    }
-    if (tool === "Aggregate Points") {
-      clearAnalysis();
-      const counts = points.reduce(
-        (acc, item) => ({
-          ...acc,
-          [item.reportType || "Incident"]:
-            (acc[item.reportType || "Incident"] || 0) + 1,
-        }),
-        {},
-      );
-      setAnalysisLayers(
-        Object.entries(counts).map(([key, value], index) => ({
-          type: "marker",
-          center: [OYO_CENTER[0] + index * 0.03, OYO_CENTER[1] + index * 0.03],
-          radius: 7 + value,
-          color: REPORT_TYPE_STYLES[key]?.color || "#38bdf8",
-          fillColor: REPORT_TYPE_STYLES[key]?.fillColor || "#38bdf8",
-          fillOpacity: 0.45,
-          label: `${key}: ${value}`,
-        })),
-      );
-      return (
-        Object.entries(counts)
-          .map(([key, value]) => `${key}: ${value}`)
-          .join(" - ") || "No incident points to aggregate"
-      );
-    }
-    if (tool === "Calculate Density") {
-      clearAnalysis();
-      setAnalysisLayers(
-        points.slice(0, 60).map((item) => {
-          const neighbors = points.filter(
-            (other) =>
-              L.latLng(item.lat, item.lng).distanceTo([other.lat, other.lng]) <=
-              3000,
-          ).length;
-          return {
-            type: "circle",
-            center: [item.lat, item.lng],
-            radius: 250 + neighbors * 120,
-            color: "#f59e0b",
-            fillColor: "#f59e0b",
-            fillOpacity: Math.min(0.08 + neighbors * 0.025, 0.45),
-            label: `${neighbors} incidents within 3 km`,
-          };
-        }),
-      );
-      return `Drew density rings for ${Math.min(points.length, 60)} incident points. Approx overall density: ${(points.length / 28000).toFixed(4)} points/km-`;
-    }
-    if (tool === "Create Buffers") {
-      clearAnalysis();
-      setAnalysisLayers(
-        points
-          .slice(0, 25)
-          .map((item) => ({
-            type: "circle",
-            center: [item.lat, item.lng],
-            radius: 500,
-            color: "#38bdf8",
-            fillColor: "#38bdf8",
-            fillOpacity: 0.12,
-            label: `500m buffer: ${item.title}`,
-          })),
-      );
-      return `Drew 500m buffers for ${Math.min(points.length, 25)} incident points`;
-    }
-    if (tool === "Measure Buffer") {
-      clearAnalysis();
-      setDrawMode("circle");
-      return "Click a center point, then click the buffer edge. It will open the incident form with that circle area.";
-    }
-    if (tool === "Create Drive-Time Areas") {
-      clearAnalysis();
-      setDrawMode("route");
-      return "Click a start point and destination. The green road route and travel estimate will appear on the map.";
-    }
-    if (tool === "Extract Data") {
-      const csv = [
-        "title,type,severity,status,lat,lng",
-        ...points.map((item) =>
-          [
-            item.title,
-            item.reportType,
-            item.severity,
-            item.status,
-            item.lat,
-            item.lng,
-          ]
-            .map((value) => `"${String(value || "").replace(/"/g, '""')}"`)
-            .join(","),
-        ),
-      ].join("\n");
-      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `election-monitor-incident-export-${Date.now()}.csv`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      return `Downloaded CSV with ${points.length} incidents. Field personnel: ${officers.length}. Map layers: ${mapLayers.length}.`;
-    }
-    if (tool === "Find Hot Spots") {
-      clearAnalysis();
-      const hot = points
-        .map((item) => ({
-          ...item,
-          neighbors: points.filter(
-            (other) =>
-              L.latLng(item.lat, item.lng).distanceTo([other.lat, other.lng]) <=
-              2500,
-          ).length,
-        }))
-        .filter((item) => item.neighbors > 1)
-        .sort((a, b) => b.neighbors - a.neighbors)
-        .slice(0, 8);
-      setAnalysisLayers(
-        hot.map((item) => ({
-          type: "circle",
-          center: [item.lat, item.lng],
-          radius: 650 + item.neighbors * 120,
-          color: "#ef4444",
-          fillColor: "#ef4444",
-          fillOpacity: 0.22,
-          label: `Hot spot: ${item.neighbors} nearby incidents`,
-        })),
-      );
-      return hot.length
-        ? `Drew ${hot.length} hot spot areas. Top has ${hot[0].neighbors} nearby incidents.`
-        : "No hot spot found yet. Need incidents close together.";
-    }
-    if (tool === "Find Nearest") {
-      clearAnalysis();
-      const base = selected || mapRef.current?.getCenter();
-      if (!base) return "Select an incident or center the map first";
-      const nearest = officers
-        .map((o) => ({
-          ...o,
-          distance: L.latLng(base.lat, base.lng).distanceTo([o.lat, o.lng]),
-        }))
-        .sort((a, b) => a.distance - b.distance)[0];
-      if (nearest)
-        setAnalysisLayers([
-          {
-            type: "line",
-            points: [
-              [base.lat, base.lng],
-              [nearest.lat, nearest.lng],
-            ],
-            color: "#22c55e",
-            weight: 4,
-            label: `Nearest: ${nearest.name} - ${formatDistance(nearest.distance)}`,
-          },
-          {
-            type: "marker",
-            center: [nearest.lat, nearest.lng],
-            radius: 9,
-            color: "#22c55e",
-            fillColor: "#22c55e",
-            label: nearest.name,
-          },
-        ]);
-      return nearest
-        ? `Nearest responder: ${nearest.name} - ${formatDistance(nearest.distance)}. Green line drawn.`
-        : "No field responders available";
-    }
-    if (tool === "Summarize Nearby") {
-      clearAnalysis();
-      const center = selected || mapRef.current?.getCenter();
-      if (!center) return "Select an incident or center the map first";
-      const nearby = points.filter(
-        (item) =>
-          L.latLng(center.lat, center.lng).distanceTo([item.lat, item.lng]) <=
-          5000,
-      );
-      setAnalysisLayers([
-        {
-          type: "circle",
-          center: [center.lat, center.lng],
-          radius: 5000,
-          color: "#a855f7",
-          fillColor: "#a855f7",
-          fillOpacity: 0.12,
-          label: `${nearby.length} incidents within 5 km`,
-        },
-      ]);
-      return `${nearby.length} incidents within 5 km. Purple circle drawn.`;
-    }
-    if (tool === "Geo-Lookup") {
-      clearAnalysis();
-      const center = mapRef.current?.getCenter();
-      if (!center) return "Map center not available";
-      const data = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${center.lat}&lon=${center.lng}`,
-      )
-        .then((r) => r.json())
-        .catch(() => null);
-      setAnalysisLayers([
-        {
-          type: "marker",
-          center: [center.lat, center.lng],
-          radius: 10,
-          color: "#38bdf8",
-          fillColor: "#38bdf8",
-          label:
-            data?.display_name ||
-            `${center.lat.toFixed(5)}, ${center.lng.toFixed(5)}`,
-        },
-      ]);
-      return (
-        data?.display_name ||
-        `${center.lat.toFixed(5)}, ${center.lng.toFixed(5)}`
-      );
-    }
-    setDrawMode("measure");
-    return "Click points on the map to measure distance";
-  };
-  const importCsvPoints = (file, setResult) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const lines = String(reader.result || "")
-        .split(/\r?\n/)
-        .filter(Boolean);
-      const headers =
-        lines
-          .shift()
-          ?.split(",")
-          .map((x) => x.trim().toLowerCase()) || [];
-      const latIndex = headers.findIndex((x) =>
-        ["lat", "latitude", "y"].includes(x),
-      );
-      const lngIndex = headers.findIndex((x) =>
-        ["lon", "lng", "longitude", "x"].includes(x),
-      );
-      if (latIndex < 0 || lngIndex < 0)
-        return setResult("CSV needs latitude/longitude columns");
-      const features = lines
-        .map((line) => line.split(","))
-        .map((cols) => ({
-          lat: Number(cols[latIndex]),
-          lng: Number(cols[lngIndex]),
-          cols,
-        }))
-        .filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lng))
-        .map((row, index) => ({
-          type: "Feature",
-          properties: { name: row.cols[0] || `CSV point ${index + 1}` },
-          geometry: { type: "Point", coordinates: [row.lng, row.lat] },
-        }));
-      const layer = {
-        id: `csv-${Date.now()}`,
-        name: file.name.replace(/\.csv$/i, ""),
-        type: "geojson",
-        category: "Point",
-        operationalUse: "CSV Plot Points",
-        color: "#22c55e",
-        pointIcon: "place",
-        pointIconColor: "#ffffff",
-        pointSize: 18,
-        data: { type: "FeatureCollection", features },
-        visible: true,
-        opacity: 0.85,
-      };
-      setMapLayers((old) => [layer, ...old]);
-      if (features.length)
-        mapRef.current?.fitBounds(L.geoJSON(layer.data).getBounds().pad(0.12));
-      setResult(`Plotted ${features.length} CSV points on the map`);
-    };
-    reader.readAsText(file);
-  };
-  const openStreetPhotos = () => {
-    const center = mapRef.current?.getCenter();
-    if (!center) return;
-    window.open(
-      `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${center.lat},${center.lng}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
-  };
-  const shareMap = async (custom = {}) => {
-    try {
-      setNotice("Creating map screenshot...");
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(mapRef.current.getContainer(), {
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: "#09131e",
-        logging: false,
-      });
-      const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, "image/png", 0.95),
-      );
-      if (!blob) throw new Error("Screenshot could not be created");
-      const file = new File(
-        [blob],
-        `${custom.filePrefix || "Election-Monitor"}-${selected?.id || Date.now()}.png`,
-        { type: "image/png" },
-      );
-      const shareData = {
-        title:
-          custom.title ||
-          (selected ? `Incident: ${selected.title}` : "Election monitoring map"),
-        text:
-          custom.text ||
-          (selected
-            ? `${selected.title} - ${selected.severity} - ${selected.status}`
-            : "Election monitoring command map"),
-        files: [file],
-      };
-      if (
-        navigator.share &&
-        (!navigator.canShare || navigator.canShare(shareData))
-      ) {
-        await navigator.share(shareData);
-        setNotice("Map shared");
-      } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = file.name;
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setNotice(
-          "Screenshot downloaded - attach it in WhatsApp, Facebook or other apps",
-        );
-      }
-    } catch (error) {
-      if (error.name !== "AbortError")
-        setNotice(error.message || "Could not share this map");
-    }
-    setTimeout(() => setNotice(""), 3500);
-  };
-  const shareAreas = () => {
-    const area = areas[areas.length - 1];
-    if (!area) return setNotice("Draw an area first");
-    shareMap({
-      filePrefix: "election-monitor-area",
-      title: area.title || "Election monitoring operational area",
-      text: `${area.title || "Election monitoring operational area"}${area.note ? ` - ${area.note}` : ""}`,
-    });
-  };
-  // Keep the device awake while camera is sharing
+  const operationContext = {};
+  Object.assign(operationContext, {
+    activeRoom,
+    analysisLayers,
+    areas,
+    b,
+    body,
+    canAdmin,
+    coords,
+    drawMode,
+    entry,
+    filter,
+    formatDistance,
+    formatDuration,
+    g,
+    gpsBestRef,
+    gpsPositions,
+    gpsWatchRef,
+    incidents,
+    isAgent,
+    jump,
+    L,
+    layer,
+    mapLayers,
+    mapRef,
+    measurePoints,
+    notice,
+    officers,
+    onSessionUpdate,
+    OYO_BOUNDS,
+    OYO_CENTER,
+    parties,
+    pendingAreaAction,
+    r,
+    REPORT_TYPE_STYLES,
+    reportCenter,
+    request,
+    routeEndInput,
+    routePoints,
+    routeResult,
+    routeStartInput,
+    search,
+    selected,
+    session,
+    setActiveEmergency,
+    setActiveRoom,
+    setAnalysisLayers,
+    setAreas,
+    setAreaSearchResult,
+    setChatMessages,
+    setChatPanel,
+    setChatRooms,
+    setCoords,
+    setDrawMode,
+    setEmergencyAlerts,
+    setEmergencyOpen,
+    setGpsPositions,
+    setGpsRequiredBlocked,
+    setIncidents,
+    setMapLayers,
+    setMapMenu,
+    setMeasurePoints,
+    setNewPoint,
+    setNewResultPoint,
+    setNotice,
+    setParties,
+    setPartyManagerOpen,
+    setPendingAreaAction,
+    setProfileMenuOpen,
+    setProfileOpen,
+    setRoutePoints,
+    setRouteResult,
+    setRouteStartInput,
+    setSharingGps,
+    setSosHolding,
+    setUsers,
+    sharingGps,
+    socketRef,
+    sosHoldTimerRef,
+    sosLongTriggeredRef,
+    stopEmergencyRing,
+    title,
+    totalDistance,
+    updateReady,
+    users,
+    value,
+    visible,
+  });
+  const mapOperations = useMapOperations(operationContext);
+  Object.assign(operationContext, mapOperations);
+  const {
+    addToolPoint,
+    clearMapTools,
+    focusDefaultExtent,
+    hasMapTools,
+    openIncidentPointForm,
+    openPollingUnitResultForm,
+    pickIncidentPoint,
+    routeUserPoint,
+    saveParties,
+    savePollingResult,
+    setMapDrawTool,
+    startIncidentArea,
+    startToolFromPoint,
+  } = mapOperations;
+  const adminOperations = useAdminChatOperations(operationContext);
+  Object.assign(operationContext, adminOperations);
+  const {
+    addArea,
+    addChatMember,
+    changeUserRole,
+    clearAreas,
+    createChatRoom,
+    createOfficer,
+    deleteChatRoom,
+    deleteOfficer,
+    openIncidentChat,
+    refreshApp,
+    reportPendingArea,
+    saveAreaSearch,
+    saveProfile,
+    searchPendingArea,
+    selectChatRoom,
+    sendChatMessage,
+    shareAreaSearch,
+    updateOfficer,
+    updateUserPassword,
+  } = adminOperations;
+  const gpsOperations = useGpsEmergencyOperations(operationContext);
+  Object.assign(operationContext, gpsOperations);
+  const {
+    deleteEmergency,
+    dismissEmergency,
+    locateMe,
+    sendEmergency,
+    sosHoldProps,
+    toggleGps,
+  } = gpsOperations;
+  const analyticsOperations = useAnalyticsOperations(operationContext);
+  Object.assign(operationContext, analyticsOperations);
+  const {
+    importCsvPoints,
+    openStreetPhotos,
+    runAnalyticTool,
+    shareAreas,
+    shareMap,
+  } = analyticsOperations;
   const acquireWakeLock = async () => {
     try {
       if ("wakeLock" in navigator) {
