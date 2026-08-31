@@ -491,6 +491,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const partiesData = dashboardQueries.parties.data;
   const startupError = Object.values(dashboardQueries).find((query) => query.error)?.error;
   const [incidents, setIncidents] = useState([]);
+  const incidentsHydratedRef = useRef(false);
   const [users, setUsers] = useState([]);
   const [reportUsers, setReportUsers] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -783,7 +784,14 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     activeRoomRef.current = activeRoom;
   }, [activeRoom]);
   useEffect(() => {
-    if (Array.isArray(incidentsData)) setIncidents(incidentsData);
+    if (Array.isArray(incidentsData)) {
+      setIncidents((current) => {
+        if (incidentsHydratedRef.current) return incidentsData;
+        incidentsHydratedRef.current = true;
+        const serverIds = new Set(incidentsData.map((incident) => incident.id));
+        return [...incidentsData, ...current.filter((incident) => !serverIds.has(incident.id))];
+      });
+    }
     if (Array.isArray(usersData)) setUsers(usersData);
     if (Array.isArray(reportViewersData)) {
       setReportUsers(reportViewersData.filter((user) => user.role !== "Super Admin"));

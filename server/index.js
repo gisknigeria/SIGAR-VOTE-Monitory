@@ -75,6 +75,7 @@ if (!process.env.SUPER_ADMIN_PASSWORD || !process.env.ADMIN_PASSWORD) {
 if (process.env.NODE_ENV === 'production') {
   const missing = ['JWT_SECRET', 'SUPER_ADMIN_PASSWORD', 'ADMIN_PASSWORD'].filter(name => !process.env[name]);
   if (missing.length) throw new Error(`Missing required production configuration: ${missing.join(', ')}`);
+  if (!databaseUrl && !process.env.DATA_FILE) throw new Error('Production requires DATABASE_URL or an explicit persistent DATA_FILE path');
   if (Buffer.byteLength(process.env.JWT_SECRET, 'utf8') < 32) throw new Error('JWT_SECRET must contain at least 32 bytes');
   if (!validatePassword(process.env.SUPER_ADMIN_PASSWORD) || !validatePassword(process.env.ADMIN_PASSWORD)) throw new Error('Seed administrator passwords do not meet the password policy');
 }
@@ -312,8 +313,12 @@ async function initPostgres() {
 try {
   await initPostgres();
 } catch (error) {
-  console.error(`[database] PostgreSQL unavailable; using JSON fallback: ${error.message}`);
   await pool?.end().catch(() => {});
+  if (process.env.NODE_ENV === 'production' && databaseUrl) {
+    console.error(`[database] PostgreSQL unavailable: ${error.message}`);
+    throw error;
+  }
+  console.error(`[database] PostgreSQL unavailable; using JSON fallback: ${error.message}`);
   pool = null;
   if (process.env.SUPER_ADMIN_PASSWORD) {
     const user = jsonDb.users.find(item => item.id === 'u0');
