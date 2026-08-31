@@ -1,10 +1,8 @@
 export function useAnalyticsOperations(context) {
   const {
     areas,
-    b,
     filter,
     formatDistance,
-    g,
     incidents,
     L,
     layer,
@@ -12,7 +10,6 @@ export function useAnalyticsOperations(context) {
     mapRef,
     officers,
     OYO_CENTER,
-    r,
     REPORT_TYPE_STYLES,
     selected,
     setAnalysisLayers,
@@ -22,8 +19,6 @@ export function useAnalyticsOperations(context) {
     setNotice,
     setRoutePoints,
     setRouteResult,
-    title,
-    value,
     visible,
   } = context;
 

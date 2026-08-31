@@ -1,11 +1,8 @@
 export function useMapOperations(context) {
   const {
     analysisLayers,
-    b,
-    body,
     canAdmin,
     drawMode,
-    entry,
     filter,
     formatDistance,
     formatDuration,
@@ -18,7 +15,6 @@ export function useMapOperations(context) {
     OYO_BOUNDS,
     OYO_CENTER,
     parties,
-    r,
     request,
     routeEndInput,
     routePoints,
