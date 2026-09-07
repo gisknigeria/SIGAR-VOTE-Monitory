@@ -28,6 +28,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
   const [irevCompareLoading, setIrevCompareLoading] = useState(false);
   const [fieldMismatchDetail, setFieldMismatchDetail] = useState(null);
   const focusedPreElection = initialView === "pre" || view === "pre";
+  const focusedPostElection = initialView === "post" || view === "post";
   useEffect(() => {
     setView(initialView);
   }, [initialView]);
@@ -430,7 +431,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
-      {focusedPreElection ? <div className="rc-tab-bar"><button className="rc-tab active" onClick={() => setView("pre")}>Pre-Election</button></div> : <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "irev" ? "rc-tab irev-tab active" : "rc-tab irev-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button></div>}
+      {focusedPreElection ? <div className="rc-tab-bar"><button className="rc-tab active" onClick={() => setView("pre")}>Pre-Election</button></div> : focusedPostElection ? <div className="rc-tab-bar"><button className="rc-tab active" onClick={() => setView("post")}>Post-Election</button></div> : <div className="rc-tab-bar"><button className={view === "pulse" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pulse")}>Pulse</button><button className={view === "action" ? "rc-tab active" : "rc-tab"} onClick={() => setView("action")}>Action</button><button className={["breakdown", "winloss", "winloss-lga"].includes(view) ? "rc-tab active" : "rc-tab"} onClick={() => setView("breakdown")}>Result</button><button className={view === "irev" ? "rc-tab irev-tab active" : "rc-tab irev-tab"} onClick={() => setView("irev")}>IReV</button><button className={view === "pre" ? "rc-tab active" : "rc-tab"} onClick={() => setView("pre")}>Pre-Election</button><button className={view === "post" ? "rc-tab active" : "rc-tab"} onClick={() => setView("post")}>Post-Election</button></div>}
       <main className="results-center-body">
         {view === "pulse" && <AnalyticsPanel helpers={helpers} incidents={incidents} officers={officers} mapLayers={mapLayers} selected={selected} onClose={onClose} onTool={onTool} onCsv={onCsv} onClear={onClear} embedded />}
         {view === "pre" && <PreElectionAnalysis onAnalyze={runPreElectionAnalysis} />}
