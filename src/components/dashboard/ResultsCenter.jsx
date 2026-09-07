@@ -425,9 +425,9 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
     <div className={`results-center${focusedPreElection ? " pre-election-focused" : ""}`}>
       <header className="results-center-head">
         <div>
-          <span className="eyebrow">INTELLIGENCE DASHBOARD</span>
-          <h1>Analytics Dashboard</h1>
-          <p>Live operational pulse, election results, and actions.</p>
+          <span className="eyebrow">{focusedPreElection ? "PRE-ELECTION DASHBOARD" : "INTELLIGENCE DASHBOARD"}</span>
+          <h1>{focusedPreElection ? "Pre-Election Dashboard" : "Analytics Dashboard"}</h1>
+          <p>{focusedPreElection ? "Historical election sentiment and records." : "Live operational pulse, election results, and actions."}</p>
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
