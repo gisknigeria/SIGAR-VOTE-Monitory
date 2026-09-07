@@ -47,7 +47,6 @@ export default function App() {
     }
     setSession(next);
   };
-
   return session ? (
     <Suspense
       fallback={

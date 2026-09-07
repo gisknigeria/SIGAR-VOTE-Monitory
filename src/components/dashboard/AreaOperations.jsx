@@ -33,7 +33,7 @@ export default function AreaOperations({ authToken }) {
     } catch (error) { setError(error.message); }
     finally { setBusy(false); }
   };
-  return <section className="area-operations"><header><span className="eyebrow">ADMIN WORKSPACE</span><h3>Election operations</h3><p>Schedule observer coverage, training, logistics, and accessibility work.</p></header>
+  return <section className="area-operations"><header><span className="eyebrow">ADMIN WORKSPACE</span></header>
     <form className="area-operation-form" onSubmit={save}>
       <label>Operation title<input required maxLength={120} name="title" value={form.title} onChange={change} placeholder="e.g. Observer orientation" /></label>
       <label>Type<select name="category" value={form.category} onChange={change}>{['Observer coverage', 'Training', 'Logistics', 'Accessibility'].map(type => <option key={type}>{type}</option>)}</select></label>

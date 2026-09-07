@@ -56,7 +56,7 @@ export default function SentimentMap({ authToken, canAdmin }) {
   };
 
   useEffect(() => {
-    const instance = L.map(mapNode.current, { scrollWheelZoom: false }).setView([8.0, 3.8], 8);
+    const instance = L.map(mapNode.current, { scrollWheelZoom: true }).setView([8.0, 3.8], 8);
     map.current = instance;
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(instance);
     const observer = new ResizeObserver(() => instance.invalidateSize());
@@ -79,14 +79,7 @@ export default function SentimentMap({ authToken, canAdmin }) {
         const result = area ? shareText(area) : 'No matched result';
         const tooltip = `<strong>${escapeText(name)}</strong><br>${escapeText(result)}${agentsReady ? `<br>${escapeText(countText(count))}` : ''}`;
         layer.bindTooltip(tooltip, { sticky: true });
-        // Center labels use DOM text, never untrusted HTML.
-        const label = document.createElement('div');
-        label.className = 'area-map-label';
-        const title = document.createElement('b'); title.textContent = name; label.append(title);
-        const shares = document.createElement('span'); shares.textContent = result; label.append(shares);
-        if (agentsReady) { const badge = document.createElement('strong'); badge.textContent = countText(count); label.append(badge); }
-        const marker = L.marker(layer.getBounds().getCenter(), { icon: L.divIcon({ className: 'area-label-anchor', html: label, iconSize: [130, 54], iconAnchor: [65, 27] }) }).addTo(group);
-        if (area && !ward && !history.isFetching) { layer.on('click', () => openArea(area)); marker.on('click', () => openArea(area)); }
+        if (area && !ward && !history.isFetching) layer.on('click', () => openArea(area));
       },
     }).addTo(group);
     if (ward) {
