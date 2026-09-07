@@ -27,7 +27,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
   const [compareWithIrev, setCompareWithIrev] = useState(false);
   const [irevCompareLoading, setIrevCompareLoading] = useState(false);
   const [fieldMismatchDetail, setFieldMismatchDetail] = useState(null);
-  const focusedPreElection = view === "pre";
+  const focusedPreElection = initialView === "pre";
   useEffect(() => {
     setView(initialView);
   }, [initialView]);
@@ -421,7 +421,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
     body: JSON.stringify({ context }),
   });
   return (
-    <div className="results-center">
+    <div className={`results-center${focusedPreElection ? " pre-election-focused" : ""}`}>
       <header className="results-center-head">
         <div>
           <span className="eyebrow">INTELLIGENCE DASHBOARD</span>
