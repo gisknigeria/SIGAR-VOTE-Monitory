@@ -4,6 +4,17 @@ export function createStore({ pool, jsonDb, saveJson, mappers }) {
   const { toUser, toIncident, toNotification, toCamera, toMapLayer, toChatRoom, toChatMessage } = mappers;
 
   return {
+    async operationPlans() {
+      const values = !pool
+        ? Object.entries(jsonDb.settings || {}).filter(([key]) => key.startsWith('area-operation:')).map(([, value]) => value)
+        : (await pool.query("select value from app_settings where key like 'area-operation:%'")).rows.map(row => row.value);
+      return values.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+    async deleteOperationPlan(id) {
+      const key = `area-operation:${id}`;
+      if (!pool) { delete (jsonDb.settings || {})[key]; saveJson(); return; }
+      await pool.query('delete from app_settings where key=$1', [key]);
+    },
     async setting(key, fallback = null) {
       if (!pool) return Object.prototype.hasOwnProperty.call(jsonDb.settings || {}, key) ? jsonDb.settings[key] : fallback;
       const { rows } = await pool.query('select value from app_settings where key=$1', [key]);

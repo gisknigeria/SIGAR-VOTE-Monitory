@@ -46,6 +46,7 @@ import {
 import { OSUN_2026_PUBLISHED_RESULTS } from "./osun2026Results.js";
 import { createStore } from "./store.js";
 import { createChatRouter } from "./routes/chat.js";
+import { createAreaOperationsRouter } from "./routes/area-operations.js";
 import { emitChatRoom, joinSocketToChatRooms } from "./chat-realtime.js";
 import {
   adminOnly,
@@ -1392,6 +1393,7 @@ app.get(
   }),
 );
 let oyoBoundaryCache = null;
+app.use('/api/area-operations', createAreaOperationsRouter({ auth, adminOnly, rateLimit, asyncRoute, store }));
 const oyoWardBoundaryCache = new Map();
 app.get(
   "/api/boundaries/oyo",

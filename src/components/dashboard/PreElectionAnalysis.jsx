@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react';
 import { MdFlashOn } from 'react-icons/md';
+import SentimentMap from './SentimentMap.jsx';
+import AreaOperations from './AreaOperations.jsx';
 import { HISTORICAL_ELECTION_DATASETS, HISTORICAL_ELECTION_RESULTS, getHistoricalDataset } from '../../../shared/historicalElectionData.js';
 
 const formatMetric = (value, metric) => `${Number(value || 0).toLocaleString()} ${metric === 'votes' ? 'votes' : metric === 'seats' ? 'seats' : 'wins'}`;
 
-export default function PreElectionAnalysis({ onAnalyze }) {
+export default function PreElectionAnalysis({ onAnalyze, authToken, canAdmin = false }) {
   const [tab, setTab] = useState('sentiment');
   const [year, setYear] = useState(2023);
   const [election, setElection] = useState('Presidential');
   const [brief, setBrief] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const years = [...new Set(HISTORICAL_ELECTION_DATASETS.map((item) => item.year))].sort((a, b) => b - a);
   const elections = useMemo(() => HISTORICAL_ELECTION_DATASETS.filter((item) => item.year === Number(year)).map((item) => item.election), [year]);
   const dataset = getHistoricalDataset(year, election);
@@ -22,7 +25,7 @@ export default function PreElectionAnalysis({ onAnalyze }) {
     .filter((item) => item.result);
   const sentimentParties = election2023Results.reduce((totals, item) => {
     item.result.parties.forEach((party) => {
-      const label = party.party === 'PDP' ? 'APM' : party.party;
+      const label = party.party;
       totals[label] = (totals[label] || 0) + Number(party.value || 0);
     });
     return totals;
@@ -30,7 +33,7 @@ export default function PreElectionAnalysis({ onAnalyze }) {
   const maxSentiment = Math.max(1, ...Object.values(sentimentParties));
   const sentimentResult = (value) => ({
     ...value,
-    parties: value.parties.map((party) => ({ ...party, party: party.party === 'PDP' ? 'APM' : party.party })),
+    parties: value.parties.map((party) => ({ ...party })),
   });
 
   const selectYear = (value) => {
@@ -55,7 +58,7 @@ export default function PreElectionAnalysis({ onAnalyze }) {
         },
         selectedView: { dataset, result: sentimentResult(result) },
         historicalDatasets: election2023Results.map((item) => ({ dataset: item.dataset, result: sentimentResult(item.result) })),
-        objective: 'Produce a neutral pre-election sentiment analysis using only the 2023 election dataset. Use APM wherever the source data labels PDP. Describe evidence and uncertainty, and do not target voters or recommend political persuasion.',
+        objective: 'Produce a neutral historical analysis using only the 2023 election dataset. Preserve original party labels. Describe evidence and uncertainty, and do not infer current sentiment, target voters, or recommend political persuasion.',
       });
       const analysis = String(response.analysis || '').trim();
       if (!analysis) throw new Error('The analysis service returned an empty brief. Please try again.');
@@ -74,13 +77,18 @@ export default function PreElectionAnalysis({ onAnalyze }) {
     <div className="rc-tab-bar pre-election-tabs">
       <button className={tab === 'sentiment' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('sentiment')}>Sentiment</button>
       <button className={tab === 'records' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('records')}>History</button>
+      {canAdmin && <button className={tab === 'operations' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('operations')}>Operations planning</button>}
     </div>
 
-    {tab === 'sentiment' && <article className="pre-card pre-generated-brief">
+    {tab === 'operations' && canAdmin && <AreaOperations authToken={authToken} />}
+    {tab === 'sentiment' && <>
+    <div className="area-toolbar"><div><h3>Explore historical results by area</h3><p>2023 Presidential · Local government → Ward → Polling unit</p></div><button className="primary action-btn" aria-expanded={mapOpen} onClick={() => setMapOpen(value => !value)}>{mapOpen ? 'Close results map' : 'Open historical results map'}</button></div>
+    {mapOpen && <SentimentMap authToken={authToken} canAdmin={canAdmin} />}
+    <article className="pre-card pre-generated-brief">
       <header><div><h3>2023 Presidential Election Sentiment Analysis</h3><p>Neutral historical baseline using the loaded Oyo election record.</p></div></header>
       <div className="historical-party-bars">{Object.entries(sentimentParties).map(([party, value]) => <div key={party}><div><strong>{party}</strong><b>{value.toLocaleString()} votes</b></div><span><i style={{ width: `${(value / maxSentiment) * 100}%` }} /></span></div>)}</div>
       {brief && <div>{brief}</div>}{error && <p className="pre-analysis-error">{error}</p>}
-    </article>}
+    </article></>}
 
     {tab === 'records' && <>
 

@@ -1,7 +1,18 @@
 const numberOrZero = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 
+const sourceCoordinates = item => {
+  const candidate = item?.geometry?.type === 'Point' ? item.geometry.coordinates : item?.coordinates;
+  const coordinates = Array.isArray(candidate) && candidate.length >= 2 ? candidate : null;
+  const lng = coordinates?.[0] ?? item?.longitude ?? item?.lng;
+  const lat = coordinates?.[1] ?? item?.latitude ?? item?.lat;
+  if (lng == null || lat == null || String(lng).trim() === '' || String(lat).trim() === '') return null;
+  return Number.isFinite(Number(lng)) && Number.isFinite(Number(lat)) && Math.abs(Number(lng)) <= 180 && Math.abs(Number(lat)) <= 90
+    ? [Number(lng), Number(lat)] : null;
+};
+
 export const normalizePartyScores = (scores = {}) => {
   const parties = Object.entries(scores || {})
+    .filter(([, votes]) => votes != null && String(votes).trim() !== '' && Number.isFinite(Number(votes)))
     .map(([party, votes]) => ({ party: String(party || '').trim(), votes: numberOrZero(votes) }))
     .filter(item => item.party && item.votes >= 0)
     .sort((a, b) => b.votes - a.votes || a.party.localeCompare(b.party));
@@ -19,7 +30,7 @@ export const normalizeHistoricalArea = ({ id, name, code = '', scores = {}, tota
     id: String(id ?? code ?? name ?? ''),
     name: String(name || '').trim(),
     code: String(code || '').trim(),
-    winner: parties[0]?.party || '',
+    winner: parties[0]?.votes > 0 && parties[0]?.votes !== parties[1]?.votes ? parties[0].party : '',
     totalVotes: recordedTotal,
     registeredVoters: registeredVoters == null ? null : numberOrZero(registeredVoters),
     accreditedVoters: accreditedVoters == null ? null : numberOrZero(accreditedVoters),
@@ -69,7 +80,7 @@ export const normalizeLgaHistory = payload => ({
 export const normalizeWardHistory = payload => ({
   level: 'polling-unit',
   parent: { code: String(payload?.ward_code || ''), name: String(payload?.ward || '') },
-  areas: (payload?.polling_units || []).map(item => normalizeHistoricalArea({
+  areas: (payload?.polling_units || []).map(item => ({ ...normalizeHistoricalArea({
     id: item.pu_code,
     code: item.pu_code,
     name: item.pu_name,
@@ -79,5 +90,5 @@ export const normalizeWardHistory = payload => ({
     accreditedVoters: item.accredited_voters,
     confidence: item.confidence,
     confidenceBand: item.confidence_band,
-  })),
+  }), coordinates: sourceCoordinates(item) })),
 });
