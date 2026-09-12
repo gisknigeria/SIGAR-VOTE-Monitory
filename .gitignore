@@ -3,3 +3,4 @@ dist/
 .env
 server/data.json
 server/agent-imports/
+private-evidence/

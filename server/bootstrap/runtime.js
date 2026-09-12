@@ -197,6 +197,10 @@ export async function createRuntime({ serverDirectory }) {
       throw new Error(
         "Production requires DATABASE_URL or an explicit persistent DATA_FILE path",
       );
+    if (!process.env.EVIDENCE_STORAGE_DIR)
+      throw new Error(
+        "Production requires an explicit EVIDENCE_STORAGE_DIR pointing at a persistent disk -- the default path is lost on every redeploy.",
+      );
     if (Buffer.byteLength(process.env.JWT_SECRET, "utf8") < 32)
       throw new Error("JWT_SECRET must contain at least 32 bytes");
     if (
@@ -357,8 +361,24 @@ export async function createRuntime({ serverDirectory }) {
     Promise.resolve(fn(req, res, next)).catch(next);
   const { toUser, toIncident, toResultRecord, toNotification, toCamera, toMapLayer, toChatRoom, toChatMessage } = createMappers({});
 
+  const connectWithRetry = async (fn, { attempts = 3, baseDelayMs = 3000 } = {}) => {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt === attempts) throw error;
+        const delay = baseDelayMs * attempt;
+        console.warn(
+          `[database] Connection attempt ${attempt} failed (${error.message}); retrying in ${delay}ms. A serverless database that auto-suspends when idle can take a few seconds to wake up.`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  };
+
   try {
-    await initPostgres({ pool, seed });
+    if (databaseUrl) await connectWithRetry(() => initPostgres({ pool, seed }));
+    else await initPostgres({ pool, seed });
   } catch (error) {
     await pool?.end().catch(() => {});
     if (process.env.NODE_ENV === "production" && databaseUrl) {
