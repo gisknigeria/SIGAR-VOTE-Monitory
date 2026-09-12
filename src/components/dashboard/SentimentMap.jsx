@@ -58,7 +58,11 @@ export default function SentimentMap({ authToken, canAdmin }) {
   useEffect(() => {
     const instance = L.map(mapNode.current, { scrollWheelZoom: true }).setView([8.0, 3.8], 8);
     map.current = instance;
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(instance);
+    const maptilerKey = import.meta.env.VITE_MAPTILER_KEY;
+    (maptilerKey
+      ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${maptilerKey}`, { attribution: '&copy; MapTiler &copy; OpenStreetMap contributors', maxZoom: 19 })
+      : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 })
+    ).addTo(instance);
     const observer = new ResizeObserver(() => instance.invalidateSize());
     observer.observe(mapNode.current);
     return () => { observer.disconnect(); instance.remove(); map.current = null; };

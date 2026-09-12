@@ -157,12 +157,22 @@ export default function MapView({
   useEffect(() => {
     if (!leaflet.current) return;
     tile.current?.remove();
+    const maptilerKey = import.meta.env.VITE_MAPTILER_KEY;
     const osm = () =>
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        crossOrigin: true,
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors",
-      });
+      maptilerKey
+        ? L.tileLayer(
+            `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${maptilerKey}`,
+            {
+              crossOrigin: true,
+              maxZoom: 19,
+              attribution: "&copy; MapTiler &copy; OpenStreetMap contributors",
+            },
+          )
+        : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            crossOrigin: true,
+            maxZoom: 19,
+            attribution: "&copy; OpenStreetMap contributors",
+          });
     const esri = (service) =>
       L.tileLayer(
         `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`,
