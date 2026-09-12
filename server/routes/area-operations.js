@@ -4,7 +4,7 @@ import { aggregateAgents } from '../../shared/areaAnalysis.js';
 import { getRegistrationLocationOptions } from '../../shared/electionData.js';
 import { recordAudit } from '../modules/foundation/audit-helper.js';
 
-export const OPERATION_TYPES = ['Observer coverage', 'Training', 'Logistics', 'Accessibility'];
+export const OPERATION_TYPES = ['Observer coverage', 'Training', 'Logistics', 'Accessibility', 'Campaign'];
 export function validateOperation(body) {
   const text = (key, length) => typeof body?.[key] === 'string' ? body[key].trim().slice(0, length) : '';
   const plan = { title: text('title', 120), category: text('category', 40), lga: text('lga', 100), ward: text('ward', 150), date: text('date', 10), notes: text('notes', 2000) };

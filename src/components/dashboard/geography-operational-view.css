@@ -1,3 +1,10 @@
+.geo-view-intro{margin:0;font-size:12px;line-height:1.6;color:#f2dce5;padding:12px 14px;border:1px solid #744052;border-radius:10px;background:#20101a}
+.geo-view-quiet-note{padding:10px 14px;border:1px dashed #744052;border-radius:10px;background:#170a12;color:#d6c4cc;font-size:12px}
+.geo-view-map-wrap{display:grid;gap:8px}
+.geo-view-map-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.geo-view-map-hint{margin:0;font-size:11px;color:#d6c4cc}
+.geo-view-map-toolbar button{font-size:11px;padding:6px 12px;border-radius:8px;border:1px solid #825063;background:#1a0710;color:#fff8e8;cursor:pointer}
+.geo-view-map{height:280px;border:1px solid #744052;border-radius:10px;overflow:hidden;background:#0a1015}
 .geo-view-selectors{margin-bottom:4px}
 .geo-view-scope-summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:10px 14px;border:1px solid #744052;border-radius:10px;background:#28131c}
 .geo-view-scope-summary .eyebrow{font-size:13px;letter-spacing:.04em;color:#ffdf99}

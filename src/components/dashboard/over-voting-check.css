@@ -1,0 +1,10 @@
+.overvoting-card header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.overvoting-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 4px 10px; border-radius: 99px; border: 1px solid #744052; white-space: nowrap; }
+.overvoting-badge.overvoting-within-bounds { color: #8fe0ac; border-color: #3f7a5e; }
+.overvoting-badge.overvoting-exceeds-registered-voters { color: #ff9d9d; border-color: #c0524a; background: rgba(192, 82, 74, 0.12); }
+.overvoting-badge.overvoting-unknown { color: #d6c4cc; border-color: #744052; }
+.overvoting-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 14px 0; }
+.overvoting-figures > div { display: flex; flex-direction: column; gap: 4px; }
+.overvoting-figures span { font-size: 11px; color: #d6c4cc; text-transform: uppercase; letter-spacing: .03em; }
+.overvoting-figures b { font-size: 20px; color: #fff8e8; }
+.overvoting-excess b { color: #ff9d9d; }

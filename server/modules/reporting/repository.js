@@ -154,8 +154,12 @@ export function createReportingRepository({ pool, jsonDb, saveJson, mappers }) {
         reconciliations: Object.values(jsonDb.resultReconciliations),
       };
     }
+    // This report only ever reads status/geography/timing off incidents, never
+    // the embedded evidence photo -- a full `select *` was pulling several MB
+    // of base64 media per row across every incident, which made this report
+    // hang as real evidence submissions accumulated.
     const [incidents, dedicatedResults, settings] = await Promise.all([
-      pool.query('select * from incidents'),
+      pool.query('select id, report_type, status, lga, ward, polling_unit, created_at, updated_at, lifecycle from incidents'),
       pool.query('select * from result_records'),
       pool.query("select key, value from app_settings where key like 'intelligence-signal:%' or key like 'intelligence-decision:%' or key like 'resource-intelligence:%' or key like 'task:%' or key like 'resultReconciliations:%'"),
     ]);

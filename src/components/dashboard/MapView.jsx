@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import L from "leaflet";
 import { oyoBoundariesQuery } from "../../queries/boundaries.js";
+import { apiRequest } from "../../api/client.js";
 import LayerControlPanel, { layerGeometry } from "./LayerControlPanel.jsx";
+
+const DATA_LAYERS = ["none", "population", "network"];
+const DATA_LAYER_LABEL = { none: "Data layer: off", population: "Data layer: Population", network: "Data layer: Network" };
 
 export default function MapView({
   incidents,
@@ -39,6 +43,9 @@ export default function MapView({
   focusedOfficerId,
   onClearOfficerFocus,
   helpers,
+  authToken,
+  dataLayer = "none",
+  onDataLayerChange,
 }) {
   const { formatDistance, formatDuration, hexToRgba, LINE_STYLES, OYO_CENTER, pointArray, pointIconSvg, REPORT_TYPE_STYLES, reportCenter, reportIconSvg, reportStyle, totalDistance } = helpers;
   const el = useRef(null);
@@ -55,8 +62,48 @@ export default function MapView({
   const nigeriaStateLabels = useRef([]);
   const nigeriaLgaLabels = useRef([]);
   const hoverBoundaryLayer = useRef(null);
+  const dataLayerOverlay = useRef(null);
+  const dataLayerControl = useRef(null);
+  const dataLayerLegend = useRef(null);
   const [layerPanelOpen, setLayerPanelOpen] = useState(false);
   const { data: oyoBoundaries } = useQuery(oyoBoundariesQuery);
+
+  const populationQuery = useQuery({
+    queryKey: ["demographics-datasets", "population", "lga", authToken],
+    queryFn: ({ signal }) => apiRequest("/demographics/datasets?metric=population&resolution=lga", authToken, { signal }),
+    enabled: Boolean(authToken) && dataLayer === "population",
+    staleTime: 10 * 60_000,
+  });
+  const connectivityQuery = useQuery({
+    queryKey: ["connectivity-datasets", "lga", authToken],
+    queryFn: ({ signal }) => apiRequest("/connectivity/datasets?resolution=lga", authToken, { signal }),
+    enabled: Boolean(authToken) && dataLayer === "network",
+    staleTime: 10 * 60_000,
+  });
+
+  const normalizeLgaKey = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+
+  const populationByLga = useMemo(() => {
+    const map = new Map();
+    for (const dataset of populationQuery.data || []) {
+      for (const record of dataset.records) {
+        if (record.geography.lga) map.set(normalizeLgaKey(record.geography.lga), record.value);
+      }
+    }
+    return map;
+  }, [populationQuery.data]);
+
+  const networkByLga = useMemo(() => {
+    const map = new Map();
+    for (const dataset of connectivityQuery.data || []) {
+      for (const record of dataset.records) {
+        if (record.geography.lga && record.observationType === "measured") {
+          map.set(normalizeLgaKey(record.geography.lga), { ...record.coverage, avgLatencyMs: record.signal?.avgLatencyMs ?? null });
+        }
+      }
+    }
+    return map;
+  }, [connectivityQuery.data]);
 
   const normalizeBoundaryKey = (value) =>
     String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -133,6 +180,13 @@ export default function MapView({
     onBoundarySelect?.(selectedKey, label);
   };
 
+  const dataLayerRef = useRef(dataLayer);
+  const onDataLayerChangeRef = useRef(onDataLayerChange);
+  useEffect(() => {
+    dataLayerRef.current = dataLayer;
+    onDataLayerChangeRef.current = onDataLayerChange;
+  });
+
   useEffect(() => {
     if (leaflet.current || !el.current) return;
     const map = L.map(el.current, {
@@ -140,6 +194,29 @@ export default function MapView({
       doubleClickZoom: false,
     }).setView(OYO_CENTER, 9);
     L.control.zoom({ position: "bottomright" }).addTo(map);
+
+    const DataLayerControl = L.Control.extend({
+      onAdd() {
+        const button = L.DomUtil.create("button", "map-data-layer-toggle");
+        button.type = "button";
+        button.textContent = DATA_LAYER_LABEL.none;
+        L.DomEvent.disableClickPropagation(button);
+        button.onclick = () => {
+          const current = dataLayerRef.current;
+          const next = DATA_LAYERS[(DATA_LAYERS.indexOf(current) + 1) % DATA_LAYERS.length];
+          onDataLayerChangeRef.current?.(next);
+        };
+        this._button = button;
+        return button;
+      },
+      update(value) {
+        if (!this._button) return;
+        this._button.textContent = DATA_LAYER_LABEL[value] || DATA_LAYER_LABEL.none;
+        this._button.classList.toggle("active", value !== "none");
+      },
+    });
+    dataLayerControl.current = new DataLayerControl({ position: "topright" }).addTo(map);
+
     leaflet.current = map;
     mapRef.current = map;
     return () => {
@@ -154,6 +231,11 @@ export default function MapView({
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    dataLayerControl.current?.update(dataLayer);
+  }, [dataLayer]);
+
   useEffect(() => {
     if (!leaflet.current) return;
     tile.current?.remove();
@@ -812,6 +894,92 @@ export default function MapView({
       });
     }
   }, [showLgaBorders, showBoundaryNames, mapLayers, onBoundarySelect, oyoBoundaries.lgas, partyMapAnalysis, partyLgaResults]);
+
+  // Population / network data-layer choropleth, toggled by the on-map "Data layer" button.
+  useEffect(() => {
+    const map = leaflet.current;
+    if (!map) return;
+    dataLayerOverlay.current?.remove();
+    dataLayerOverlay.current = null;
+    dataLayerLegend.current?.remove();
+    dataLayerLegend.current = null;
+    if (dataLayer === "none") return;
+    const lgaFeatures = oyoBoundaries.lgas?.features || [];
+    if (!lgaFeatures.length) return;
+
+    const valueFor = (name) => {
+      const key = normalizeLgaKey(name);
+      if (dataLayer === "population") return populationByLga.get(key) ?? null;
+      const network = networkByLga.get(key);
+      return network ? network.avgDownloadKbps : null;
+    };
+    const values = lgaFeatures.map((f) => valueFor(f.properties?.ADM2_EN)).filter((v) => v !== null && v !== undefined);
+    const min = values.length ? Math.min(...values) : 0;
+    const max = values.length ? Math.max(...values) : 1;
+    const colorFor = (value) => {
+      if (value === null || value === undefined) return "#4a4a55";
+      const ratio = max > min ? (value - min) / (max - min) : 0.5;
+      const stops = dataLayer === "population"
+        ? [[254, 240, 217], [252, 141, 89], [179, 0, 0]]
+        : [[178, 24, 43], [253, 219, 199], [33, 102, 172]];
+      const scaled = ratio * (stops.length - 1);
+      const lower = stops[Math.floor(scaled)];
+      const upper = stops[Math.min(stops.length - 1, Math.ceil(scaled))];
+      const t = scaled - Math.floor(scaled);
+      const mix = lower.map((c, i) => Math.round(c + (upper[i] - c) * t));
+      return `rgb(${mix.join(",")})`;
+    };
+    const formatValue = (name) => {
+      const key = normalizeLgaKey(name);
+      if (dataLayer === "population") {
+        const value = populationByLga.get(key);
+        return value ? `${value.toLocaleString()} people (2006 census)` : "No population figure available";
+      }
+      const network = networkByLga.get(key);
+      if (!network) return "No measured network data for this quarter -- not the same as confirmed no coverage";
+      return `${(network.avgDownloadKbps / 1000).toFixed(1)} Mbps avg down, ${(network.avgUploadKbps / 1000).toFixed(1)} Mbps avg up, ${network.avgLatencyMs}ms latency (${network.totalTests} real tests, Ookla Q2 2026)`;
+    };
+
+    const overlay = L.geoJSON(
+      { type: "FeatureCollection", features: lgaFeatures },
+      {
+        pane: "overlayPane",
+        style: (feature) => {
+          const value = valueFor(feature.properties?.ADM2_EN);
+          return { color: "#1b1420", weight: 1.5, fillOpacity: value === null || value === undefined ? 0.35 : 0.72, fillColor: colorFor(value) };
+        },
+        onEachFeature: (feature, layerGeo) => {
+          const name = feature.properties?.ADM2_EN || "";
+          layerGeo.bindTooltip(`<strong>${escapeMapText(name)}</strong><br>${escapeMapText(formatValue(name))}`, { sticky: true, className: "nigeria-lga-tooltip" });
+          layerGeo.on({ click: (e) => { L.DomEvent.stopPropagation(e); handleBoundaryClick(feature); } });
+        },
+      },
+    ).addTo(map);
+    overlay.bringToFront();
+    dataLayerOverlay.current = overlay;
+
+    const Legend = L.Control.extend({
+      onAdd() {
+        const div = L.DomUtil.create("div", "map-data-layer-legend");
+        const title = dataLayer === "population" ? "Population (2006 census)" : "Measured download speed (Ookla, Q2 2026)";
+        const lowLabel = dataLayer === "population" ? Math.round(min).toLocaleString() : `${(min / 1000).toFixed(1)} Mbps`;
+        const highLabel = dataLayer === "population" ? Math.round(max).toLocaleString() : `${(max / 1000).toFixed(1)} Mbps`;
+        div.innerHTML = `
+          <div class="map-data-layer-legend-title">${escapeMapText(title)}</div>
+          <div class="map-data-layer-legend-gradient" style="background:linear-gradient(90deg, ${colorFor(min)}, ${colorFor((min + max) / 2)}, ${colorFor(max)})"></div>
+          <div class="map-data-layer-legend-scale"><span>${lowLabel}</span><span>${highLabel}</span></div>
+          <div class="map-data-layer-legend-nodata"><span class="map-data-layer-legend-swatch"></span> No data for this LGA</div>
+        `;
+        return div;
+      },
+    });
+    dataLayerLegend.current = new Legend({ position: "bottomleft" }).addTo(map);
+
+    return () => {
+      overlay.remove();
+      dataLayerLegend.current?.remove();
+    };
+  }, [dataLayer, oyoBoundaries.lgas, populationByLga, networkByLga]);
 
   useEffect(() => {
     const map = leaflet.current;

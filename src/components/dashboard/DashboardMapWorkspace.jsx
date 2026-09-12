@@ -10,6 +10,7 @@ export default function DashboardMapWorkspace({ controller }) {
     clearBoundarySelection,
     clearMapTools,
     coords,
+    dataLayer,
     drawMode,
     emergencyAlerts,
     FaCamera,
@@ -75,6 +76,7 @@ export default function DashboardMapWorkspace({ controller }) {
     session,
     setCameraPanel,
     setCoords,
+    setDataLayer,
     setEmergencyOpen,
     setFocusedOfficerId,
     setLayer,
@@ -529,6 +531,9 @@ export default function DashboardMapWorkspace({ controller }) {
               onBoundaryClear={clearBoundarySelection}
               focusedOfficerId={focusedOfficerId}
               onClearOfficerFocus={setFocusedOfficerId}
+              authToken={session.token}
+              dataLayer={dataLayer}
+              onDataLayerChange={setDataLayer}
             />
           </div>
         )}
@@ -576,6 +581,9 @@ export default function DashboardMapWorkspace({ controller }) {
           onBoundaryClear={clearBoundarySelection}
           focusedOfficerId={focusedOfficerId}
           onClearOfficerFocus={setFocusedOfficerId}
+          authToken={session.token}
+          dataLayer={dataLayer}
+          onDataLayerChange={setDataLayer}
         />}
         {!isAgent && <button
           className="my-location-target"

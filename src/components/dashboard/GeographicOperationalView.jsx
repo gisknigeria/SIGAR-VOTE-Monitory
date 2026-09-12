@@ -1,13 +1,100 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import L from 'leaflet';
 import { apiRequest } from '../../api/client.js';
-import { getRegistrationLocationOptions } from '../../../shared/electionData.js';
+import { API } from '../../config.js';
+import { oyoBoundariesQuery } from '../../queries/boundaries.js';
+import { getRegistrationLocationOptions, resolveCanonicalName } from '../../../shared/electionData.js';
 import './geography-operational-view.css';
 
 const formatLocation = (lat, lng) =>
   Number.isFinite(lat) && Number.isFinite(lng) ? `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}` : 'Location unknown';
 
 const ROLLUP_LABEL = { lga: 'By LGA', ward: 'By ward', pollingUnit: 'By polling unit' };
+const normalizeName = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+// The boundary map service spells four Oyo LGAs differently from the canonical
+// INEC-based reference list (not just case/punctuation, so the usual fuzzy
+// matcher can't bridge these): confirmed by testing all 33 boundary names
+// against the real API and finding exactly these four 400s.
+const BOUNDARY_LGA_ALIASES = { atigbo: 'ATISBO', 'ogbomosho north': 'OGBOMOSO NORTH', 'ogbomosho south': 'OGBOMOSO SOUTH', orelope: 'OORELOPE' };
+const resolveClickedLgaName = (rawName) => BOUNDARY_LGA_ALIASES[normalizeName(rawName)] || resolveCanonicalName(getRegistrationLocationOptions('Oyo').lgas, rawName) || rawName;
+
+/** Lets a user click an LGA (then a ward) directly on a real boundary map instead of using the dropdowns below -- the two stay in sync either way. */
+function ScopeMap({ scope, onSelectLga, onSelectWard }) {
+  const el = useRef(null);
+  const mapRef = useRef(null);
+  const layerRef = useRef(null);
+
+  const lgaBoundaries = useQuery(oyoBoundariesQuery);
+  const wardBoundaries = useQuery({
+    queryKey: ['geo-view-ward-boundaries', scope.lga],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`${API}/boundaries/oyo/wards?lga=${encodeURIComponent(scope.lga)}`, { signal });
+      if (!response.ok) throw new Error('Ward boundary data is unavailable right now.');
+      return response.json();
+    },
+    enabled: Boolean(scope.lga),
+    staleTime: 60 * 60_000,
+  });
+
+  useEffect(() => {
+    if (mapRef.current || !el.current) return;
+    const map = L.map(el.current, { zoomControl: false, attributionControl: false, scrollWheelZoom: false }).setView([8.0, 3.9], 8);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    const maptilerKey = import.meta.env.VITE_MAPTILER_KEY;
+    (maptilerKey
+      ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${maptilerKey}`, { maxZoom: 19, attribution: '&copy; MapTiler &copy; OpenStreetMap contributors' })
+      : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' })
+    ).addTo(map);
+    mapRef.current = map;
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    layerRef.current?.remove();
+    layerRef.current = null;
+
+    const showingWards = Boolean(scope.lga);
+    const geojson = showingWards ? wardBoundaries.data?.wards : lgaBoundaries.data?.lgas;
+    if (!geojson?.features?.length) return;
+
+    const layer = L.geoJSON(geojson, {
+      style: (feature) => {
+        const rawName = showingWards ? feature.properties?.ward : feature.properties?.ADM2_EN;
+        const isSelected = showingWards ? normalizeName(rawName) === normalizeName(scope.ward) : normalizeName(rawName) === normalizeName(scope.lga);
+        return { color: isSelected ? '#facc15' : '#22d3ee', weight: isSelected ? 3 : 1.5, fillOpacity: isSelected ? 0.35 : 0.08, fillColor: isSelected ? '#facc15' : '#22d3ee' };
+      },
+      onEachFeature: (feature, layerGeo) => {
+        const rawName = showingWards ? feature.properties?.ward : feature.properties?.ADM2_EN;
+        if (!rawName) return;
+        layerGeo.bindTooltip(rawName, { sticky: true, className: 'nigeria-lga-tooltip' });
+        layerGeo.on('click', () => {
+          if (showingWards) {
+            const canonical = resolveCanonicalName(getRegistrationLocationOptions('Oyo', scope.lga).wards, rawName);
+            onSelectWard(canonical || rawName);
+          } else {
+            onSelectLga(resolveClickedLgaName(rawName));
+          }
+        });
+      },
+    }).addTo(map);
+    layerRef.current = layer;
+    try { map.fitBounds(layer.getBounds(), { padding: [12, 12] }); } catch { /* empty bounds on first paint */ }
+  }, [scope.lga, scope.ward, lgaBoundaries.data, wardBoundaries.data]);
+
+  return (
+    <div className="geo-view-map-wrap">
+      <div className="geo-view-map-toolbar">
+        <p className="geo-view-map-hint">Click a {scope.lga ? 'ward' : 'local government'} on the map — or use the dropdowns below instead.</p>
+        {scope.lga && <button type="button" onClick={() => onSelectLga('')}>&laquo; Back to all of Oyo State</button>}
+      </div>
+      <div ref={el} className="geo-view-map" />
+      {scope.lga && wardBoundaries.isError && <p role="alert" className="area-note">Ward boundaries aren't available for this LGA right now — the dropdowns below still work.</p>}
+    </div>
+  );
+}
 
 function ScopeSelector({ scope, onChange }) {
   const options = getRegistrationLocationOptions('Oyo', scope.lga, scope.ward);
@@ -79,6 +166,8 @@ export default function GeographicOperationalView({ authToken }) {
       ...(name === 'ward' ? { pollingUnit: '' } : {}),
     }));
   };
+  const selectLgaFromMap = (lga) => setScope({ lga, ward: '', pollingUnit: '' });
+  const selectWardFromMap = (ward) => setScope((previous) => ({ ...previous, ward, pollingUnit: '' }));
 
   const params = new URLSearchParams();
   if (scope.lga) params.set('lga', scope.lga);
@@ -94,10 +183,15 @@ export default function GeographicOperationalView({ authToken }) {
   return (
     <section className="area-operations geo-view">
       <header>
-        <span className="eyebrow">GEOGRAPHIC OPERATIONAL VIEW</span>
-        <h3>Select a geography to see who's there, what's happening, and what's needed</h3>
+        <span className="eyebrow">GEOGRAPHY</span>
+        <h3>Zoom into any location to see the full picture</h3>
       </header>
+      <p className="geo-view-intro">
+        Pick a local government, then narrow to a ward, then a single polling unit — or leave it at "All of Oyo State" for the big picture.
+        Whatever you land on, this shows who's assigned there, what's been reported, what's been done about it, and what's still missing.
+      </p>
 
+      <ScopeMap scope={scope} onSelectLga={selectLgaFromMap} onSelectWard={selectWardFromMap} />
       <ScopeSelector scope={scope} onChange={change} />
 
       {view.isPending && <p role="status">Loading geographic view…</p>}
@@ -114,19 +208,23 @@ export default function GeographicOperationalView({ authToken }) {
             <span className="geo-view-generated">Generated {new Date(data.generatedAt).toLocaleString()}</span>
           </div>
 
+          {data.personnel.total === 0 && data.incidents.total === 0 && data.tasks.total === 0 && data.results.total === 0 && (
+            <div className="geo-view-quiet-note">Nothing recorded for this location yet — that's expected before real field activity starts, not a fault.</div>
+          )}
+
           <div className="area-coverage-grid geo-view-stats">
-            <StatTile label="Personnel" value={data.personnel.total} />
-            <StatTile label="Readiness signals" value={data.readiness.total} hint={`(${data.readiness.verified} verified)`} />
-            <StatTile label="Incidents" value={data.incidents.total} />
-            <StatTile label="Results" value={data.results.total} />
+            <StatTile label="People assigned" value={data.personnel.total} />
+            <StatTile label="Readiness checks" value={data.readiness.total} hint={`(${data.readiness.verified} verified)`} />
+            <StatTile label="Incidents reported" value={data.incidents.total} />
+            <StatTile label="Results submitted" value={data.results.total} />
             <StatTile label="Tasks" value={data.tasks.total} />
-            <StatTile label="CRM signals" value={data.crmSignals.total} />
-            <StatTile label="Evidence references" value={data.evidence.items.length} />
-            <StatTile label="Resource lines short" value={data.resources.adequacy.filter((r) => r.missing > 0).length} />
+            <StatTile label="Contact Centre reports" value={data.crmSignals.total} />
+            <StatTile label="Evidence files" value={data.evidence.items.length} />
+            <StatTile label="Resource shortages" value={data.resources.adequacy.filter((r) => r.missing > 0).length} />
           </div>
 
           <div className="geo-view-outcomes">
-            <h4>Outcomes</h4>
+            <h4>What's been resolved so far</h4>
             <p>
               {data.outcomes.verifiedIncidents.total} incident{data.outcomes.verifiedIncidents.total === 1 ? '' : 's'} verified
               {' · '}{data.outcomes.completedTasks.total} task{data.outcomes.completedTasks.total === 1 ? '' : 's'} completed

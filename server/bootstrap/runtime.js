@@ -356,6 +356,13 @@ export async function createRuntime({ serverDirectory }) {
         statement_timeout: 15_000,
       })
     : null;
+  // A pooled connection can be dropped by the server (e.g. a serverless
+  // database recycling idle connections) between queries. pg emits this as an
+  // 'error' event on the pool; without a listener, Node treats it as an
+  // uncaught exception and crashes the whole process on the next occurrence.
+  pool?.on("error", (error) => {
+    console.error(`[database] Idle connection error (pool remains available): ${error.message}`);
+  });
   const publicUser = ({ password, ...user }) => user;
   const asyncRoute = (fn) => (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);

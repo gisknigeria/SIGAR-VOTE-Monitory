@@ -47,15 +47,15 @@ function ScopeFilters({ filter, onChange }) {
           {options.pollingUnits.map((name, index) => <option key={`${name}-${index}`}>{name}</option>)}
         </select>
       </label>
-      <label>Lifecycle phase
+      <label>Time period
         <select name="phase" value={filter.phase} onChange={onChange}>
           {PHASES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select>
       </label>
-      <label>Since<input type="datetime-local" name="since" value={filter.since} onChange={onChange} /></label>
-      <label>Until<input type="datetime-local" name="until" value={filter.until} onChange={onChange} /></label>
-      <label>Election ID<input name="electionId" value={filter.electionId} onChange={onChange} placeholder="e.g. ng-oyo-election" /></label>
-      <label>Contest ID<input name="contestId" value={filter.contestId} onChange={onChange} placeholder="e.g. governor" /></label>
+      <label>From date<input type="datetime-local" name="since" value={filter.since} onChange={onChange} /></label>
+      <label>To date<input type="datetime-local" name="until" value={filter.until} onChange={onChange} /></label>
+      <label>Election (optional)<input name="electionId" value={filter.electionId} onChange={onChange} placeholder="e.g. ng-oyo-election" /></label>
+      <label>Contest (optional)<input name="contestId" value={filter.contestId} onChange={onChange} placeholder="e.g. governor" /></label>
     </div>
   );
 }
@@ -104,23 +104,27 @@ function ReportMetrics({ data }) {
         <span className="eyebrow">{scopeLabel}</span>
         <span className="geo-view-generated">Generated {new Date(data.generatedAt).toLocaleString()}</span>
       </div>
-      <p className="area-note reporting-window-note">Window: {windowLabel}</p>
+      <p className="area-note reporting-window-note">Time period: {windowLabel}</p>
+
+      {metrics.coverage.submitted === 0 && metrics.backlog.openIncidents === 0 && metrics.backlog.openOrOverdueTasks === 0 && (
+        <div className="geo-view-quiet-note">No activity recorded for this time period and location yet — that's expected before real field activity starts, not a fault.</div>
+      )}
 
       <div className="area-coverage-grid geo-view-stats">
-        <StatTile label="Result coverage" value={`${metrics.coverage.percent}%`} hint={`(${metrics.coverage.submitted}/${metrics.coverage.denominator})`} />
-        <StatTile label="Records last 24h" value={metrics.timeliness.recordsLast24h} />
+        <StatTile label="Results submitted" value={`${metrics.coverage.percent}%`} hint={`(${metrics.coverage.submitted} of ${metrics.coverage.denominator} polling units)`} />
+        <StatTile label="Records in last 24h" value={metrics.timeliness.recordsLast24h} />
         <StatTile label="Open incidents" value={metrics.backlog.openIncidents} />
         <StatTile label="Pending decisions" value={metrics.backlog.pendingDecisions} />
-        <StatTile label="Open/overdue tasks" value={metrics.backlog.openOrOverdueTasks} />
-        <StatTile label="Geography completeness" value={`${metrics.quality.completenessPercent}%`} hint={`(${metrics.quality.completeGeographyRecords}/${metrics.quality.totalIncidentRecords})`} />
+        <StatTile label="Open or overdue tasks" value={metrics.backlog.openOrOverdueTasks} />
+        <StatTile label="Location data completeness" value={`${metrics.quality.completenessPercent}%`} hint={`(${metrics.quality.completeGeographyRecords} of ${metrics.quality.totalIncidentRecords} records)`} />
         <StatTile label="Avg. time to acknowledge" value={formatDuration(metrics.responseTime.averageMillisecondsToAcknowledge)} />
         <StatTile label="Avg. time to resolve" value={formatDuration(metrics.responseTime.averageMillisecondsToResolve)} />
-        <StatTile label="Resource lines short" value={shortResourceLines.length} />
-        <StatTile label="Reconciliations pending" value={metrics.reconciliation.pending} />
+        <StatTile label="Resource shortages" value={shortResourceLines.length} />
+        <StatTile label="Results awaiting reconciliation" value={metrics.reconciliation.pending} />
       </div>
 
       <div className="geo-view-outcomes">
-        <h4>Outcomes</h4>
+        <h4>What's been resolved so far</h4>
         <p>
           {metrics.outcomes.decisionsCompleted} decision{metrics.outcomes.decisionsCompleted === 1 ? '' : 's'} completed
           {' · '}{metrics.outcomes.decisionsRejected} rejected
@@ -239,9 +243,14 @@ export default function ReportingLifecycle({ authToken }) {
   return (
     <section className="area-operations reporting-lifecycle">
       <header>
-        <span className="eyebrow">REPORTING LIFECYCLE</span>
-        <h3>Operational reporting across pre-election, election-day and post-election phases</h3>
+        <span className="eyebrow">REPORTS</span>
+        <h3>Build a report for any time period and location</h3>
       </header>
+      <p className="reporting-intro">
+        Pick a time period (or leave it open for all-time) and a location, and this pulls together coverage, response times, and what's still outstanding.
+        <b> Save snapshot</b> freezes a copy of the report exactly as it looks right now, so you can compare it later even after new data comes in.
+        <b> Download CSV</b> exports the same numbers as a spreadsheet.
+      </p>
 
       <ScopeFilters filter={filter} onChange={change} />
       {filter.phase && (filter.since || filter.until) && (
@@ -268,7 +277,12 @@ export default function ReportingLifecycle({ authToken }) {
         <h4>Saved snapshots {snapshots.data ? `(${snapshots.data.length})` : ''}</h4>
         {snapshots.isPending && <p role="status">Loading snapshots…</p>}
         {snapshots.isError && <p role="alert">{snapshots.error.message} <button onClick={() => snapshots.refetch()}>Retry</button></p>}
-        {snapshots.data && !snapshots.data.length && <p className="area-note">No snapshots saved yet for this account's accessible geography.</p>}
+        {snapshots.data && !snapshots.data.length && (
+          <div className="alv-empty-state">
+            <b>No snapshots saved yet.</b>
+            <p>Use "Save snapshot" above to freeze a copy of the current report — useful for a check-in you'll want to compare against later (e.g. "6pm election day check").</p>
+          </div>
+        )}
         {snapshots.data && snapshots.data.length > 0 && (
           <ul className="geo-view-list reporting-snapshot-list">
             {snapshots.data.map((snapshot) => (

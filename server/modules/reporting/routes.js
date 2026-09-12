@@ -1,9 +1,20 @@
 import { operationalReportRollupsToCsv } from './repository.js';
+import { computeOverVotingCheck } from './over-voting.js';
 
 const geographyFromQuery = (query) => ({ state: query.state, lga: query.lga, ward: query.ward, pollingUnit: query.pollingUnit });
 const reportFilterFromQuery = (query) => ({ ...geographyFromQuery(query), since: query.since, until: query.until, phase: query.phase, electionId: query.electionId, contestId: query.contestId });
 
 export function registerReportingRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, canAccessGeography }) {
+  app.get('/api/reports/over-voting', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
+    const geography = geographyFromQuery(req.query);
+    if (!canAccessGeography(req.user, geography)) return res.status(403).json({ message: 'You are not authorized for this geographic scope.' });
+    const [resultRecords, votersDatasets] = await Promise.all([
+      store.resultRecords(),
+      store.demographicDatasets({ metric: 'registered-voters', status: 'approved' }),
+    ]);
+    res.json(computeOverVotingCheck({ geography, resultRecords, votersDatasets }));
+  }));
+
   app.get('/api/reports/operational', auth, adminOnly, rateLimit, asyncRoute(async (req, res) => {
     const geography = geographyFromQuery(req.query);
     if (!canAccessGeography(req.user, geography)) return res.status(403).json({ message: 'You are not authorized for this geographic scope.' });

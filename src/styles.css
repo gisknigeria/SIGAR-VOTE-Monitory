@@ -7396,6 +7396,66 @@ body.resizing-sidebar {
   border-radius: 6px !important;
 }
 
+/* ── Map data-layer toggle + legend ── */
+.map-data-layer-toggle {
+  background: #1a0710;
+  border: 1px solid #825063 !important;
+  color: #fff8e8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.map-data-layer-toggle.active {
+  background: #8b1e46;
+  border-color: #d9aa4b !important;
+}
+.map-data-layer-legend {
+  background: rgba(10, 18, 30, 0.95);
+  border: 1px solid #825063;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #fff8e8;
+  font-size: 11px;
+  min-width: 180px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.map-data-layer-legend-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.map-data-layer-legend-gradient {
+  height: 10px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.map-data-layer-legend-scale {
+  display: flex;
+  justify-content: space-between;
+  color: #d6c4cc;
+  font-size: 10px;
+  margin-bottom: 6px;
+}
+.map-data-layer-legend-nodata {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #d6c4cc;
+  font-size: 10px;
+}
+.map-data-layer-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #4a4a55;
+  border: 1px solid #6a6a75;
+}
+
 /* ── Role-change panel in officer manager ── */
 .role-change-panel {
   background: #1a0710;

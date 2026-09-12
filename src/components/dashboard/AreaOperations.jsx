@@ -44,7 +44,7 @@ export default function AreaOperations({ authToken }) {
     {tab === 'plans' && <>
     <form className="area-operation-form" onSubmit={save}>
       <label>Operation title<input required maxLength={120} name="title" value={form.title} onChange={change} placeholder="e.g. Observer orientation" /></label>
-      <label>Type<select name="category" value={form.category} onChange={change}>{['Observer coverage', 'Training', 'Logistics', 'Accessibility'].map(type => <option key={type}>{type}</option>)}</select></label>
+      <label>Type<select name="category" value={form.category} onChange={change}>{['Observer coverage', 'Training', 'Logistics', 'Accessibility', 'Campaign'].map(type => <option key={type}>{type}</option>)}</select></label>
       <label>Local government<select required name="lga" value={form.lga} onChange={change}><option value="">Select LGA</option>{options.lgas.map(name => <option key={name}>{name}</option>)}</select></label>
       <label>Ward<select name="ward" value={form.ward} onChange={change} disabled={!form.lga}><option value="">All wards in LGA</option>{options.wards.map(name => <option key={name}>{name}</option>)}</select></label>
       <label>Date<input required type="date" name="date" value={form.date} onChange={change} /></label>

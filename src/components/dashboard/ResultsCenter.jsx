@@ -7,6 +7,7 @@ import PreElectionAnalysis from "./PreElectionAnalysis.jsx";
 import AnalyticsPanel from "./AnalyticsPanel.jsx";
 import AiGenerationBadge from "./AiGenerationBadge.jsx";
 import ReconciliationReview from "./ReconciliationReview.jsx";
+import OverVotingCheck from "./OverVotingCheck.jsx";
 
 export default function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", initialView = "pulse", onPartyMapChange, onFocusLocation, onTool, onCsv, onClear, helpers }) {
   const { parseResultEntries, POLLING_RESULT_TYPE, RESULT_SOURCES } = helpers;
@@ -492,6 +493,8 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
               </div>
               <p className="post-card-note">Preserve original files, timestamps, submitter identity and chain-of-custody records before making corrections.</p>
             </article>
+
+            <OverVotingCheck authToken={authToken} />
           </div>
 
           <ReconciliationReview authToken={authToken} />

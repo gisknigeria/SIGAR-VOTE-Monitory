@@ -507,6 +507,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const [showReports, setShowReports] = useState(true);
   const [showSosIncidents, setShowSosIncidents] = useState(true);
   const [layer, setLayer] = useState("Street");
+  const [dataLayer, setDataLayer] = useState("none");
   const [coords, setCoords] = useState("");
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
@@ -1929,6 +1930,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     DashboardEmergencyPanel,
     DashboardMapDataPanel,
     DashboardToolsPanel,
+    dataLayer,
     deleteCamera,
     deleteChatRoom,
     deleteEmergency,
@@ -2080,6 +2082,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     setChatPanel,
     setCoords,
     setEmergencyOpen,
+    setDataLayer,
     setFilter,
     setFocusedOfficerId,
     setIncidentToAssign,
