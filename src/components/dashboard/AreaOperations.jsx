@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../api/client.js';
 import { getRegistrationLocationOptions } from '../../../shared/electionData.js';
+import ResourceIntelligence from './ResourceIntelligence.jsx';
 import './area-analysis.css';
 
 const initial = { title: '', category: 'Observer coverage', lga: '', ward: '', date: '', notes: '' };
 export default function AreaOperations({ authToken }) {
+  const [tab, setTab] = useState('plans');
   const [form, setForm] = useState(initial);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,6 +36,12 @@ export default function AreaOperations({ authToken }) {
     finally { setBusy(false); }
   };
   return <section className="area-operations"><header><span className="eyebrow">ADMIN WORKSPACE</span></header>
+    <div className="rc-tab-bar">
+      <button className={tab === 'plans' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('plans')}>Plans</button>
+      <button className={tab === 'resources' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('resources')}>Resources</button>
+    </div>
+    {tab === 'resources' && <ResourceIntelligence authToken={authToken} />}
+    {tab === 'plans' && <>
     <form className="area-operation-form" onSubmit={save}>
       <label>Operation title<input required maxLength={120} name="title" value={form.title} onChange={change} placeholder="e.g. Observer orientation" /></label>
       <label>Type<select name="category" value={form.category} onChange={change}>{['Observer coverage', 'Training', 'Logistics', 'Accessibility'].map(type => <option key={type}>{type}</option>)}</select></label>
@@ -50,5 +58,6 @@ export default function AreaOperations({ authToken }) {
     {plans.isError && <p role="alert">{plans.error.message} <button onClick={() => plans.refetch()}>Retry</button></p>}
     <div className="area-plan-list">{(plans.data || []).map(plan => <article key={plan.id}><div><span className="eyebrow">{plan.category} · {plan.date}</span><h4>{plan.title}</h4><p>{plan.lga} · {plan.ward || 'All wards'}</p><p className="area-plan-notes">{plan.notes}</p></div><button disabled={busy} onClick={() => remove(plan.id)} aria-label={`Remove ${plan.title}`}>Remove</button></article>)}</div>
     {plans.isSuccess && !plans.data.length && <p>No operations planned yet.</p>}
+    </>}
   </section>;
 }

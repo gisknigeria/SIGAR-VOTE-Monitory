@@ -5,6 +5,8 @@ import { API_BASE_URL } from "../../config.js";
 import { apiRequest as request } from "../../api/client.js";
 import PreElectionAnalysis from "./PreElectionAnalysis.jsx";
 import AnalyticsPanel from "./AnalyticsPanel.jsx";
+import AiGenerationBadge from "./AiGenerationBadge.jsx";
+import ReconciliationReview from "./ReconciliationReview.jsx";
 
 export default function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", initialView = "pulse", onPartyMapChange, onFocusLocation, onTool, onCsv, onClear, helpers }) {
   const { parseResultEntries, POLLING_RESULT_TYPE, RESULT_SOURCES } = helpers;
@@ -13,8 +15,10 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
   const [resultSourceFilter, setResultSourceFilter] = useState("");
   const [focusParty, setFocusParty] = useState(initialFocusParty);
   const [outlook, setOutlook] = useState("");
+  const [outlookMeta, setOutlookMeta] = useState(null);
   const [outlookLoading, setOutlookLoading] = useState(false);
   const [postElectionBrief, setPostElectionBrief] = useState("");
+  const [postElectionBriefMeta, setPostElectionBriefMeta] = useState(null);
   const [postElectionLoading, setPostElectionLoading] = useState(false);
   const [irevPilot, setIrevPilot] = useState(null);
   const [irevPublishedResults, setIrevPublishedResults] = useState(null);
@@ -347,6 +351,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
     const statusCounts = incidents.reduce((counts, item) => ({ ...counts, [item.status || "Unknown"]: (counts[item.status || "Unknown"] || 0) + 1 }), {});
     setOutlookLoading(true);
     setOutlook("");
+    setOutlookMeta(null);
     try {
       const response = await request("/analysis/ai", authToken, {
         method: "POST",
@@ -362,6 +367,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
         } }),
       });
       setOutlook(response.analysis || "No operational analysis returned.");
+      setOutlookMeta(response.generationType ? response : null);
     } catch (error) {
       setOutlook(error.message || "Operational analysis unavailable.");
     } finally {
@@ -371,6 +377,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
   const runPostElectionAnalysis = async () => {
     setPostElectionLoading(true);
     setPostElectionBrief("");
+    setPostElectionBriefMeta(null);
     try {
       const response = await request("/analysis/ai", authToken, {
         method: "POST",
@@ -386,6 +393,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
         } }),
       });
       setPostElectionBrief(response.analysis || "No post-election briefing returned.");
+      setPostElectionBriefMeta(response.generationType ? response : null);
     } catch (error) {
       setPostElectionBrief(error.message || "Post-election AI analysis is unavailable.");
     } finally {
@@ -451,7 +459,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
             </div>
           </div>
           {partyAnalysis && <article className="party-result-card"><header><span>Focused result</span><strong>{focusParty}</strong></header><div><section><span>Total votes</span><b>{partyAnalysis.votes.toLocaleString()}</b></section><section><span>Wards leading</span><b>{partyAnalysis.wards}</b></section><section><span>LGAs leading</span><b>{partyAnalysis.lgas}</b></section><section><span>Related incidents</span><b>{partyAnalysis.incidents}</b></section></div></article>}
-          {aiBriefingSections.length > 0 && <section className="ai-intelligence-response"><header><div><span>AI Intelligence</span><h3>Operational assessment &amp; actions</h3></div></header><div className="ai-intelligence-grid">{aiBriefingSections.map(section => <article className={section.title === "ACTIONABLE NEXT STEPS" ? "ai-section actionable" : "ai-section"} key={section.title}><h4>{section.title}</h4>{section.lines.map((line, index) => <p key={`${section.title}-${index}`}>{section.title === "ACTIONABLE NEXT STEPS" && <span className="ai-action-number">{index + 1}</span>}{line}</p>)}</article>)}</div></section>}
+          {aiBriefingSections.length > 0 && <section className="ai-intelligence-response"><header><div><span>AI Intelligence</span><h3>Operational assessment &amp; actions</h3></div><AiGenerationBadge meta={outlookMeta} /></header><div className="ai-intelligence-grid">{aiBriefingSections.map(section => <article className={section.title === "ACTIONABLE NEXT STEPS" ? "ai-section actionable" : "ai-section"} key={section.title}><h4>{section.title}</h4>{section.lines.map((line, index) => <p key={`${section.title}-${index}`}>{section.title === "ACTIONABLE NEXT STEPS" && <span className="ai-action-number">{index + 1}</span>}{line}</p>)}</article>)}</div></section>}
         </section>}
         {view === "post" && <section className="post-election-dashboard">
           <div className="post-election-head">
@@ -486,6 +494,8 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
             </article>
           </div>
 
+          <ReconciliationReview authToken={authToken} />
+
           <article className="post-card spatial-card">
             <header><div><h3>Spatial Distribution &amp; Hotspots</h3><p>Wards ranked by submitted vote volume, margin and reported incidents</p></div><small>High volume means reporting concentration—not verified turnout.</small></header>
             <div className="spatial-grid">{postElection.wardSpatial.slice(0, 12).map((item, index) => <button type="button" key={item.label} onClick={() => Number.isFinite(item.lat) && onFocusLocation?.(item)} disabled={!Number.isFinite(item.lat)}><span className="spatial-rank">#{index + 1}</span><div><strong>{item.label}</strong><small>{item.winner || "No leader"} · margin {item.margin.toLocaleString()}</small></div><div><b>{item.totalVotes.toLocaleString()}</b><small>{item.reports} reports · {item.incidentCount} incidents</small></div>{item.criticalCount > 0 && <em>{item.criticalCount} critical</em>}</button>)}{!postElection.wardSpatial.length && <p className="post-empty">No ward-level result distribution is available.</p>}</div>
@@ -506,7 +516,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
               <div className="performance-list">{postElection.performance.slice(0, 10).map((item, index) => <div key={item.id}><span>{index + 1}</span><div><strong>{item.name}</strong><small>{item.role} · {item.submissions} submissions</small></div><div className="performance-meter"><i style={{width:`${item.score}%`}} /></div><b>{item.score}%</b>{item.score >= 80 && item.submissions > 0 && <em>Reward review</em>}</div>)}{!postElection.performance.length && <p className="post-empty">No attributable field submissions are available.</p>}</div>
             </article>
           </div>
-          {postElectionBrief && <article className="post-card post-ai-brief"><header><div><h3>AI Post-Election Brief</h3><p>Neutral synthesis for command, evidence and planning teams</p></div></header><div>{cleanSummaryText(postElectionBrief)}</div></article>}
+          {postElectionBrief && <article className="post-card post-ai-brief"><header><div><h3>AI Post-Election Brief</h3><p>Neutral synthesis for command, evidence and planning teams</p></div><AiGenerationBadge meta={postElectionBriefMeta} /></header><div>{cleanSummaryText(postElectionBrief)}</div></article>}
         </section>}
         {partyAnalysis && view !== "breakdown" && view !== "irev" && view !== "news" && <section className="party-lga-analysis"><div className="party-lga-summary"><div><span>Selected party</span><strong>{focusParty}</strong></div><div className="winning"><span>LGAs winning</span><strong>{partyAnalysis.winningLgas.length}</strong></div><div className="losing"><span>LGAs losing</span><strong>{partyAnalysis.losingLgas.length}</strong></div><div><span>Total votes</span><strong>{partyAnalysis.votes.toLocaleString()}</strong></div></div><div className="party-lga-columns"><section className="party-lga-column winning"><header><div><span className="performance-dot" />Winning LGAs</div><b>{partyAnalysis.winningLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.winningLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Ahead of {item.opponent}</small></div><div><b>+{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.winningLgas.length && <p>No confirmed LGA lead for {focusParty} yet.</p>}</div></section><section className="party-lga-column losing"><header><div><span className="performance-dot" />Losing LGAs</div><b>{partyAnalysis.losingLgas.length}</b></header><div className="party-lga-list">{partyAnalysis.losingLgas.map(item => <article key={item.name}><div><strong>{item.name}</strong><small>Behind {item.opponent}</small></div><div><b>-{item.margin.toLocaleString()}</b><small>{item.votes.toLocaleString()} votes</small></div></article>)}{!partyAnalysis.losingLgas.length && <p>No confirmed LGA loss for {focusParty} yet.</p>}</div></section></div>{partyAnalysis.tiedLgas.length > 0 && <p className="party-tied-note">Tied in: {partyAnalysis.tiedLgas.join(", ")}.</p>}<p className="party-analysis-note">Leading in {partyAnalysis.wards} wards. Related incident mentions: {partyAnalysis.incidents}. Based only on submitted polling-unit results.</p></section>}
         {view === "winloss" && <section className="result-table-card"><div className="result-table-title"><div><h2>Win / Loss Analysis</h2><p>Leading party by ward and LGA from submitted polling-unit results.</p></div><b>Top {top6.length} parties</b></div><div className="wl-sub-tabs"><button className="wl-sub-tab active">By Ward</button><button className="wl-sub-tab" onClick={() => setView("winloss-lga")}>By LGA</button></div><div className="result-table-scroll"><table className="result-progress-table"><thead><tr><th>Ward</th><th>Winner</th>{top6.map(p => <th key={p}>{p}</th>)}</tr></thead><tbody>{winLoss.wards.map(g => <tr key={g.label}><td>{g.label}</td><td><b>{g.winner || "—"}</b></td>{top6.map(p => <td key={p}>{g.votes[p].toLocaleString()} {g.winner === p ? "✓" : g.winner ? "✕" : ""}</td>)}</tr>)}{!winLoss.wards.length && <tr><td colSpan={top6.length + 2} className="result-empty">No ward-level data available yet.</td></tr>}</tbody></table></div></section>}

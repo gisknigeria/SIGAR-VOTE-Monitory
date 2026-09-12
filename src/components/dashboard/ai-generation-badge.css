@@ -1,0 +1,6 @@
+.ai-gen-badge{display:inline-flex;align-items:baseline;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:99px;border:1px solid #a16207;color:#fcd34d;background:#1c1308;cursor:default;white-space:nowrap}
+.ai-gen-badge small{font-size:9px;text-transform:none;letter-spacing:0;color:#e6c68a;opacity:.85}
+.ai-gen-badge.ai-gen-deterministic-rule,.ai-gen-badge.ai-gen-statistical{border-color:#3f6b52;color:#8fe0ac;background:#0f1c15}
+.ai-gen-badge.ai-gen-deterministic-rule small,.ai-gen-badge.ai-gen-statistical small{color:#bfe6cf}
+.ai-gen-badge.ai-gen-predictive-model,.ai-gen-badge.ai-gen-machine-learning{border-color:#3b5fa0;color:#93c5fd;background:#0d1524}
+.ai-gen-badge.ai-gen-predictive-model small,.ai-gen-badge.ai-gen-machine-learning small{color:#c7dcfb}

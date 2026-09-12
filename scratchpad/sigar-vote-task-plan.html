@@ -1,0 +1,376 @@
+<title>SIGAR Vote Task Board</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root{
+    --bg:#f4f5f2;
+    --surface:#ffffff;
+    --surface-2:#eceee9;
+    --ink:#1c211d;
+    --ink-dim:#5b6259;
+    --line:#dcdfd8;
+    --backend:#3e5c9a;
+    --backend-tint:#e9edf6;
+    --frontend:#b8712b;
+    --frontend-tint:#f7ecdf;
+    --done:#3f7a5e;
+    --done-tint:#e6f0ea;
+    --block:#a23e33;
+    --block-tint:#f7e9e7;
+    --focus:#3e5c9a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14181a;
+      --surface:#1b201f;
+      --surface-2:#212724;
+      --ink:#e8ece7;
+      --ink-dim:#9aa39a;
+      --line:#333a35;
+      --backend:#8fa8e8;
+      --backend-tint:#232b3d;
+      --frontend:#e6a35c;
+      --frontend-tint:#332619;
+      --done:#7fc9a2;
+      --done-tint:#1c2e25;
+      --block:#e0897d;
+      --block-tint:#331f1c;
+      --focus:#8fa8e8;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14181a;
+    --surface:#1b201f;
+    --surface-2:#212724;
+    --ink:#e8ece7;
+    --ink-dim:#9aa39a;
+    --line:#333a35;
+    --backend:#8fa8e8;
+    --backend-tint:#232b3d;
+    --frontend:#e6a35c;
+    --frontend-tint:#332619;
+    --done:#7fc9a2;
+    --done-tint:#1c2e25;
+    --block:#e0897d;
+    --block-tint:#331f1c;
+    --focus:#8fa8e8;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:2.5rem 1.5rem 5rem;}
+
+  header.top{margin-bottom:2.25rem;}
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:.72rem;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    margin:0 0 .6rem;
+  }
+  h1{
+    font-family:'IBM Plex Serif', Georgia, serif;
+    font-weight:600;
+    font-size:clamp(1.7rem,3.4vw,2.35rem);
+    line-height:1.15;
+    margin:0 0 .55rem;
+    text-wrap:balance;
+  }
+  .lede{
+    max-width:62ch;
+    color:var(--ink-dim);
+    font-size:.98rem;
+    line-height:1.6;
+    margin:0 0 1.6rem;
+  }
+  .lede code{font-family:'IBM Plex Mono',monospace;font-size:.88em;background:var(--surface-2);padding:.05rem .35rem;border-radius:4px;}
+
+  .progress-shell{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:1rem 1.25rem;
+    display:flex;
+    align-items:center;
+    gap:1.25rem;
+    flex-wrap:wrap;
+  }
+  .progress-stat{font-family:'IBM Plex Mono',monospace;font-size:1.05rem;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .progress-stat b{font-weight:500;color:var(--ink);}
+  .progress-track{flex:1 1 220px;min-width:160px;height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden;}
+  .progress-fill{height:100%;background:linear-gradient(90deg,var(--backend),var(--done));border-radius:99px;transition:width .3s ease;}
+  .reset-btn{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.75rem;
+    color:var(--ink-dim);
+    background:none;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:.4rem .65rem;
+    cursor:pointer;
+  }
+  .reset-btn:hover{border-color:var(--ink-dim);color:var(--ink);}
+  .reset-btn:focus-visible, .task input:focus-visible, a:focus-visible{outline:2px solid var(--focus);outline-offset:2px;}
+
+  .tracks{display:grid;grid-template-columns:1fr;gap:1.75rem;margin-top:2rem;}
+  @media (min-width:920px){ .tracks{grid-template-columns:1fr 1fr;} }
+
+  .track > .track-head{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:1rem;
+    padding-bottom:.65rem;
+    border-bottom:2px solid var(--track-color);
+  }
+  .track[data-track="backend"]{--track-color:var(--backend);--track-tint:var(--backend-tint);}
+  .track[data-track="frontend"]{--track-color:var(--frontend);--track-tint:var(--frontend-tint);}
+
+  .track-head h2{
+    font-family:'IBM Plex Serif',serif;
+    font-size:1.3rem;
+    font-weight:600;
+    margin:0;
+    color:var(--track-color);
+  }
+  .track-count{font-family:'IBM Plex Mono',monospace;font-size:.8rem;color:var(--ink-dim);}
+
+  .tier{margin-bottom:1.5rem;}
+  .tier-label{
+    display:inline-flex;
+    align-items:center;
+    gap:.4rem;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.7rem;
+    letter-spacing:.07em;
+    text-transform:uppercase;
+    padding:.22rem .55rem;
+    border-radius:99px;
+    margin-bottom:.7rem;
+  }
+  .tier[data-tier="blocking"] .tier-label{background:var(--block-tint);color:var(--block);}
+  .tier[data-tier="high"] .tier-label{background:var(--track-tint);color:var(--track-color);}
+  .tier[data-tier="deferred"] .tier-label{background:var(--surface-2);color:var(--ink-dim);}
+
+  .task-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.5rem;}
+  .task{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-left:3px solid var(--track-color);
+    border-radius:8px;
+    padding:.7rem .85rem;
+    display:flex;
+    gap:.65rem;
+    align-items:flex-start;
+    transition:background .15s ease, opacity .15s ease;
+  }
+  .tier[data-tier="blocking"] .task{border-left-color:var(--block);}
+  .tier[data-tier="deferred"] .task{border-left-color:var(--line);}
+
+  .task input[type="checkbox"]{
+    appearance:none;
+    width:1.05rem;
+    height:1.05rem;
+    border:1.5px solid var(--ink-dim);
+    border-radius:4px;
+    margin:.15rem 0 0;
+    flex:none;
+    cursor:pointer;
+    position:relative;
+    background:var(--surface);
+  }
+  .task input[type="checkbox"]:checked{background:var(--done);border-color:var(--done);}
+  .task input[type="checkbox"]:checked::after{
+    content:"";
+    position:absolute;left:3px;top:0px;
+    width:5px;height:9px;
+    border:solid var(--surface);
+    border-width:0 2px 2px 0;
+    transform:rotate(40deg);
+  }
+  .task-body{flex:1;min-width:0;}
+  .task-title{font-size:.92rem;line-height:1.45;display:block;}
+  .task.done .task-title{color:var(--ink-dim);text-decoration:line-through;text-decoration-color:var(--line);}
+  .task.done{background:var(--done-tint);}
+  .task-ref{
+    display:block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.75rem;
+    color:var(--ink-dim);
+    margin-top:.3rem;
+    word-break:break-word;
+  }
+
+  footer.notes{
+    margin-top:3rem;
+    padding-top:1.5rem;
+    border-top:1px solid var(--line);
+    color:var(--ink-dim);
+    font-size:.85rem;
+    line-height:1.6;
+    max-width:70ch;
+  }
+  footer.notes strong{color:var(--ink);}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">SIGAR Vote &middot; Oyo State &middot; EIGARS backend/frontend</p>
+    <h1>What's left to build</h1>
+    <p class="lede">Grouped by backend and frontend, each in three tiers: <strong>blocking</strong> (do first), <strong>high-value</strong> (do next), and <strong>deferred</strong> (needs infrastructure or external access first). Check items off as you go &mdash; state saves in this browser via <code>localStorage</code>.</p>
+    <div class="progress-shell">
+      <span class="progress-stat"><b id="doneCount">0</b> / <span id="totalCount">0</span> done</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      <button class="reset-btn" id="resetBtn" type="button">Reset checklist</button>
+    </div>
+  </header>
+
+  <div class="tracks">
+
+    <section class="track" data-track="backend">
+      <div class="track-head">
+        <h2>Backend</h2>
+        <span class="track-count"><span data-track-done="backend">0</span>/<span data-track-total="backend">0</span></span>
+      </div>
+
+      <div class="tier" data-tier="blocking">
+        <span class="tier-label">Blocking</span>
+        <ul class="task-list">
+          <li class="task"><input type="checkbox" data-id="b1"><div class="task-body"><span class="task-title">Get a reachable PostgreSQL instance and re-run the full suite against it &mdash; every Postgres-path test today runs against a mocked <code>pool</code>, never a live database.</span><span class="task-ref">npm run test:backend against DATABASE_URL, not JSON mode</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b2"><div class="task-body"><span class="task-title">Verify the audit-log append-only trigger actually rejects an UPDATE/DELETE on purpose.</span><span class="task-ref">server/infrastructure/persistence/bootstrap.js &rarr; audit_events_append_only</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b3"><div class="task-body"><span class="task-title">Fix the LGA/ward casing mismatch between the human-facing list and the real polling dataset &mdash; it silently breaks assignment validation for any LGA whose casing differs.</span><span class="task-ref">shared/electionData.js (OYO_LGAS) vs shared/nigeriaPollingData.js</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b4"><div class="task-body"><span class="task-title">Run the backup/restore procedure for real once, against a disposable staging copy, and verify the restore.</span><span class="task-ref">docs/BACKUP_AND_RECOVERY.md</span></div></li>
+        </ul>
+      </div>
+
+      <div class="tier" data-tier="high">
+        <span class="tier-label">High-value</span>
+        <ul class="task-list">
+          <li class="task"><input type="checkbox" data-id="b5"><div class="task-body"><span class="task-title">Extend durable audit coverage to decision approve/update and to IReV/CRM/geocoding sync events.</span><span class="task-ref">server/modules/foundation/audit-helper.js</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b6"><div class="task-body"><span class="task-title">Decide the audit-log archival strategy (cold storage, not deletion) once <code>auditLogsDays</code> actually needs enforcing.</span><span class="task-ref">GET /api/security/policy &rarr; retention.auditLogsDays</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b7"><div class="task-body"><span class="task-title">Sweep the remaining scattered <code>console.log</code>/<code>console.error</code> calls onto structured, redacted logging.</span><span class="task-ref">server/middleware/observability.js &rarr; logEvent(), redact()</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b8"><div class="task-body"><span class="task-title">Build outbound alert dispatch (email/Slack/PagerDuty) that polls the existing metrics rather than leaving them unread.</span><span class="task-ref">GET /api/metrics</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b9"><div class="task-body"><span class="task-title">Get a real CRM provider contract and connect the adapter &mdash; it refuses to run without one by design.</span><span class="task-ref">server/integrations/crm-adapter.js, CRM_INTEGRATION.md</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b10"><div class="task-body"><span class="task-title">Source real population, connectivity, and GIS reference datasets and ingest them.</span><span class="task-ref">POST /api/reference-data/ingest, /api/connectivity/datasets</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b11"><div class="task-body"><span class="task-title">Set <code>IREV_OYO_ELECTION_ID</code> once INEC publishes the Oyo governorship election id.</span><span class="task-ref">server/integrations/irev.js</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b12"><div class="task-body"><span class="task-title">Set <code>SIGAR_ELECTION_DATE</code> once known, to unlock pre-election/election-day/post-election phase reporting.</span><span class="task-ref">server/config/deployment.js</span></div></li>
+        </ul>
+      </div>
+
+      <div class="tier" data-tier="deferred">
+        <span class="tier-label">Deferred / needs infra</span>
+        <ul class="task-list">
+          <li class="task"><input type="checkbox" data-id="b13"><div class="task-body"><span class="task-title">Move evidence storage from local disk/JSON to a real private object store for production.</span><span class="task-ref">server/modules/foundation/evidence-repository.js</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b14"><div class="task-body"><span class="task-title">Add a durable job queue for OCR/ingestion, replacing the in-memory queues.</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b15"><div class="task-body"><span class="task-title">Add true PostGIS/GiST spatial indexing &mdash; needs a geometry-column migration; coordinates are still plain numbers.</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b16"><div class="task-body"><span class="task-title">Add MFA / an external identity provider for privileged accounts.</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b17"><div class="task-body"><span class="task-title">Decide whether an overdue access review should block admin actions, or stay visibility-only as it is today.</span><span class="task-ref">GET /api/security/access-review</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b18"><div class="task-body"><span class="task-title">Add a PDF export alongside the existing CSV report export.</span><span class="task-ref">GET /api/reports/operational/export</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b19"><div class="task-body"><span class="task-title">Tag reconciliation records with LGA/ward, not only polling unit, so geography filters actually narrow them.</span><span class="task-ref">server/modules/results/reconciliation-repository.js</span></div></li>
+          <li class="task"><input type="checkbox" data-id="b20"><div class="task-body"><span class="task-title">Load-test realtime (Socket.IO) and the media service &mdash; the existing probe only covers HTTP.</span><span class="task-ref">scripts/load-probe.mjs</span></div></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="track" data-track="frontend">
+      <div class="track-head">
+        <h2>Frontend</h2>
+        <span class="track-count"><span data-track-done="frontend">0</span>/<span data-track-total="frontend">0</span></span>
+      </div>
+
+      <div class="tier" data-tier="blocking">
+        <span class="tier-label">Blocking &mdash; nothing below has any UI yet</span>
+        <ul class="task-list">
+          <li class="task"><input type="checkbox" data-id="f1"><div class="task-body"><span class="task-title">Geographic Operational View screen: drill down State &rarr; LGA &rarr; Ward &rarr; Polling Unit, showing personnel, incidents, resources, connectivity, CRM signals, results, evidence, tasks, and outcomes for the selected scope.</span><span class="task-ref">GET /api/geography/operational-view</span></div></li>
+          <li class="task"><input type="checkbox" data-id="f2"><div class="task-body"><span class="task-title">Audit log viewer for admins, with actor / entity / action / time-range filters.</span><span class="task-ref">GET /api/audit</span></div></li>
+          <li class="task"><input type="checkbox" data-id="f3"><div class="task-body"><span class="task-title">Resource Intelligence screens: requirements, availability, dispatch, reservations, arrival confirmation, reallocation, return, and utilization review. The plans screen exists; none of this does.</span><span class="task-ref">src/components/dashboard/AreaOperations.jsx &mdash; only handles operation "plans" today</span></div></li>
+        </ul>
+      </div>
+
+      <div class="tier" data-tier="high">
+        <span class="tier-label">High-value</span>
+        <ul class="task-list">
+          <li class="task"><input type="checkbox" data-id="f4"><div class="task-body"><span class="task-title">Reporting lifecycle controls: a pre-election / election-day / post-election phase switch, since/until date pickers, and an election/contest filter.</span><span class="task-ref">GET /api/reports/operational</span></div></li>
+          <li class="task"><input type="checkbox" data-id="f5"><div class="task-body"><span class="task-title">"Save snapshot" action plus a snapshot list/viewer, and a "Download CSV" link for the live report.</span><span class="task-ref">POST /api/reports/operational/snapshots, GET .../export</span></div></li>
+          <li class="task"><input type="checkbox" data-id="f6"><div class="task-body"><span class="task-title">AI-generation badge on every AI summary/analysis panel &mdash; today nothing shows whether text was generated by AI or is a deterministic fallback.</span><span class="task-ref">src/components/dashboard/AnalyticsPanel.jsx &mdash; response now carries generationType/provider/model</span></div></li>
+          <li class="task"><input type="checkbox" data-id="f7"><div class="task-body"><span class="task-title">Security & access-review screen: show the retention/access-review policy, list overdue accounts, and a "Record review" action.</span><span class="task-ref">GET /api/security/policy, /access-review, POST /api/users/:id/access-review</span></div></li>
+        </ul>
+      </div>
+
+      <div class="tier" data-tier="deferred">
+        <span class="tier-label">Nice-to-have</span>
+        <ul class="task-list">
+          <li class="task"><input type="checkbox" data-id="f8"><div class="task-body"><span class="task-title">Small ops health widget for admins: readiness state plus incident backlog, overdue tasks, pending approvals, and audit volume.</span><span class="task-ref">GET /api/ready, GET /api/metrics</span></div></li>
+          <li class="task"><input type="checkbox" data-id="f9"><div class="task-body"><span class="task-title">Verify and extend the reconciliation review UI against the full pending &rarr; reviewed &rarr; corrected workflow.</span><span class="task-ref">src/components/dashboard/ResultsCenter.jsx &mdash; "Litigation Preparation" section</span></div></li>
+        </ul>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="notes">
+    <strong>Where this list came from:</strong> everything above is either a documented gap from this session's own work (see <code>docs/REQUIREMENT-ALIGNMENT-CHECKLIST.md</code> for backend evidence) or a backend capability confirmed to have zero matching frontend code as of this check. Nothing here is guessed. Re-check the frontend list after a UI refactor &mdash; it reflects a point-in-time read of <code>src/</code>, not a running audit.
+  </footer>
+</div>
+
+<script>
+(function(){
+  var STORAGE_KEY = 'sigar-task-board-v1';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (e) { state = {}; }
+
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.task input[type="checkbox"]'));
+
+  function save(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function updateCounts(){
+    var total = boxes.length, done = 0;
+    var byTrack = {};
+    boxes.forEach(function(box){
+      var track = box.closest('.track').dataset.track;
+      byTrack[track] = byTrack[track] || {done:0, total:0};
+      byTrack[track].total++;
+      if (box.checked) { done++; byTrack[track].done++; }
+    });
+    document.getElementById('doneCount').textContent = done;
+    document.getElementById('totalCount').textContent = total;
+    document.getElementById('progressFill').style.width = (total ? (done/total*100) : 0) + '%';
+    Object.keys(byTrack).forEach(function(track){
+      var doneEl = document.querySelector('[data-track-done="' + track + '"]');
+      var totalEl = document.querySelector('[data-track-total="' + track + '"]');
+      if (doneEl) doneEl.textContent = byTrack[track].done;
+      if (totalEl) totalEl.textContent = byTrack[track].total;
+    });
+  }
+
+  boxes.forEach(function(box){
+    var id = box.dataset.id;
+    if (state[id]) { box.checked = true; box.closest('.task').classList.add('done'); }
+    box.addEventListener('change', function(){
+      state[id] = box.checked;
+      box.closest('.task').classList.toggle('done', box.checked);
+      save();
+      updateCounts();
+    });
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function(){
+    if (!confirm('Uncheck every item?')) return;
+    state = {};
+    save();
+    boxes.forEach(function(box){ box.checked = false; box.closest('.task').classList.remove('done'); });
+    updateCounts();
+  });
+
+  updateCounts();
+})();
+</script>

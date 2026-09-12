@@ -78,6 +78,7 @@ import ProfileModal from "./ProfileModal.jsx";
 import DashboardChatPanel from "./ChatPanel.jsx";
 import DashboardEmergencyPanel from "./EmergencyPanel.jsx";
 import DashboardMapDataPanel from "./MapDataPanel.jsx";
+import AuditLogViewer from "./AuditLogViewer.jsx";
 import DashboardToolsPanel from "./ToolsPanel.jsx";
 import Toast from "../ui/Toast.jsx";
 import NotificationCenter from "./NotificationCenter.jsx";
@@ -511,6 +512,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const [notice, setNotice] = useState("");
   const [manageOfficers, setManageOfficers] = useState(false);
   const [mapDataPanel, setMapDataPanel] = useState(false);
+  const [auditLogOpen, setAuditLogOpen] = useState(false);
   const [focusedOfficerId, setFocusedOfficerId] = useState("");
   const [resultsOpen, setResultsOpen] = useState(false);
   const [resultsInitialView, setResultsInitialView] = useState("pulse");
@@ -1897,6 +1899,9 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     areas,
     areaSearchResult,
     AssignIncidentModal,
+    AuditLogViewer,
+    auditLogOpen,
+    setAuditLogOpen,
     assignIncidentOpen,
     cameraFacingMode,
     cameraLocation,

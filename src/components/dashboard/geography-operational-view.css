@@ -1,0 +1,28 @@
+.geo-view-selectors{margin-bottom:4px}
+.geo-view-scope-summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:10px 14px;border:1px solid #744052;border-radius:10px;background:#28131c}
+.geo-view-scope-summary .eyebrow{font-size:13px;letter-spacing:.04em;color:#ffdf99}
+.geo-view-generated{font-size:11px;color:#d6c4cc}
+.geo-view-stats>div>b small{display:block;font-size:10px;font-weight:400;color:#d6c4cc}
+.geo-view-outcomes{padding:12px 16px;border:1px solid #744052;border-radius:10px;background:#190a11}
+.geo-view-outcomes h4{margin:0 0 6px;font-size:14px;color:#ffdf99}
+.geo-view-outcomes p{margin:0;font-size:13px;color:#f2dce5}
+.geo-view-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.geo-view-panel{padding:14px;border:1px solid #744052;border-radius:10px;background:#20101a;min-width:0}
+.geo-view-panel h4{margin:0 0 10px;font-size:14px;color:#ffdf99}
+.geo-view-list{list-style:none;margin:0;padding:0;display:grid;gap:8px;max-height:260px;overflow:auto}
+.geo-view-list li{display:grid;gap:2px;padding:8px 10px;border:1px solid #4a2a35;border-radius:8px;background:#28131c}
+.geo-view-list li b{font-size:13px}
+.geo-view-list li span{font-size:12px;color:#f2dce5}
+.geo-view-list li small{font-size:11px;color:#d6c4cc}
+.geo-view-resource-table,.geo-view-rollup table{width:100%;border-collapse:collapse;font-size:12px}
+.geo-view-resource-table th,.geo-view-resource-table td,.geo-view-rollup th,.geo-view-rollup td{padding:6px 8px;border-bottom:1px solid #4a2a35;text-align:left}
+.geo-view-resource-table th,.geo-view-rollup th{color:#ffdf99;font-weight:600}
+.geo-view-shortfall td{color:#ff9d9d}
+.geo-view-rollups{padding:14px;border:1px solid #744052;border-radius:10px;background:#190a11}
+.geo-view-rollups>h4{margin:0 0 10px;font-size:14px;color:#ffdf99}
+.geo-view-rollup-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.geo-view-rollup{min-width:0;overflow-x:auto}
+.geo-view-rollup h5{margin:0 0 6px;font-size:12px;color:#f2dce5;text-transform:uppercase;letter-spacing:.04em}
+.geo-view-limitations summary{cursor:pointer;font-size:12px}
+.geo-view-limitations ul{margin:8px 0 0;padding-left:18px;font-size:12px;color:#d6c4cc}
+@media(max-width:900px){.geo-view-columns{grid-template-columns:1fr}.geo-view-rollup-grid{grid-template-columns:1fr}}

@@ -12098,3 +12098,21 @@ export const getRegistrationLocationOptions = (state, lga = "", ward = "") => {
     pollingUnits,
   };
 };
+
+const normalizeNameForMatch = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * Resolves a human-typed geography name (e.g. "Ibadan North", any casing or
+ * hyphenation) to the exact-cased canonical string this dataset's keys use
+ * (e.g. "IBADAN NORTH"). The canonical dataset's own casing/hyphenation is
+ * inconsistent between entries (e.g. "IBADAN NORTH EAST" has no hyphen, while
+ * "IBADAN SOUTH-EAST" does), so an exact-string caller anywhere other than a
+ * dropdown populated from this same list -- a script, a differently-cased API
+ * call, a future client -- would otherwise be rejected for a real, valid name.
+ * Returns "" when nothing matches.
+ */
+export const resolveCanonicalName = (candidates, rawValue) => {
+  const target = normalizeNameForMatch(rawValue);
+  if (!target) return "";
+  return candidates.find((candidate) => normalizeNameForMatch(candidate) === target) || "";
+};

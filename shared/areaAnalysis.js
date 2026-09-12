@@ -1,4 +1,4 @@
-export const areaKey = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+export const areaKey = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^oorelope$/, 'orelope');
 
 export const PARTY_COLORS = { APC: '#007A33', PDP: '#CC163F', LP: '#783BD1', NNPP: '#125DDD', APM: '#B85B00', ACCORD: '#A17A00', ADC: '#007F85', SDP: '#B83280' };
 export function partyColor(party) {

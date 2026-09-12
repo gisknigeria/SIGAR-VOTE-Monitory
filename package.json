@@ -7,9 +7,16 @@
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite",
     "dev:server": "node server/index.js",
+    "start:media": "node media-server/index.js",
     "build": "vite build",
     "start": "node server/index.js",
-    "security:check": "node scripts/security-check.js"
+    "security:check": "node scripts/security-check.js",
+    "test:backend": "node scripts/test-backend.mjs",
+    "test:smoke": "node scripts/backend-smoke.mjs",
+    "test:media-smoke": "node scripts/media-server-smoke.mjs",
+    "benchmark:geography": "node scripts/benchmark-geographic-view.mjs",
+    "load:probe": "node scripts/load-probe.mjs",
+    "export:backend": "node scripts/export-backend.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

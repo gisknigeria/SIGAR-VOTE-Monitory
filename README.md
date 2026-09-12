@@ -2,6 +2,23 @@
 
 Election incident monitoring, live mapping and field coordination dashboard.
 
+## Oyo backend architecture
+
+The backend is organized by persistent capabilities: identity, geography, field operations, incidents, results, communications, notifications and intelligence. Election phases are views across those capabilities. See [the CTO architecture review](docs/EIGARS-OYO-ARCHITECTURE.md) for domain ownership, the data model, P0/P1 sequencing and remaining implementation work, and [the requirement alignment checklist](docs/REQUIREMENT-ALIGNMENT-CHECKLIST.md) for which capabilities are verified by an automated test versus reviewed-but-unexercised.
+
+```powershell
+npm.cmd run test:backend
+npm.cmd run test:smoke
+npm.cmd run test:media-smoke
+npm.cmd run benchmark:geography
+npm.cmd run load:probe
+npm.cmd run export:backend
+```
+
+`test:media-smoke` exercises the standalone media service's real recording lifecycle with locally-signed tokens. `benchmark:geography` and `load:probe` are directional, run-on-this-machine measurements against the JSON-store dev server, not production capacity tests -- see [`docs/BACKUP_AND_RECOVERY.md`](docs/BACKUP_AND_RECOVERY.md) for the (reviewed, not yet live-tested) backup/restore procedure.
+
+The export command creates a new `outputs/oyo-backend` directory with backend code, required shared data, tests and a backend-only dependency manifest. It excludes secrets and local runtime data and refuses to overwrite an existing destination. Set `API_ONLY=true` for a separate backend deployment. The Osun pilot remains enabled as a separate reference (`ENABLE_OSUN_PILOT=true`); set it to false only when you want to disable it.
+
 ## Run locally
 
 ```powershell

@@ -12,6 +12,7 @@ export default function ProfileModal({ session, onClose, onSave }) {
     email: session.user.email || "",
     station: session.user.station || "",
     password: "",
+    currentPassword: "",
   });
   const [error, setError] = useState("");
   const roleLabel = session.user.role === "Supervisor" ? "Ward Supervisor" : session.user.role;
@@ -84,12 +85,19 @@ export default function ProfileModal({ session, onClose, onSave }) {
           New password
           <input
             type="password"
-            minLength="6"
+            minLength="12"
+            autoComplete="new-password"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             placeholder="Leave blank to keep current password"
           />
         </label>
+
+        {form.password && <label>
+          Current password
+          <input type="password" autoComplete="current-password" required value={form.currentPassword} onChange={(e) => setForm({ ...form, currentPassword: e.target.value })} />
+          <small>New password: at least 12 characters, including uppercase, lowercase, a number, and a symbol.</small>
+        </label>}
 
         {error && <div className="error">{error}</div>}
 

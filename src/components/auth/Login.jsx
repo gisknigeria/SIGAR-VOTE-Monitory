@@ -109,11 +109,13 @@ export default function Login({ onLogin }) {
         <p className="muted">Sign in with your authorized election operations credentials.</p>
 
         <label>
-          Email address
+          Email, phone number or agent login ID
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            type="email"
+            type="text"
+            autoComplete="username"
+            required
           />
         </label>
 

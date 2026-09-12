@@ -3,6 +3,7 @@ import {
   FaCamera,
   FaChartBar,
   FaCircle,
+  FaClipboardCheck,
   FaComments,
   FaDrawPolygon,
   FaKey,
@@ -68,6 +69,7 @@ export default function ToolsPanel({
   onClearAreas,
   onManageOfficers,
   onMapData,
+  onAuditLog,
   onGps,
   onCameraShare,
   onCameras,
@@ -186,6 +188,18 @@ export default function ToolsPanel({
           >
             <b>
               <FaUserCog /> Manage Users
+            </b>
+          </button>
+        )}
+        {canAdmin && (
+          <button
+            onClick={() => {
+              onClose();
+              onAuditLog();
+            }}
+          >
+            <b>
+              <FaClipboardCheck /> Security &amp; Governance
             </b>
           </button>
         )}

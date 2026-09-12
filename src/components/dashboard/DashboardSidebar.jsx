@@ -43,6 +43,7 @@ export default function DashboardSidebar({ controller }) {
     search,
     selected,
     session,
+    setAuditLogOpen,
     setCameraPanel,
     setChatPanel,
     setFilter,
@@ -230,6 +231,7 @@ export default function DashboardSidebar({ controller }) {
                     onClearAreas={clearAreas}
                     onManageOfficers={() => setManageOfficers(true)}
                     onMapData={() => setMapDataPanel(true)}
+                    onAuditLog={() => setAuditLogOpen(true)}
                     onGps={toggleGps}
                     onCameraShare={toggleCamera}
                     onCameras={() => setCameraPanel(true)}

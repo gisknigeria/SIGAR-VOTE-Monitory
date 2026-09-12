@@ -2,3 +2,4 @@ node_modules/
 dist/
 .env
 server/data.json
+server/agent-imports/

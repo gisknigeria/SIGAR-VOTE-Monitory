@@ -5,6 +5,9 @@ export default function DashboardModals({ controller }) {
     areaSearchResult,
     AssignIncidentModal,
     assignIncidentOpen,
+    AuditLogViewer,
+    auditLogOpen,
+    setAuditLogOpen,
     cameraPanel,
     cameras,
     canAdmin,
@@ -286,6 +289,9 @@ export default function DashboardModals({ controller }) {
             onShowMap={showCameraOnMap}
           />
         </Suspense>
+      )}
+      {auditLogOpen && (
+        <AuditLogViewer authToken={session.token} onClose={() => setAuditLogOpen(false)} />
       )}
       {mapDataPanel && (
         <DashboardMapDataPanel

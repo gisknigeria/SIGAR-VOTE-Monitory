@@ -2,6 +2,9 @@ import { useMemo, useState } from "react";
 import { MdFlashOn } from "react-icons/md";
 import SentimentMap from "./SentimentMap.jsx";
 import AreaOperations from "./AreaOperations.jsx";
+import GeographicOperationalView from "./GeographicOperationalView.jsx";
+import ReportingLifecycle from "./ReportingLifecycle.jsx";
+import AiGenerationBadge from "./AiGenerationBadge.jsx";
 import {
   HISTORICAL_ELECTION_DATASETS,
   HISTORICAL_ELECTION_RESULTS,
@@ -20,6 +23,7 @@ export default function PreElectionAnalysis({
   const [year, setYear] = useState(2023);
   const [election, setElection] = useState("Presidential");
   const [brief, setBrief] = useState("");
+  const [briefMeta, setBriefMeta] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -74,6 +78,7 @@ export default function PreElectionAnalysis({
     setLoading(true);
     setError("");
     setBrief("");
+    setBriefMeta(null);
     try {
       const response = await onAnalyze({
         analysisMode: "PRE_ELECTION",
@@ -100,6 +105,7 @@ export default function PreElectionAnalysis({
           "The analysis service returned an empty brief. Please try again.",
         );
       setBrief(analysis);
+      setBriefMeta(response.generationType ? response : null);
     } catch (analysisError) {
       setError(analysisError.message || "Historical analysis is unavailable.");
     } finally {
@@ -145,10 +151,32 @@ export default function PreElectionAnalysis({
             Operations planning
           </button>
         )}
+        {canAdmin && (
+          <button
+            className={tab === "geography" ? "rc-tab active" : "rc-tab"}
+            onClick={() => setTab("geography")}
+          >
+            Geography
+          </button>
+        )}
+        {canAdmin && (
+          <button
+            className={tab === "reports" ? "rc-tab active" : "rc-tab"}
+            onClick={() => setTab("reports")}
+          >
+            Reports
+          </button>
+        )}
       </div>
 
       {tab === "operations" && canAdmin && (
         <AreaOperations authToken={authToken} />
+      )}
+      {tab === "geography" && canAdmin && (
+        <GeographicOperationalView authToken={authToken} />
+      )}
+      {tab === "reports" && canAdmin && (
+        <ReportingLifecycle authToken={authToken} />
       )}
       {tab === "sentiment" && (
         <>
@@ -172,8 +200,8 @@ export default function PreElectionAnalysis({
             <header>
               <div>
                 <h3>Sentiment Analysis</h3>
-                
               </div>
+              {brief && <AiGenerationBadge meta={briefMeta} />}
             </header>
             <div className="historical-party-bars">
               {Object.entries(sentimentParties).map(([party, value]) => (
