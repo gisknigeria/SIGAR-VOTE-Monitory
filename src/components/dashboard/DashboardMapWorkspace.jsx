@@ -198,7 +198,7 @@ export default function DashboardMapWorkspace({ controller }) {
                 </button>
               </div>
             </div>}
-            {!isAgent && <div className={`map-home-menu incident-menu ${mapMenu === "incident" ? "open" : ""}`}>
+            <div className={`map-home-menu incident-menu ${mapMenu === "incident" ? "open" : ""}`}>
               <button
                 className="map-menu-trigger"
                 type="button"
@@ -249,7 +249,7 @@ export default function DashboardMapWorkspace({ controller }) {
                   </button>
                 </div>
               )}
-            </div>}
+            </div>
             {!isFieldRole && <div className={`map-home-menu map-layer-menu ${mapMenu === "layers" ? "open" : ""}`}>
               <button
                 className="map-menu-trigger"

@@ -18,7 +18,6 @@ export default function DashboardModals({ controller }) {
     chatPanel,
     chatRooms,
     clearMapTools,
-    createCamera,
     createChatRoom,
     createMapLayer,
     createOfficer,
@@ -282,8 +281,8 @@ export default function DashboardModals({ controller }) {
             remoteStreams={remoteStreams}
             turnStatus={turnStatus}
             isAdmin={canAdmin}
+            authToken={session.token}
             onClose={() => setCameraPanel(false)}
-            onCreate={createCamera}
             onDelete={deleteCamera}
             onView={viewPhoneCamera}
             onShowMap={showCameraOnMap}

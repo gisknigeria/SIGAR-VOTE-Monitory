@@ -1,6 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
-import { FaCircle, FaTimes, FaVolumeDown, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
+import { FaCircle, FaPlay, FaTimes, FaVolumeDown, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
+import { apiRequest } from "../../api/client.js";
+
+const formatRecordingWhen = (iso) => {
+  const time = Date.parse(iso || "");
+  return Number.isFinite(time) ? new Date(time).toLocaleString() : "Unknown time";
+};
+
+const formatRecordingDuration = (startedAt, endedAt) => {
+  const start = Date.parse(startedAt || "");
+  const end = Date.parse(endedAt || "");
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return "";
+  const seconds = Math.round((end - start) / 1000);
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+};
+
+const groupRecordingsByLocation = (recordings) => {
+  const byLga = new Map();
+  for (const recording of recordings) {
+    const lga = recording.geography?.lga || "Location not assigned";
+    const ward = recording.geography?.ward || "Ward not assigned";
+    if (!byLga.has(lga)) byLga.set(lga, new Map());
+    const byWard = byLga.get(lga);
+    if (!byWard.has(ward)) byWard.set(ward, []);
+    byWard.get(ward).push(recording);
+  }
+  return [...byLga.entries()].map(([lga, byWard]) => ({
+    lga,
+    wards: [...byWard.entries()].map(([ward, items]) => ({ ward, items })),
+  }));
+};
 
 const watermarkLines = (feed = {}) => {
   const location = feed.location || {};
@@ -173,8 +203,8 @@ export default function CameraPanel({
   remoteStreams,
   turnStatus,
   isAdmin,
+  authToken,
   onClose,
-  onCreate,
   onDelete,
   onView,
   onShowMap,
@@ -182,22 +212,31 @@ export default function CameraPanel({
   const [recordAll, setRecordAll] = useState(false);
   const [sharingFeedId, setSharingFeedId] = useState(null);
   const [preparedShares, setPreparedShares] = useState({});
+  const [fullscreen, setFullscreen] = useState(null);
+  const [recordings, setRecordings] = useState(null);
+  const [recordingsError, setRecordingsError] = useState("");
   const recordersRef = useRef({});
-  const requestedFeedsRef = useRef(new Set());
-  const [form, setForm] = useState({
-    name: "",
-    type: "CCTV",
-    url: "",
-    lat: "7.3775",
-    lng: "3.9470",
-  });
-  const [view, setView] = useState("All");
 
-  const submit = async (e) => {
-    e.preventDefault();
-    await onCreate(form);
-    setForm({ name: "", type: "CCTV", url: "", lat: "7.3775", lng: "3.9470" });
+  const viewLiveFeed = (feed) => {
+    onView(feed.userId);
+    setFullscreen({ type: "live", feed });
   };
+
+  const loadRecordings = () => {
+    setRecordingsError("");
+    apiRequest("/camera/recordings", authToken)
+      .then(setRecordings)
+      .catch((error) => setRecordingsError(error.message || "Unable to load recordings"));
+  };
+
+  const playRecording = (recording) => {
+    setFullscreen({ type: "recording", recording, dataUrl: null, loading: true, error: "" });
+    apiRequest(`/evidence/${recording.evidenceId}`, authToken)
+      .then((evidence) => setFullscreen({ type: "recording", recording, dataUrl: evidence.data, loading: false, error: "" }))
+      .catch((error) => setFullscreen({ type: "recording", recording, dataUrl: null, loading: false, error: error.message || "Unable to load this recording" }));
+  };
+
+  const [view, setView] = useState("All");
 
   const phoneFeeds = phoneShares.map((feed) => ({
     ...feed,
@@ -235,19 +274,9 @@ export default function CameraPanel({
         : "STUN fallback only";
 
   useEffect(() => {
-    if (!isAdmin) return;
     const availableIds = new Set(phoneFeeds.map((feed) => String(feed.userId)));
-    requestedFeedsRef.current.forEach((id) => {
-      if (!availableIds.has(String(id))) requestedFeedsRef.current.delete(id);
-    });
-    phoneFeeds.forEach((feed) => {
-      const id = String(feed.userId);
-      if (!remoteStreams[feed.userId] && !requestedFeedsRef.current.has(id)) {
-        requestedFeedsRef.current.add(id);
-        onView(feed.userId);
-      }
-    });
-  }, [isAdmin, phoneShares, remoteStreams, onView]);
+    setFullscreen((current) => (current?.type === "live" && !availableIds.has(String(current.feed.userId)) ? null : current));
+  }, [phoneShares]);
 
   const saveFeedRecording = (feed, chunks, mimeType) => {
     if (!chunks.length) return;
@@ -379,7 +408,7 @@ export default function CameraPanel({
       <div className="camera-head">
         <div>
           <span className="eyebrow">LIVE VISUAL INTELLIGENCE</span>
-          <h2>{view === "Drone" ? "Drone view" : "Camera feeds"}</h2>
+          <h2>{view === "Recordings" ? "Saved recordings" : "Camera feeds"}</h2>
         </div>
         <div className="camera-head-actions">
           <span className={`turn-status ${turnStatus?.route === "turn" ? "relayed" : turnStatus?.provider !== "stun-fallback" ? "ready" : "fallback"}`}>
@@ -391,7 +420,7 @@ export default function CameraPanel({
         </div>
       </div>
       <div className="camera-tabs">
-        {["All", "Phone", "CCTV", "Drone"].map((tab) => (
+        {["All", "Phone"].map((tab) => (
           <button
             key={tab}
             className={view === tab ? "active" : ""}
@@ -400,7 +429,49 @@ export default function CameraPanel({
             {tab} <i>{counts[tab]}</i>
           </button>
         ))}
+        {isAdmin && (
+          <button
+            className={view === "Recordings" ? "active" : ""}
+            onClick={() => { setView("Recordings"); if (!recordings) loadRecordings(); }}
+          >
+            Recordings
+          </button>
+        )}
       </div>
+      {view === "Recordings" ? (
+        <div className="recordings-browser">
+          <p className="alv-note">Every camera-share session is saved automatically as it happens, grouped here by where it was recorded.</p>
+          {recordingsError && <p role="alert">{recordingsError} <button onClick={loadRecordings}>Retry</button></p>}
+          {!recordingsError && recordings === null && <p role="status">Loading recordings…</p>}
+          {recordings?.length === 0 && <div className="empty-cameras"><b>No recordings yet</b><span>Recordings appear here automatically once a camera share ends.</span></div>}
+          {recordings?.length > 0 && groupRecordingsByLocation(recordings).map((lgaGroup) => (
+            <div className="recordings-lga-group" key={lgaGroup.lga}>
+              <h4>{lgaGroup.lga}</h4>
+              {lgaGroup.wards.map((wardGroup) => (
+                <div className="recordings-ward-group" key={wardGroup.ward}>
+                  <span className="recordings-ward-label">{wardGroup.ward}</span>
+                  <div className="recordings-list">
+                    {wardGroup.items.map((recording) => (
+                      <button type="button" className="recording-item" key={recording.id} onClick={() => playRecording(recording)}>
+                        <FaPlay size={11} />
+                        <span className="recording-item-main">
+                          <b>{recording.submittedByName || "Field agent"}</b>
+                          <small>{recording.submittedByRole} · {recording.geography?.pollingUnit || "Polling unit not assigned"}</small>
+                        </span>
+                        <span className="recording-item-when">
+                          {formatRecordingWhen(recording.createdAt)}
+                          {formatRecordingDuration(recording.startedAt, recording.endedAt) && ` · ${formatRecordingDuration(recording.startedAt, recording.endedAt)}`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
       {isAdmin && (
         <label className="record-all-feeds">
           <input
@@ -419,28 +490,21 @@ export default function CameraPanel({
               key={feed.id}
               title={`${feed.name || "Agent"} — ${feed.pollingUnit || feed.station || "Polling unit not assigned"}`}
             >
-              <div className="video-shell">
-                {remoteStreams[feed.userId] ? (
-                  <StreamVideo stream={remoteStreams[feed.userId]} watermark={feed} />
-                ) : (
-                  <button
-                    className="connect-feed"
-                    onClick={() => onView(feed.userId)}
-                  >
-                    Play Connect
-                  </button>
-                )}
-              </div>
-              <div className="camera-meta">
-                <div>
-                  <b>{feed.name}</b>
-                  <small>PHONE / WEBRTC</small>
-                </div>
+              <button type="button" className="live-notification" onClick={() => viewLiveFeed(feed)}>
                 <span className="live-badge">
                   <FaCircle size={8} style={{ marginRight: 3 }} />
                   LIVE
                 </span>
-              </div>
+                <b>{feed.name || "Agent"} is live</b>
+                <small>{feed.role || "Agent"}</small>
+                <span className="live-notification-line">
+                  Registered to: {[feed.pollingUnit || feed.station, feed.ward, feed.lga].filter(Boolean).join(" · ") || "Not assigned"}
+                </span>
+                <span className="live-notification-line">
+                  Currently at: {feed.location?.label || (Number.isFinite(Number(feed.lat)) && Number.isFinite(Number(feed.lng)) ? `${Number(feed.lat).toFixed(5)}, ${Number(feed.lng).toFixed(5)}` : "Waiting for GPS")}
+                </span>
+                <span className="live-notification-cta">View live stream →</span>
+              </button>
               <div className="camera-actions">
                 {feed.lat && (
                   <button onClick={() => onShowMap(feed)}>Show on map</button>
@@ -448,15 +512,6 @@ export default function CameraPanel({
                 <button className={preparedShares[feed.userId] ? "share-ready" : ""} disabled={sharingFeedId === feed.userId} onClick={() => preparedShares[feed.userId] ? sharePreparedFeedVideo(feed) : shareFeedVideo(feed)}>
                   {sharingFeedId === feed.userId ? "Recording 10s…" : preparedShares[feed.userId] ? "Share ready" : "Prepare video"}
                 </button>
-              </div>
-              <div className="agent-feed-hover">
-                <b>{feed.name || "Agent"}</b>
-                <span>{feed.role || "Agent"}</span>
-                <span>Polling unit: {feed.pollingUnit || feed.station || "Not assigned"}</span>
-                {(feed.ward || feed.lga) && (
-                  <span>{[feed.ward, feed.lga].filter(Boolean).join(" · ")}</span>
-                )}
-                {feed.email && <span>{feed.email}</span>}
               </div>
             </article>
           ) : (
@@ -504,42 +559,42 @@ export default function CameraPanel({
           </div>
         )}
       </div>
-      {isAdmin && (
-        <form className="camera-form" onSubmit={submit}>
-          <h3>Add CCTV / drone stream</h3>
-          <input
-            required
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Camera name"
-          />
-          <select
-            value={form.type}
-            onChange={(e) => setForm({ ...form, type: e.target.value })}
-          >
-            <option>CCTV</option>
-            <option>Drone</option>
-            <option>Vehicle</option>
-            <option>Other</option>
-          </select>
-          <input
-            required
-            value={form.url}
-            onChange={(e) => setForm({ ...form, url: e.target.value })}
-            placeholder="HLS URL ending in .m3u8 or video URL"
-          />
-          <input
-            value={form.lat}
-            onChange={(e) => setForm({ ...form, lat: e.target.value })}
-            placeholder="Latitude"
-          />
-          <input
-            value={form.lng}
-            onChange={(e) => setForm({ ...form, lng: e.target.value })}
-            placeholder="Longitude"
-          />
-          <button className="primary">Add feed</button>
-        </form>
+        </>
+      )}
+      {fullscreen && (
+        <div className="live-fullscreen-overlay">
+          <div className="live-fullscreen-head">
+            <div>
+              {fullscreen.type === "live" ? (
+                <>
+                  <b>{fullscreen.feed.name || "Agent"} — LIVE</b>
+                  <small>{[fullscreen.feed.pollingUnit || fullscreen.feed.station, fullscreen.feed.ward, fullscreen.feed.lga].filter(Boolean).join(" · ") || "Location not assigned"}</small>
+                </>
+              ) : (
+                <>
+                  <b>{fullscreen.recording.submittedByName || "Field agent"} — Recording</b>
+                  <small>{formatRecordingWhen(fullscreen.recording.createdAt)} · {[fullscreen.recording.geography?.pollingUnit, fullscreen.recording.geography?.ward, fullscreen.recording.geography?.lga].filter(Boolean).join(" · ") || "Location not assigned"}</small>
+                </>
+              )}
+            </div>
+            <button className="icon-btn" onClick={() => setFullscreen(null)}><FaTimes /></button>
+          </div>
+          <div className="live-fullscreen-body video-shell">
+            {fullscreen.type === "live" ? (
+              remoteStreams[fullscreen.feed.userId] ? (
+                <StreamVideo stream={remoteStreams[fullscreen.feed.userId]} watermark={fullscreen.feed} />
+              ) : (
+                <div className="connect-feed connecting">Connecting…</div>
+              )
+            ) : fullscreen.loading ? (
+              <div className="connect-feed connecting">Loading recording…</div>
+            ) : fullscreen.error ? (
+              <p role="alert">{fullscreen.error} <button onClick={() => playRecording(fullscreen.recording)}>Retry</button></p>
+            ) : (
+              <StreamVideo src={fullscreen.dataUrl} />
+            )}
+          </div>
+        </div>
       )}
     </section>
   );

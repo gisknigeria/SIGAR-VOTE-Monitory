@@ -87,7 +87,8 @@ import StreamVideo from "./StreamVideo.jsx";
 import MapView from "./MapView.jsx";
 import "../../notification-styles.css";
 
-const loadFieldModals = () => import("./FieldModals.jsx");
+let fieldModalsPromise = null;
+const loadFieldModals = () => (fieldModalsPromise ||= import("./FieldModals.jsx"));
 const DashboardCameraPanel = lazy(() => import("./CameraPanel.jsx"));
 const AssignIncidentModal = lazy(() => import("./AssignIncidentModal.jsx"));
 const SupervisorIncidentListModal = lazy(() => import("./SupervisorIncidentListModal.jsx"));
@@ -602,6 +603,10 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const offlineSegmentTimerRef = useRef(null);
   const offlineFallbackRef = useRef(false);
   const offlineUploadRef = useRef(false);
+  const archiveRecorderRef = useRef(null);
+  const archiveChunksRef = useRef([]);
+  const archiveSegmentTimerRef = useRef(null);
+  const archiveRunningRef = useRef(false);
   const activeRoomRef = useRef(null);
   const wakeLockRef = useRef(null);
   const silentAudioRef = useRef(null);
@@ -782,6 +787,55 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     clearTimeout(offlineSegmentTimerRef.current);
     if (offlineRecorderRef.current?.state !== "inactive")
       offlineRecorderRef.current?.stop();
+  };
+  /**
+   * Auto-saves every camera-share session to the evidence library, regardless
+   * of whether anyone is watching live. Runs in ~45s segments (independent of
+   * the offline-fallback recorder above) so a long session never produces one
+   * blob larger than the server's per-recording byte cap.
+   */
+  const startArchiveRecording = () => {
+    const stream = localCameraStreamRef.current;
+    if (!stream || archiveRecorderRef.current || typeof MediaRecorder === "undefined") return;
+    archiveRunningRef.current = true;
+    const mimeType = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(type => MediaRecorder.isTypeSupported(type)) || "";
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      videoBitsPerSecond: 400000,
+      audioBitsPerSecond: 32000,
+    });
+    const segmentStartedAt = new Date().toISOString();
+    archiveChunksRef.current = [];
+    archiveRecorderRef.current = recorder;
+    recorder.ondataavailable = (event) => {
+      if (event.data?.size) archiveChunksRef.current.push(event.data);
+    };
+    recorder.onstop = async () => {
+      clearTimeout(archiveSegmentTimerRef.current);
+      archiveRecorderRef.current = null;
+      const blob = new Blob(archiveChunksRef.current, { type: recorder.mimeType || mimeType || "video/webm" });
+      archiveChunksRef.current = [];
+      if (blob.size) {
+        try {
+          const dataUrl = await blobToDataUrl(blob);
+          await request("/camera/recordings", session.token, {
+            method: "POST",
+            body: JSON.stringify({ dataUrl, startedAt: segmentStartedAt }),
+          });
+        } catch {
+          // Best-effort archive; a failed segment upload never interrupts the live share.
+        }
+      }
+      if (archiveRunningRef.current && sharingCameraRef.current) startArchiveRecording();
+    };
+    recorder.start(5000);
+    archiveSegmentTimerRef.current = setTimeout(() => { if (recorder.state !== "inactive") recorder.stop(); }, 45000);
+  };
+  const stopArchiveRecording = () => {
+    archiveRunningRef.current = false;
+    clearTimeout(archiveSegmentTimerRef.current);
+    if (archiveRecorderRef.current?.state !== "inactive")
+      archiveRecorderRef.current?.stop();
   };
   useEffect(() => {
     activeRoomRef.current = activeRoom;
@@ -1632,6 +1686,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     if (sharingCamera) {
       sharingCameraRef.current = false;
       stopOfflineVideoRecording();
+      stopArchiveRecording();
       localCameraStreamRef.current
         ?.getTracks()
         .forEach((track) => track.stop());
@@ -1678,10 +1733,12 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
         station: session.user.station,
       });
       setNotice("Phone camera is live to command");
+      startArchiveRecording();
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         if (localCameraStreamRef.current !== stream) return;
         sharingCameraRef.current = false;
         stopOfflineVideoRecording();
+        stopArchiveRecording();
         socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
         setSharingCamera(false);
         setSelfCameraPreview(false);
@@ -1767,16 +1824,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
       );
     }
     setTimeout(() => setNotice(""), 2500);
-  };
-  const createCamera = async (form) => {
-    const camera = await request("/cameras", session.token, {
-      method: "POST",
-      body: JSON.stringify(form),
-    });
-    setCameras((old) =>
-      old.some((x) => x.id === camera.id) ? old : [...old, camera],
-    );
-    setNotice("Camera feed registered");
   };
   const deleteCamera = async (camera) => {
     if (!window.confirm(`Delete camera "${camera.name}"?`)) return;
@@ -1921,7 +1968,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     clearMapTools,
     COMMAND_PARTY,
     coords,
-    createCamera,
     createChatRoom,
     createMapLayer,
     createOfficer,

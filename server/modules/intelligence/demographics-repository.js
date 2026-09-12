@@ -51,7 +51,7 @@ export function createDemographicsRepository({ pool, jsonDb, saveJson }) {
       const select = (dataset) => dataset?.records.find((record) => Object.entries(geography).every(([key, value]) => !value || record.geography[key].toLowerCase() === String(value).toLowerCase())) || null;
       const populationRecord = select(population);
       const voterRecord = select(voters);
-      const ratio = populationRecord?.value !== null && populationRecord?.value !== undefined && voterRecord?.value !== null && populationRecord.value > 0 ? Number((voterRecord.value / populationRecord.value).toFixed(4)) : null;
+      const ratio = populationRecord && voterRecord && populationRecord.value !== null && voterRecord.value !== null && populationRecord.value > 0 ? Number((voterRecord.value / populationRecord.value).toFixed(4)) : null;
       return { geography, population: populationRecord ? { value: populationRecord.value, uncertainty: populationRecord.uncertainty, datasetId: population.id, publicationDate: population.publicationDate, sourceVersion: population.sourceVersion, methodology: population.methodology } : null, registeredVoters: voterRecord ? { value: voterRecord.value, uncertainty: voterRecord.uncertainty, datasetId: voters.id, publicationDate: voters.publicationDate, sourceVersion: voters.sourceVersion, methodology: voters.methodology } : null, registeredVoterToPopulationRatio: ratio, estimateStatus: ratio === null ? 'unknown' : 'observed-comparison-only' };
     },
   };

@@ -29,6 +29,7 @@ import { registerDemographicsRoutes } from './modules/intelligence/demographics-
 import { registerConnectivityRoutes } from './modules/intelligence/connectivity-routes.js';
 import { startTaskWorker } from './modules/tasks/worker.js';
 import { registerMediaRoutes } from './modules/field-operations/media-routes.js';
+import { registerCameraRecordingRoutes } from './modules/field-operations/camera-recording-routes.js';
 
 import express from "express";
 import cors from "cors";
@@ -269,6 +270,7 @@ registerConnectivityRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store 
 
 registerCameraRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, io, emitAuthorized, canAccessGeography });
 registerMediaRoutes({ app, auth, rateLimit, asyncRoute, store, canAccessGeography, secret });
+registerCameraRecordingRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, canAccessGeography });
 
 registerLayerRoutes({ app, auth, superAdminOnly, rateLimit, asyncRoute, store, io, isAdminRole, emitAuthorized });
 

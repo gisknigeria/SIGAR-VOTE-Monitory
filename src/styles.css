@@ -18,10 +18,79 @@
 }
 :root {
   font-family: Inter, Arial, sans-serif;
-  color: #f8fbff;
+  color: #f2f7ff;
   background: #1b050d;
   font-synthesis: none;
   font-size: 14px;
+
+  /* Brand scale -- the maroon/gold "command center" identity. Keep using these
+     directly, or the semantic aliases below, rather than new one-off hex values. */
+  --wine-950: #1b050d;
+  --wine-900: #260711;
+  --wine-850: #310a18;
+  --wine-800: #4a1228;
+  --wine-700: #6a1833;
+  --wine-600: #8b1e46;
+  --wine-500: #a62b4f;
+  --gold-500: #d9aa4b;
+  --gold-400: #ecc86f;
+  --gold-300: #f5dc9a;
+  --cream: #fff8e8;
+  --muted-wine: #d9b7c4;
+  --wine-border: #8b1e46;
+
+  /* Semantic aliases -- prefer these in new/edited code so a future palette
+     change is a one-line edit here instead of a file-wide hex hunt. */
+  --color-bg: var(--wine-950);
+  --color-surface: var(--wine-900);
+  --color-surface-raised: var(--wine-800);
+  --color-border: var(--wine-600);
+  --color-text: #f8fbff;
+  --color-text-muted: var(--muted-wine);
+  --color-accent: var(--gold-500);
+  --color-accent-strong: var(--gold-400);
+
+  /* Status colors, drawn from the hex values already dominant in this file --
+     not new colors, just named so every "success" or "danger" use agrees. */
+  --color-success: #34d399;
+  --color-success-bg: #b7dec0;
+  --color-success-text: #1c3a2a;
+  --color-warning: #facc15;
+  --color-warning-bg: #fde68a;
+  --color-warning-text: #7a5b06;
+  --color-danger: #ef4444;
+  --color-danger-bg: #fecaca;
+  --color-danger-text: #7f1d1d;
+  --color-info: #3b82f6;
+  --color-info-bg: #93c5fd;
+  --color-info-text: #1e3a5f;
+
+  /* Spacing scale (4px base). Prefer these over arbitrary px margins/padding. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* Radius scale, consolidating the ~14 ad hoc values found in this file. */
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+
+  /* Type scale. Not yet wired up everywhere -- see the note above the global
+     `body *` font-size rule below before using these on a new component. */
+  --text-xs: 10px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 26px;
+  --text-display: clamp(40px, 5vw, 76px);
 }
 * {
   box-sizing: border-box;
@@ -32,12 +101,6 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: #f8fbff;
-}
-body,
-body * {
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  color: #ffffff !important;
 }
 button,
 input,
@@ -80,72 +143,18 @@ button {
 .login-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
   align-items: center;
-  padding: 8vw;
-  background:
-    radial-gradient(circle at 20% 40%, #4a1228 0, transparent 34%),
-    linear-gradient(120deg, #07111e, #1b050d);
-}
-.login-brand {
-  max-width: 600px;
-}
-.crest {
-  width: 76px;
-  height: 76px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #8b1e46;
-  border-radius: 50%;
-  color: #f5dc9a;
-  font-weight: 800;
-  box-shadow: 0 0 30px #8b1e4644;
-}
-.login-brand > p:nth-child(2) {
-  font: 600 12px "JetBrains Mono";
-  letter-spacing: 0.25em;
-  color: #7ca9db;
-  margin-top: 25px;
-}
-.login-brand h1 {
-  font-size: 14px;
-  line-height: 1.04;
-  margin: 18px 0;
-}
-.login-brand .muted {
-  font-size: 14px;
-  max-width: 500px;
-}
-.security-line {
-  margin-top: 60px;
-  font: 500 10px "JetBrains Mono";
-  letter-spacing: 0.2em;
-  color: #637d9d;
-}
-.security-line span {
-  color: #28c888;
 }
 .login-card {
   width: 100%;
-  max-width: 420px;
   justify-self: end;
-  background: #260711dd;
-  border: 1px solid #1d3047;
-  border-radius: 14px;
-  padding: 38px;
-  box-shadow: 0 24px 70px #0008;
-}
-.login-card h2 {
-  font-size: 14px;
-  margin: 12px 0 0;
 }
 .login-card label,
 .modal label,
 .detail label {
   display: grid;
   gap: 8px;
-  color: #91a5bd;
-  font-size: 12px;
+  color: var(--muted-wine);
   font-weight: 600;
   margin-top: 22px;
 }
@@ -179,7 +188,7 @@ button {
   height: 28px;
   border: 0;
   background: transparent;
-  color: #8fb6df;
+  color: var(--color-text-muted);
 }
 .password-toggle:hover {
   color: #ffffff;
@@ -197,34 +206,29 @@ button {
 .remember-label input {
   width: 16px;
   height: 16px;
-  accent-color: #8b1e46;
-  padding: 0;
   margin: 0;
   flex-shrink: 0;
 }
 .remember-label span {
   font-size: 12px;
-  color: #9db3cb;
   font-weight: 500;
   line-height: 1;
   display: inline-block;
 }
 .login-card input:focus,
-.modal input:focus {
-  border-color: #8b1e46;
+.modal input:focus,
+.modal select:focus,
+.modal textarea:focus,
+.detail select:focus {
+  border-color: var(--gold-400);
+  outline: none;
+  box-shadow: 0 0 0 3px #d9aa4b33;
 }
 .login-card .primary {
   width: 100%;
   margin-top: 25px;
 }
-.demo-note {
-  font: 500 10px "JetBrains Mono";
-  text-align: center;
-  color: #60758d;
-  margin: 20px 0 0;
-}
 .error {
-  color: #ff8c8c;
   font-size: 12px;
   margin-top: 16px;
 }
@@ -341,8 +345,6 @@ header {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #1b4c80;
-  color: #a8d0ff;
   font-size: 10px;
 }
 .user b {
@@ -428,16 +430,16 @@ aside {
 }
 .card-top b {
   font-size: 12px;
-  color: #dbe6f0;
+  color: var(--cream);
 }
 .card-top time {
   font: 500 9px "JetBrains Mono";
-  color: #61768e;
+  color: var(--muted-wine);
 }
 .incident-card p {
   font-size: 10px;
   line-height: 1.5;
-  color: #70859c;
+  color: var(--color-text-muted);
   margin: 7px 0;
   white-space: nowrap;
   overflow: hidden;
@@ -495,7 +497,7 @@ aside {
 }
 .officer-row small,
 .officer-row > span {
-  color: #61768d;
+  color: var(--muted-wine);
   font-size: 8px;
   margin-top: 3px;
 }
@@ -623,7 +625,7 @@ aside {
 .icon-btn {
   border: 0;
   background: transparent;
-  color: #70859c;
+  color: var(--color-text-muted);
   font-size: 14px;
 }
 .detail-hero {
@@ -748,15 +750,6 @@ aside {
   .detail {
     width: 330px;
   }
-  .login-shell {
-    grid-template-columns: 1fr;
-  }
-  .login-brand {
-    display: none;
-  }
-  .login-card {
-    justify-self: center;
-  }
   .user div {
     display: none;
   }
@@ -796,18 +789,6 @@ aside {
   }
   .login-shell {
     min-height: 100dvh;
-    padding: 22px;
-    background:
-      radial-gradient(circle at 20% 15%, #12345e 0, transparent 34%),
-      linear-gradient(145deg, #07111e, #1b050d);
-  }
-  .login-card {
-    max-width: none;
-    padding: 26px 20px;
-    border-radius: 16px;
-  }
-  .login-card h2 {
-    font-size: 14px;
   }
   .app-shell {
     height: 100dvh;
@@ -1255,25 +1236,6 @@ aside {
   color: #f8d984 !important;
   font-size: 10px !important;
   font-weight: 900 !important;
-}
-
-/* Election Monitoring Command Center — wine and gold campaign theme */
-:root {
-  --wine-950: #1b050d;
-  --wine-900: #260711;
-  --wine-850: #310a18;
-  --wine-800: #4a1228;
-  --wine-700: #6a1833;
-  --wine-600: #8b1e46;
-  --wine-500: #a62b4f;
-  --gold-500: #d9aa4b;
-  --gold-400: #ecc86f;
-  --gold-300: #f5dc9a;
-  --cream: #fff8e8;
-  --muted-wine: #d9b7c4;
-  --wine-border: #8b1e46;
-  background: var(--wine-950);
-  color: var(--cream);
 }
 body {
   background: var(--wine-950);
@@ -1803,7 +1765,7 @@ aside,
 .powered-by {
   margin: 26px 0 0;
   text-align: center;
-  color: #8fb6df;
+  color: var(--color-text-muted);
   font: 700 10px "JetBrains Mono";
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -1819,9 +1781,6 @@ aside,
   border-color: #286899 !important;
   background: #310a18 !important;
   color: #f5dc9a !important;
-}
-:root {
-  color: #f2f7ff;
 }
 body {
   font-size: 14px;
@@ -1897,7 +1856,7 @@ header {
 .officer-row small,
 .officer-row > span,
 .detail > p {
-  color: #a9bed5;
+  color: var(--color-text-muted);
 }
 .camera-open.update-ready {
   border-color: #31d490 !important;
@@ -2335,7 +2294,7 @@ header {
 .officer-row b,
 .manage-row b,
 .camera-meta b {
-  color: #f4f8ff;
+  color: var(--cream);
 }
 .chips span {
   color: #d7e6f5;
@@ -2348,7 +2307,7 @@ header {
 .modal textarea,
 .modal select,
 .detail select {
-  color: #f7fbff;
+  color: var(--cream);
 }
 .search input::placeholder,
 .coord-jump input::placeholder {
@@ -2400,7 +2359,7 @@ header {
 .lcp-icon-btn {
   border: 0;
   background: transparent;
-  color: #70859c;
+  color: var(--color-text-muted);
   font-size: 14px;
   cursor: pointer;
   padding: 2px 5px;
@@ -2431,7 +2390,7 @@ header {
   background: #4a1228;
 }
 .lcp-empty {
-  color: #567090;
+  color: var(--color-text-muted);
   font-size: 10px;
   padding: 12px;
   line-height: 1.6;
@@ -2473,7 +2432,7 @@ header {
 }
 .lcp-cat-arrow {
   font-size: 8px;
-  color: #567090;
+  color: var(--color-text-muted);
 }
 .lcp-layer-row {
   display: flex;
@@ -2503,7 +2462,7 @@ header {
 .lcp-layer-type {
   display: block;
   font-size: 8px;
-  color: #567090;
+  color: var(--color-text-muted);
   margin-top: 2px;
 }
 .lcp-opacity {
@@ -2655,7 +2614,7 @@ header {
 }
 .mdp-sources {
   font-size: 9px;
-  color: #567090;
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3456,7 +3415,7 @@ header {
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .ap-empty {
-  color: #5a2e3c;
+  color: var(--color-text-muted);
   font-size: 12px;
   padding: 12px 0;
 }
@@ -3801,11 +3760,19 @@ header {
   display: flex;
   flex-direction: column;
   border-right: 1px solid #6f2940;
-  background: #260711;
   z-index: 600;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
+}
+.command-sidebar::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold-500), var(--gold-300), var(--gold-500));
+  z-index: 1;
 }
 .map-wrap {
   grid-column: 2;
@@ -3818,8 +3785,8 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px;
-  border-bottom: 1px solid #1a2c3f;
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--wine-border);
 }
 .sidebar-brand .brand-small {
   width: auto;
@@ -3827,9 +3794,9 @@ header {
 .sidebar-user {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 18px;
-  border-bottom: 1px solid #1a2c3f;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--wine-border);
 }
 .sidebar-user > span {
   display: grid;
@@ -3837,8 +3804,6 @@ header {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: #1b4c80;
-  color: #a8d0ff;
   font-size: 10px;
   font-weight: 800;
 }
@@ -3854,14 +3819,14 @@ header {
   text-overflow: ellipsis;
 }
 .sidebar-user small {
-  color: #8da6bf;
+  color: var(--color-text-muted);
   font-size: 10px;
   margin-top: 3px;
 }
 .sidebar-user button {
   border: 0;
   background: transparent;
-  color: #7fa9d4;
+  color: var(--gold-400);
   font-size: 11px;
 }
 .map-top-controls {
@@ -3966,11 +3931,16 @@ header {
   padding: 10px;
   text-align: left;
   font-size: 11px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sidebar-actions button:hover {
+  border-color: var(--gold-500);
+  background: var(--wine-800);
 }
 .sidebar-actions button i {
   float: right;
   font-style: normal;
-  background: #244d72;
+  background: var(--wine-600);
   border-radius: 9px;
   padding: 1px 5px;
 }
@@ -4006,7 +3976,7 @@ header {
 .sidebar-actions.compact button.active {
   border-color: #d9aa4b;
   background: #4a1228;
-  color: #d9f2ff;
+  color: var(--cream);
 }
 .sidebar-actions button.sharing {
   border-color: #a53c4b;
@@ -4384,7 +4354,7 @@ body.resizing-sidebar {
   border-radius: 8px;
   background: #071421;
   padding: 10px;
-  color: #8da4bb;
+  color: var(--color-text-muted);
   cursor: pointer;
 }
 .csv-drop-inline b {
@@ -4393,7 +4363,7 @@ body.resizing-sidebar {
 }
 .csv-drop-inline input {
   font-size: 10px;
-  color: #8da4bb !important;
+  color: var(--color-text-muted) !important;
   padding: 4px 0 !important;
 }
 .sidebar-tools-dropdown {
@@ -4439,7 +4409,7 @@ body.resizing-sidebar {
 }
 .sidebar-tools-grid span {
   display: block;
-  color: #8da4bb;
+  color: var(--color-text-muted);
   font-size: 9px;
   line-height: 1.2;
 }
@@ -4461,7 +4431,7 @@ body.resizing-sidebar {
   font-size: 11px;
 }
 .route-input-tool small {
-  color: #8fb6df;
+  color: var(--color-text-muted);
   font-size: 9px;
   line-height: 1.3;
 }
@@ -6080,7 +6050,7 @@ body.resizing-sidebar {
 .result-empty {
   text-align: center;
   padding: 40px !important;
-  color: #b7dec0 !important;
+  color: var(--color-text-muted) !important;
 }
 .post-election-dashboard {
   display: grid;

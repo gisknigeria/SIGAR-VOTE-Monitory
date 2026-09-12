@@ -29,6 +29,17 @@ test('population and registered-voter analysis compares matching aggregate geogr
   assert.equal(unknown.registeredVoterToPopulationRatio, null);
 });
 
+test('analysis with only a population dataset never throws and reports registered voters as unknown rather than inventing a ratio', async () => {
+  const { repository } = fixture();
+  const population = await repository.ingestDemographicDataset({ sourceId: 'source-pop', sourceName: 'Population', sourceVersion: 'v1', metric: 'population', resolution: 'lga', publicationDate: '2025-01-01', methodology: 'Aggregate estimate', records });
+  await repository.approveDemographicDataset(population.id, { approvedBy: 'admin-1' });
+  const analysis = await repository.demographicAnalysis({ geography: { state: 'Oyo', lga: 'Ibadan North' }, populationDatasetId: population.id });
+  assert.equal(analysis.population.value, 1000);
+  assert.equal(analysis.registeredVoters, null);
+  assert.equal(analysis.registeredVoterToPopulationRatio, null);
+  assert.equal(analysis.estimateStatus, 'unknown');
+});
+
 test('individual voter fields are rejected', async () => {
   const { repository } = fixture();
   await assert.rejects(repository.ingestDemographicDataset({ sourceId: 'bad', sourceName: 'Bad', sourceVersion: 'v1', metric: 'registered-voters', resolution: 'lga', publicationDate: '2026-01-01', methodology: 'unknown', records: [{ geography: { state: 'Oyo' }, voterId: 'person-1', value: 1 }] }), /personal field/);

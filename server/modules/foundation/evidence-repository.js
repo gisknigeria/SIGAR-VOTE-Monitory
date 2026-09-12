@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { connect } from 'node:net';
 import { createId } from '../../security.js';
 
 const MAX_RETENTION_DAYS = 3650;
@@ -14,6 +15,17 @@ const MEDIA_TYPES = new Map([
 ]);
 const dataUrlPattern = /^data:([^;]+);base64,([A-Za-z0-9+/]*={0,2})$/;
 const scannerEndpoint = process.env.EVIDENCE_SCANNER_URL || '';
+const clamdHost = process.env.CLAMD_HOST || '';
+const clamdPort = Number(process.env.CLAMD_PORT || 3310);
+/**
+ * Temporary escape hatch for standing up the app before a real scanner is
+ * connected. Only ever bypasses an UNAVAILABLE scanner -- a result the
+ * scanner actually flags as malicious is never let through. Every bypass is
+ * logged loudly and the evidence record itself is marked unscanned (never
+ * faked as "clean"), so the gap stays visible in server logs and in the
+ * evidence's own audit trail rather than being silently hidden.
+ */
+const allowUnscannedEvidence = process.env.ALLOW_UNSCANNED_EVIDENCE === 'true';
 const storageRoot = process.env.EVIDENCE_STORAGE_DIR || join(process.cwd(), 'private-evidence');
 
 const scannerFromEndpoint = async (bytes, mimeType) => {
@@ -24,7 +36,46 @@ const scannerFromEndpoint = async (bytes, mimeType) => {
   return { status: result.clean === true || result.status === 'clean' ? 'clean' : result.status === 'malicious' ? 'malicious' : 'unavailable', scanner: String(result.scanner || 'configured-scanner'), signature: result.signature || '' };
 };
 
-export function createEvidenceRepository({ pool, jsonDb, saveJson, scanner = scannerFromEndpoint, objectStore = null }) {
+/**
+ * Scans bytes with a real ClamAV daemon over its INSTREAM protocol
+ * (https://docs.clamav.net/manual/Usage/Scanning.html#stream-scanning) --
+ * clamd is free, open-source, and needs no API key or account, just a
+ * reachable daemon (e.g. the official `clamav/clamav-daemon` container).
+ * Chosen over the HTTP scanner when CLAMD_HOST is set.
+ */
+export const scannerFromClamd = (bytes, _mimeType, { host = clamdHost, port = clamdPort } = {}) => new Promise((resolve) => {
+  const socket = connect({ host, port, timeout: 15_000 });
+  let response = '';
+  const finish = (result) => { socket.destroy(); resolve(result); };
+  socket.on('timeout', () => finish({ status: 'unavailable', scanner: 'clamd-timeout' }));
+  socket.on('error', (error) => finish({ status: 'unavailable', scanner: `clamd-error-${error.code || 'unknown'}` }));
+  socket.on('data', (chunk) => { response += chunk.toString('utf8'); });
+  socket.on('close', () => {
+    if (!response) return;
+    // clamd's z-prefixed protocol null-terminates its reply; strip that before matching end-of-string.
+    const trimmed = response.replace(/\0+$/, '').trim();
+    if (/:\s*OK$/.test(trimmed)) return finish({ status: 'clean', scanner: 'clamd' });
+    const match = trimmed.match(/:\s*(.+?)\s+FOUND/);
+    if (match) return finish({ status: 'malicious', scanner: 'clamd', signature: match[1] });
+    finish({ status: 'unavailable', scanner: 'clamd-unrecognized-response' });
+  });
+  socket.on('connect', () => {
+    socket.write('zINSTREAM\0');
+    const chunkSize = 1024 * 1024;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      const sizeHeader = Buffer.alloc(4);
+      sizeHeader.writeUInt32BE(chunk.length, 0);
+      socket.write(sizeHeader);
+      socket.write(chunk);
+    }
+    socket.write(Buffer.from([0, 0, 0, 0]));
+  });
+});
+
+const defaultScanner = clamdHost ? scannerFromClamd : scannerFromEndpoint;
+
+export function createEvidenceRepository({ pool, jsonDb, saveJson, scanner = defaultScanner, objectStore = null }) {
   const key = (id) => `evidence:${id}`;
   const readMetadata = async (id) => {
     if (!pool) { jsonDb.privateEvidence ||= {}; return jsonDb.privateEvidence[key(id)] || null; }
@@ -60,7 +111,7 @@ export function createEvidenceRepository({ pool, jsonDb, saveJson, scanner = sca
   };
 
   return {
-    async protectMediaPayload(media, { actorId = '', allowedUserIds = [], source = 'field-submission', retentionDays = 365, custodyEvent = 'captured', maxBytes = DEFAULT_MAX_BYTES, scanner: scan = scanner } = {}) {
+    async protectMediaPayload(media, { actorId = '', allowedUserIds = [], source = 'field-submission', retentionDays = 365, custodyEvent = 'captured', maxBytes = DEFAULT_MAX_BYTES, scanner: scan = scanner, allowUnscannedEvidence: allowBypass = allowUnscannedEvidence } = {}) {
       const retention = Math.min(MAX_RETENTION_DAYS, Math.max(1, Number(retentionDays) || 365));
       const expiresAt = new Date(Date.now() + retention * 86400000).toISOString();
       const refs = [];
@@ -77,9 +128,14 @@ export function createEvidenceRepository({ pool, jsonDb, saveJson, scanner = sca
         const id = createId('evidence');
         const now = new Date().toISOString();
         const scanResult = await scan(bytes, mimeType);
-        const record = { id, objectKey: `${id}-${hash}`, hash, hashAlgorithm: 'sha256', mimeType, mediaType: item.type, byteLength: bytes.length, storage: 'private-object-store', access: [...new Set([actorId, ...allowedUserIds].filter(Boolean))], custody: [{ event: custodyEvent, actorId: String(actorId || 'system'), at: now, hash }], malwareScan: { ...scanResult, checkedAt: now }, status: scanResult.status === 'clean' ? 'available' : 'quarantined', retention: { policy: 'field-evidence-default', expiresAt, days: retention, legalHold: false }, source, createdAt: now };
+        const bypassed = scanResult.status === 'unavailable' && allowBypass;
+        if (bypassed) console.warn(`[evidence] ALLOW_UNSCANNED_EVIDENCE is enabled: accepting ${id} (${mimeType}, ${bytes.length} bytes) from actor ${actorId || 'unknown'} WITHOUT malware scanning. This is a temporary bypass -- connect a real scanner (CLAMD_HOST or EVIDENCE_SCANNER_URL) as soon as possible.`);
+        const accepted = scanResult.status === 'clean' || bypassed;
+        const custody = [{ event: custodyEvent, actorId: String(actorId || 'system'), at: now, hash }];
+        if (bypassed) custody.push({ event: 'accepted-without-malware-scan', actorId: 'system', at: now, hash, details: { reason: 'ALLOW_UNSCANNED_EVIDENCE enabled while scanner unavailable' } });
+        const record = { id, objectKey: `${id}-${hash}`, hash, hashAlgorithm: 'sha256', mimeType, mediaType: item.type, byteLength: bytes.length, storage: 'private-object-store', access: [...new Set([actorId, ...allowedUserIds].filter(Boolean))], custody, malwareScan: { ...scanResult, checkedAt: now, bypassed }, status: accepted ? 'available' : 'quarantined', retention: { policy: 'field-evidence-default', expiresAt, days: retention, legalHold: false }, source, createdAt: now };
         await saveMetadata(record);
-        if (scanResult.status !== 'clean') throw new Error(`Evidence was quarantined because malware scanning returned ${scanResult.status}.`);
+        if (!accepted) throw new Error(`Evidence was quarantined because malware scanning returned ${scanResult.status}.`);
         await putObject(record.objectKey, bytes);
         refs.push({ id, type: item.type, mimeType, hash, hashAlgorithm: 'sha256', byteLength: bytes.length, storage: record.storage, malwareScan: record.malwareScan, retention: record.retention, custody: record.custody });
       }

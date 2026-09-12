@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEvidenceRepository } from './evidence-repository.js';
+import { createServer } from 'node:net';
+import { createEvidenceRepository, scannerFromClamd } from './evidence-repository.js';
+
+/** A minimal fake clamd speaking just enough of the real INSTREAM protocol to test our client against it. */
+function fakeClamd(reply) {
+  return new Promise((resolve) => {
+    const server = createServer((socket) => {
+      let buffer = Buffer.alloc(0);
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        if (buffer.length >= 4 && buffer.readUInt32BE(buffer.length - 4) === 0) {
+          socket.end(reply);
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve(server));
+  });
+}
 
 const png = 'iVBORw0KGgo=';
 const scanner = async () => ({ status: 'clean', scanner: 'test-scanner' });
@@ -32,6 +49,25 @@ test('invalid media, unavailable scans, and oversized objects are quarantined or
   await assert.rejects(repository.protectMediaPayload([{ type: 'image', data: `data:image/png;base64,${png}` }], { maxBytes: 1 }), /size limit/);
 });
 
+test('the unscanned-evidence bypass only ever applies when the scanner is unavailable, never when it flags something malicious', async () => {
+  const { repository } = fixture();
+  const [ref] = await repository.protectMediaPayload(
+    [{ type: 'image', data: `data:image/png;base64,${png}` }],
+    { scanner: async () => ({ status: 'unavailable', scanner: 'down' }), allowUnscannedEvidence: true },
+  );
+  assert.equal(ref.malwareScan.bypassed, true);
+  assert.equal(ref.malwareScan.status, 'unavailable');
+  assert.ok(ref.custody.some((event) => event.event === 'accepted-without-malware-scan'));
+
+  await assert.rejects(
+    repository.protectMediaPayload(
+      [{ type: 'image', data: `data:image/png;base64,${png}` }],
+      { scanner: async () => ({ status: 'malicious', scanner: 'clamd', signature: 'Eicar-Test-Signature' }), allowUnscannedEvidence: true },
+    ),
+    /quarantined/,
+  );
+});
+
 test('evidenceSummaries returns safe metadata only, never bytes, and ignores unknown ids', async () => {
   const { repository } = fixture();
   const [ref] = await repository.protectMediaPayload([{ type: 'image', data: `data:image/png;base64,${png}` }], { actorId: 'agent-1', retentionDays: 10 });
@@ -59,6 +95,29 @@ test('sweepExpiredEvidence deletes only expired, non-held records and reports wh
   assert.equal(result.evaluated, 2);
   assert.equal(await repository.readPrivateEvidence(expired.id, { id: 'agent-1', role: 'Agent' }), null);
   assert.ok(await repository.readPrivateEvidence(notYetExpired.id, { id: 'agent-1', role: 'Agent' }));
+});
+
+test('scannerFromClamd parses a real clamd INSTREAM response as clean', async () => {
+  const server = await fakeClamd('stream: OK\0');
+  const { port } = server.address();
+  const result = await scannerFromClamd(Buffer.from('hello world'), 'image/png', { host: '127.0.0.1', port });
+  assert.equal(result.status, 'clean');
+  assert.equal(result.scanner, 'clamd');
+  server.close();
+});
+
+test('scannerFromClamd parses a real clamd INSTREAM response as malicious', async () => {
+  const server = await fakeClamd('stream: Eicar-Test-Signature FOUND\0');
+  const { port } = server.address();
+  const result = await scannerFromClamd(Buffer.from('hello world'), 'image/png', { host: '127.0.0.1', port });
+  assert.equal(result.status, 'malicious');
+  assert.equal(result.signature, 'Eicar-Test-Signature');
+  server.close();
+});
+
+test('scannerFromClamd reports unavailable rather than throwing when clamd is unreachable', async () => {
+  const result = await scannerFromClamd(Buffer.from('hello world'), 'image/png', { host: '127.0.0.1', port: 1 });
+  assert.equal(result.status, 'unavailable');
 });
 
 test('reassigned reviewers can be granted access and legal holds prevent deletion', async () => {
