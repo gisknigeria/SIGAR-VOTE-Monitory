@@ -1193,8 +1193,18 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
         data: { sdp: pc.localDescription },
       });
     });
-    socket.on("camera:signal", async ({ from, fromUserId, data }) => {
+    const pendingCandidates = new Map();
+    const signalQueues = new Map();
+    const handleCameraSignal = async ({ from, fromUserId, data }) => {
       let pc = rtcPeersRef.current[from];
+      if (data.candidate) {
+        if (!pc?.remoteDescription) {
+          const candidates = pendingCandidates.get(from) || [];
+          candidates.push(data.candidate);
+          pendingCandidates.set(from, candidates);
+        } else await pc.addIceCandidate(data.candidate);
+        return;
+      }
       if (data.sdp?.type === "offer") {
         if (pc && ["failed", "closed", "disconnected"].includes(pc.connectionState)) {
           pc.close();
@@ -1211,8 +1221,23 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
         });
       } else if (data.sdp?.type === "answer" && pc)
         await pc.setRemoteDescription(data.sdp);
-      else if (data.candidate && pc)
-        await pc.addIceCandidate(data.candidate).catch(() => {});
+      if (pc?.remoteDescription) {
+        const candidates = pendingCandidates.get(from) || [];
+        pendingCandidates.delete(from);
+        for (const candidate of candidates) await pc.addIceCandidate(candidate);
+      }
+    };
+    socket.on("camera:signal", (signal) => {
+      const previous = signalQueues.get(signal.from) || Promise.resolve();
+      const next = previous.then(() => handleCameraSignal(signal)).catch((error) => {
+        console.error("[camera] Video handshake failed", error);
+        if (signal.fromUserId)
+          setViewerConnectFailed((old) => ({ ...old, [signal.fromUserId]: CONNECT_FAILED_MESSAGE }));
+      });
+      signalQueues.set(signal.from, next);
+      next.then(() => {
+        if (signalQueues.get(signal.from) === next) signalQueues.delete(signal.from);
+      });
     });
     // Restart camera stream when app returns to foreground after being backgrounded
     const handleVisibilityChange = async () => {

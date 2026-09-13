@@ -236,7 +236,9 @@ export function registerFieldRealtime({ app, auth, rateLimit, io, store, socketL
       peer.data.authUser = peerUser;
       const peerIsAdmin = isAdminRole(peerUser);
       if (senderIsAdmin === peerIsAdmin) return;
-      if (!senderIsAdmin && !canAccessUserGeography(sender, peerUser)) return;
+      const viewer = senderIsAdmin ? sender : peerUser;
+      const broadcaster = senderIsAdmin ? peerUser : sender;
+      if (!canAccessUserGeography(viewer, broadcaster)) return;
       io.to(target).emit("camera:signal", {
         from: socket.id,
         fromUserId: socket.data.authUser.id,
