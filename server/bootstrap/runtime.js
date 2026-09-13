@@ -9,6 +9,7 @@ import { normalizeCloudflareTurnKeyId, normalizeCloudflareTurnTtl, sanitizeIceSe
 import { createStore } from '../store.js';
 import { createMappers } from '../infrastructure/persistence/mappers.js';
 import { initPostgres } from '../infrastructure/persistence/bootstrap.js';
+import { ensureBaselineReferenceData } from '../modules/reference-data/baseline.js';
 
 export function resolveSecurityPolicy(env = process.env) {
   const nodeEnv = String(env?.NODE_ENV || 'development').toLowerCase();
@@ -441,6 +442,10 @@ export async function createRuntime({ serverDirectory }) {
       toChatMessage,
     },
   });
+
+  await ensureBaselineReferenceData(store).catch((error) =>
+    console.error('[reference-data] Could not register the bundled baseline release:', error.message),
+  );
 
   return { store, pool, secret, agent1Email, agent2Email, hasCloudflareTurn, hasExpressTurn, expressTurnServers, cloudflareTurnKeyId, cloudflareTurnApiToken, cloudflareTurnTtl, bundledOsunIrevArchive, runtimePolicy };
 }

@@ -733,8 +733,13 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
         setNotice(`${clips.length} offline video ${clips.length === 1 ? "clip" : "clips"} sent to admin`);
         setTimeout(() => setNotice(""), 4000);
       }
-    } catch {
-      // Keep queued clips on the device and retry on the next connection.
+    } catch (error) {
+      // Clips stay on the device and retry on the next connection, but a rejected upload must
+      // not look like nothing happened -- an empty Recordings tab while clips pile up unseen on
+      // the phone is indistinguishable from "recording is broken".
+      console.error("[camera] Recording upload failed; clips stay queued for retry:", error.message);
+      setNotice(`Recording saved on device but not uploaded: ${error.message}`);
+      setTimeout(() => setNotice(""), 6000);
     } finally {
       offlineUploadRef.current = false;
     }
