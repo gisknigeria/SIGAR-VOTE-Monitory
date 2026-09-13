@@ -222,7 +222,7 @@ button {
 .detail select:focus {
   border-color: var(--gold-400);
   outline: none;
-  box-shadow: 0 0 0 3px #d9aa4b33;
+  box-shadow: 0 0 0 3px #d9aa4b80;
 }
 .login-card .primary {
   width: 100%;
@@ -1729,7 +1729,7 @@ aside,
   color: #9edcff;
   box-shadow:
     0 0 0 4px #0005,
-    0 0 20px #d9aa4b66;
+    0 0 20px #d9aa4b80;
   font-size: 14px;
 }
 .camera-marker.drone {
@@ -2190,7 +2190,7 @@ header {
   flex: 1;
 }
 @media (max-width: 700px) {
-  .chat-panel {
+.chat-panel {
     inset: 0;
     width: 100%;
     height: 100dvh;
@@ -2288,6 +2288,70 @@ header {
   }
   .security-line {
     white-space: normal;
+  }
+.results-center-head {
+    padding: 16px;
+  }
+  .results-center-head h1 {
+    font-size: 20px !important;
+  }
+  .results-center-body {
+    padding: 14px;
+  }
+  .result-source-grid {
+    grid-template-columns: 1fr;
+  }
+  .field-source-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .field-source-grid .result-source-card {
+    min-height: 96px;
+    padding: 10px;
+  }
+  .field-source-grid .result-source-card span {
+    font-size: 8px !important;
+  }
+  .field-source-grid .result-source-card strong {
+    font-size: 22px !important;
+  }
+  .field-source-grid .result-source-card small {
+    font-size: 8px !important;
+  }
+  .result-source-card {
+    min-height: 100px;
+  }
+  .irev-pilot-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .irev-pilot-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .irev-upload-grid {
+    grid-template-columns: 1fr;
+    padding: 0 12px 12px;
+  }
+  .result-total-strip {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .result-total-card {
+    min-height: 105px;
+    padding: 13px;
+  }
+  .result-total-card strong {
+    font-size: 22px !important;
+  }
+  .result-table-scroll {
+    max-height: none;
+  }
+.ip-log-table th:nth-child(6),
+  .ip-log-table td:nth-child(6) {
+    display: none;
+  }
+  .ip-log-table th:nth-child(4),
+  .ip-log-table td:nth-child(4) {
+    display: none;
   }
 }
 .card-top b,
@@ -2955,9 +3019,15 @@ header {
   line-height: 1.5;
 }
 @media (max-width: 620px) {
-  .area-action-grid,
+.area-action-grid,
   .area-search-kpis {
     grid-template-columns: 1fr 1fr;
+  }
+.result-capture-meta {
+    grid-template-columns: 1fr;
+  }
+  .party-vote-row {
+    grid-template-columns: 1fr 110px 38px;
   }
 }
 
@@ -6425,72 +6495,7 @@ body.resizing-sidebar {
 .party-manager-modal .muted {
   margin: 12px 0;
 }
-@media (max-width: 620px) {
-  .result-capture-meta {
-    grid-template-columns: 1fr;
-  }
-  .party-vote-row {
-    grid-template-columns: 1fr 110px 38px;
-  }
-}
-@media (max-width: 700px) {
-  .results-center-head {
-    padding: 16px;
-  }
-  .results-center-head h1 {
-    font-size: 20px !important;
-  }
-  .results-center-body {
-    padding: 14px;
-  }
-  .result-source-grid {
-    grid-template-columns: 1fr;
-  }
-  .field-source-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .field-source-grid .result-source-card {
-    min-height: 96px;
-    padding: 10px;
-  }
-  .field-source-grid .result-source-card span {
-    font-size: 8px !important;
-  }
-  .field-source-grid .result-source-card strong {
-    font-size: 22px !important;
-  }
-  .field-source-grid .result-source-card small {
-    font-size: 8px !important;
-  }
-  .result-source-card {
-    min-height: 100px;
-  }
-  .irev-pilot-head {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .irev-pilot-stats {
-    grid-template-columns: 1fr 1fr;
-  }
-  .irev-upload-grid {
-    grid-template-columns: 1fr;
-    padding: 0 12px 12px;
-  }
-  .result-total-strip {
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-  .result-total-card {
-    min-height: 105px;
-    padding: 13px;
-  }
-  .result-total-card strong {
-    font-size: 22px !important;
-  }
-  .result-table-scroll {
-    max-height: none;
-  }
-}
+
 @media (max-width: 900px) {
   .irev-table-toolbar {
     align-items: stretch;
@@ -7267,16 +7272,6 @@ body.resizing-sidebar {
   text-align: center;
   color: #c49eab;
   font-size: 12px;
-}
-@media (max-width: 700px) {
-  .ip-log-table th:nth-child(6),
-  .ip-log-table td:nth-child(6) {
-    display: none;
-  }
-  .ip-log-table th:nth-child(4),
-  .ip-log-table td:nth-child(4) {
-    display: none;
-  }
 }
 
 /* ── Nigeria border sub-toggles ── */

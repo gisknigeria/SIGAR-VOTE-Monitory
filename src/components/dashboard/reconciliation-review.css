@@ -1,7 +1,7 @@
 .reconciliation-card>header{flex-wrap:wrap}
 .rr-status-filter{display:grid;gap:4px;font-size:11px;color:#d8c9a4!important}
 .rr-status-filter select{border:1px solid #5d2940;border-radius:8px;background:#10070b;color:#fff;padding:8px 9px;font:inherit;color-scheme:dark}
-.rr-status-filter select:focus{outline:none;border-color:#d9aa4b;box-shadow:0 0 0 3px #d9aa4b33}
+.rr-status-filter select:focus{outline:none;border-color:#d9aa4b;box-shadow:0 0 0 3px #d9aa4b80}
 .rr-case-list{display:grid;gap:14px;padding:0 16px 16px}
 .rr-case{padding:14px;border:1px solid #5d2940;border-radius:10px;background:#20101a;display:grid;gap:10px}
 .rr-case-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -16,7 +16,7 @@
 .rr-review-form{display:grid;gap:10px;padding:12px;border:1px solid #744052;border-radius:8px;background:#190a11}
 .rr-review-form label{display:grid;gap:6px;font-size:12px;color:#f2dce5}
 .rr-review-form select,.rr-review-form textarea,.rr-review-form input{box-sizing:border-box;width:100%;border:1px solid #825063;border-radius:8px;background:#10070b;color:#fff;padding:9px;font:inherit;color-scheme:dark}
-.rr-review-form select:focus,.rr-review-form textarea:focus,.rr-review-form input:focus{outline:none;border-color:#d9aa4b;box-shadow:0 0 0 3px #d9aa4b33}
+.rr-review-form select:focus,.rr-review-form textarea:focus,.rr-review-form input:focus{outline:none;border-color:#d9aa4b;box-shadow:0 0 0 3px #d9aa4b80}
 .rr-review-form textarea{min-height:60px;resize:vertical}
 .rr-corrected-votes{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
 .rr-corrections{display:grid;gap:8px;padding:10px;border:1px solid #8a6d2e;border-radius:8px;background:#2d1d08}
