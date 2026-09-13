@@ -1,0 +1,112 @@
+/* Stakeholder observatory. Read-only, so the layout is a document to be scanned rather than an
+   operations console: headline figures first, then the map, then the supporting detail. */
+.stakeholder-shell {
+  --sh-surface: #260711;
+  --sh-sunk: #1c060e;
+  --sh-rule: #6f2940;
+  --sh-ink: #f4ecef;
+  --sh-muted: #d6a9b6;
+  --sh-gold: #d9aa4b;
+  --sh-gold-bright: #f5dc9a;
+
+  box-sizing: border-box;
+  /* The app sets `body { overflow: hidden }`, so this pane must be a fixed-height scroll
+     container of its own -- with min-height it simply grows and the page cannot scroll at all. */
+  height: 100dvh;
+  padding: 28px clamp(16px, 4vw, 40px) 56px;
+  background: #170610;
+  color: var(--sh-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+}
+.stakeholder-shell *,
+.stakeholder-shell *::before,
+.stakeholder-shell *::after { box-sizing: border-box; }
+
+.stakeholder-boot {
+  display: grid;
+  place-content: center;
+  min-height: 100dvh;
+  background: #170610;
+  color: var(--sh-gold-bright, #f5dc9a);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.sh-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.sh-eyebrow { display: block; font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--sh-gold); }
+.sh-head h1 { margin: 6px 0 0; font-size: clamp(22px, 3.4vw, 30px); font-weight: 700; letter-spacing: -.01em; }
+.sh-head-right { display: flex; align-items: center; gap: 14px; }
+.sh-who { display: flex; flex-direction: column; font-size: 13px; font-weight: 600; text-align: right; }
+.sh-who small { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--sh-muted); }
+.sh-logout { border: 1px solid var(--sh-rule); background: var(--sh-sunk); color: var(--sh-muted); border-radius: 7px; padding: 9px 14px; font: inherit; font-size: 12px; cursor: pointer; }
+.sh-logout:hover { border-color: var(--sh-gold); color: var(--sh-gold-bright); }
+
+.sh-phases { display: flex; gap: 8px; flex-wrap: wrap; }
+.sh-phase { border: 1px solid var(--sh-rule); background: var(--sh-sunk); color: var(--sh-muted); border-radius: 999px; padding: 9px 16px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.sh-phase:hover { border-color: var(--sh-gold); color: var(--sh-ink); }
+.sh-phase.active { border-color: var(--sh-gold); background: #4a1228; color: var(--sh-gold-bright); }
+.sh-phase:focus-visible, .sh-logout:focus-visible { outline: 2px solid var(--sh-gold-bright); outline-offset: 2px; }
+.sh-blurb { margin: 0; font-size: 14px; color: var(--sh-muted); }
+
+.sh-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.sh-tile { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border: 1px solid var(--sh-rule); border-radius: 12px; background: var(--sh-surface); }
+.sh-tile-lead { border-color: var(--sh-gold); background: #33101f; }
+.sh-tile-label { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--sh-muted); }
+.sh-tile-value { font-size: clamp(22px, 3vw, 30px); font-weight: 700; letter-spacing: -.02em; line-height: 1.15; overflow-wrap: anywhere; }
+.sh-tile-lead .sh-tile-value { color: var(--sh-gold-bright); }
+.sh-tile-sub { font-size: 12px; color: var(--sh-muted); }
+
+.sh-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.sh-panel { display: flex; flex-direction: column; gap: 4px; padding: 18px; border: 1px solid var(--sh-rule); border-radius: 12px; background: var(--sh-surface); min-width: 0; }
+.sh-panel-wide { grid-column: 1 / -1; }
+.sh-panel h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.sh-panel-sub { margin: 0 0 10px; font-size: 12px; color: var(--sh-muted); }
+
+.sh-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.sh-bars li { display: grid; grid-template-columns: minmax(90px, 26%) 1fr auto; gap: 10px; align-items: center; }
+.sh-bar-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sh-bar-track { height: 14px; border-radius: 4px; background: #3a1420; overflow: hidden; }
+.sh-bar-fill { display: block; height: 100%; border-radius: 4px; }
+.sh-bar-value { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sh-bar-value em { display: block; font-style: normal; font-size: 11px; font-weight: 400; color: var(--sh-muted); }
+
+.sh-chart { width: 100%; height: auto; }
+.sh-axis { fill: #a8929c; font-size: 10px; font-family: system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+
+.sh-map-holder { display: flex; flex-direction: column; gap: 8px; }
+.sh-map { height: clamp(280px, 42vh, 440px); border-radius: 10px; border: 1px solid var(--sh-rule); background: #12040a; }
+.sh-map-note { margin: 0; }
+.sh-legend { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--sh-muted); }
+.sh-legend-swatches { display: flex; gap: 2px; }
+.sh-legend-swatches i { width: 26px; height: 10px; border-radius: 2px; }
+
+.sh-notes ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.sh-notes li { font-size: 13px; color: var(--sh-muted); line-height: 1.55; }
+.sh-generated { margin: 12px 0 0; font-size: 11px; color: #a8929c; }
+
+.sh-empty { margin: 0; padding: 14px 0; font-size: 13px; color: var(--sh-muted); }
+.sh-error { margin: 0; padding: 14px 16px; border: 1px solid #a53c4b; border-radius: 10px; background: #3a0f1e; color: #ff9d9d; font-size: 13px; }
+.sh-error button { margin-left: 8px; border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 6px; padding: 5px 11px; font: inherit; font-size: 12px; cursor: pointer; }
+
+/* Leaflet tooltips inherit the page font rather than the library default. */
+.stakeholder-shell .leaflet-tooltip {
+  background: #1c060e;
+  border: 1px solid var(--sh-rule);
+  color: var(--sh-ink);
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+}
+.stakeholder-shell .leaflet-tooltip::before { border-top-color: var(--sh-rule); }
+
+@media (max-width: 560px) {
+  .sh-bars li { grid-template-columns: 1fr auto; }
+  .sh-bar-track { grid-column: 1 / -1; order: 3; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stakeholder-shell * { transition: none !important; animation: none !important; }
+}

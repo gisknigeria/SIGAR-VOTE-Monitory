@@ -24,13 +24,16 @@ export async function attachRealtimeCluster(io, { redisUrl = process.env.REDIS_U
   }
 
   // The client's default reconnect strategy retries forever, so a wrong URL would hang startup
-  // indefinitely instead of failing. Back off, but give up on the initial connect.
+  // indefinitely instead of failing. Back off, but give up on the initial connect -- and once we
+  // have abandoned the attempt, stop reconnecting entirely rather than leaving a retry loop
+  // running behind a rejected promise.
+  let abandoned = false;
   const clientOptions = {
     url,
     socket: {
       connectTimeout: startupTimeoutMs,
       reconnectStrategy: (retries) =>
-        retries > 20 ? new Error('Redis is unreachable') : Math.min(200 * 2 ** retries, 3_000),
+        abandoned || retries > 20 ? new Error('Redis is unreachable') : Math.min(200 * 2 ** retries, 3_000),
     },
   };
   const pubClient = createClient(clientOptions);
@@ -40,6 +43,7 @@ export async function attachRealtimeCluster(io, { redisUrl = process.env.REDIS_U
   subClient.on('error', (error) => console.error('[realtime] Redis subscriber error:', error.message));
 
   const shutdown = async () => {
+    abandoned = true;
     await Promise.allSettled([
       pubClient.destroy ? pubClient.destroy() : pubClient.disconnect(),
       subClient.destroy ? subClient.destroy() : subClient.disconnect(),

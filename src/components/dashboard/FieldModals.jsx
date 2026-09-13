@@ -773,7 +773,7 @@ export function OfficerManager({
 }) {
   const isSupervisor = currentUser.role === "Supervisor";
   const canManageRoles = ["Super Admin", "Admin"].includes(currentUser.role);
-  const manageableRoles = ["Supervisor", "Agent"];
+  const manageableRoles = ["Supervisor", "Agent", "Stakeholder"];
   if (!canManageRoles) {
     return (
       <div className="modal-backdrop">
@@ -826,6 +826,8 @@ export function OfficerManager({
   const [form, setForm] = useState(newAccountForm);
   const [managerTab, setManagerTab] = useState("create");
   const [error, setError] = useState("");
+  // Stakeholders are read-only statewide observers, so a field assignment does not apply to them.
+  const isStakeholderRole = form.role === "Stakeholder";
   const [roleChangeUser, setRoleChangeUser] = useState(null);
   const [roleChangeForm, setRoleChangeForm] = useState({ role: "", state: "", lga: "", ward: "" });
   const [roleChangeError, setRoleChangeError] = useState("");
@@ -978,18 +980,25 @@ export function OfficerManager({
               <label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
               {canManageRoles && !isEditing && <label>System role<select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value, rank: event.target.value })}>{manageableRoles.map((role) => <option key={role}>{role}</option>)}</select></label>}
               <label>State<select required value={form.state} onChange={(event) => handleStateChange(event.target.value)} disabled={isSupervisor}>{stateOptions.map((state) => <option key={state.code} value={state.code}>{state.label}</option>)}</select></label>
-              <label>LGA<select required value={form.lga} onChange={(event) => handleLgaChange(event.target.value)} disabled={isSupervisor}>{getRegistrationLocationOptions(form.state).lgas.map((lga) => <option key={lga}>{lga}</option>)}</select></label>
+              <label>LGA {isStakeholderRole && "(not required)"}<select required={!isStakeholderRole} value={form.lga} onChange={(event) => handleLgaChange(event.target.value)} disabled={isSupervisor}>{getRegistrationLocationOptions(form.state).lgas.map((lga) => <option key={lga}>{lga}</option>)}</select></label>
                <label>Ward / supervisor zone
                  {form.role === "Supervisor" && !isSupervisor && <span className="ward-scope-actions"><button type="button" onClick={() => handleWardChange(wardOptions)}>Assign whole LGA</button><button type="button" onClick={() => handleWardChange([])}>Clear</button></span>}
                  <select multiple size={Math.min(8, wardOptions.length || 1)} value={selectedWards} onChange={(event) => handleWardChange([...event.target.selectedOptions].map((option) => option.value))} disabled={isSupervisor}>{wardOptions.map((ward) => <option key={ward} value={ward}>{ward}</option>)}</select>
                </label>
               <label>Polling unit {form.role === "Supervisor" ? "(optional)" : "assignment"}<select required={form.role === "Agent"} value={form.pollingUnit} onChange={(event) => setForm({ ...form, pollingUnit: event.target.value })}><option value="">All units in selected ward(s)</option>{locationOptions.pollingUnits.map((unit) => <option key={unit}>{unit}</option>)}</select></label>
-              <label>Contact / call sign<input required value={form.station} onChange={(event) => setForm({ ...form, station: event.target.value })} /></label>
+              <label>Contact / call sign<input required={!isStakeholderRole} value={form.station} onChange={(event) => setForm({ ...form, station: event.target.value })} /></label>
               {!isEditing && <label>Password<input required minLength="12" type="password" title="At least 12 characters with uppercase, lowercase, number, and special character" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>}
-              <label>Initial latitude<input required value={form.lat} onChange={(event) => setForm({ ...form, lat: event.target.value })} /></label>
-              <label>Initial longitude<input required value={form.lng} onChange={(event) => setForm({ ...form, lng: event.target.value })} /></label>
+              <label>Initial latitude<input required={!isStakeholderRole} value={form.lat} onChange={(event) => setForm({ ...form, lat: event.target.value })} /></label>
+              <label>Initial longitude<input required={!isStakeholderRole} value={form.lng} onChange={(event) => setForm({ ...form, lng: event.target.value })} /></label>
             </div>
-            <div className="location-summary"><strong>Selected assignment</strong><span>{STATE_CODE_TO_NAME[form.state] || form.state} · {form.lga || "No LGA"} · {form.ward || "No ward"} · {form.pollingUnit || "All units"}</span></div>
+            <div className="location-summary">
+              <strong>Selected assignment</strong>
+              <span>
+                {isStakeholderRole
+                  ? "Stakeholders observe the whole state and are read-only — no field assignment is needed."
+                  : `${STATE_CODE_TO_NAME[form.state] || form.state} · ${form.lga || "No LGA"} · ${form.ward || "No ward"} · ${form.pollingUnit || "All units"}`}
+              </span>
+            </div>
             {error && <div className="error">{error}</div>}
             <div className="form-actions"><button className="primary" disabled={!manageableRoles.length}>{isEditing ? "Save changes" : "Create account"}</button>{isEditing && <button type="button" className="ghost" onClick={() => { resetForm(); setManagerTab("list"); }}>Cancel edit</button>}</div>
           </form>

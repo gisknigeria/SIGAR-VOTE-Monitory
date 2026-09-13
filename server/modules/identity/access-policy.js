@@ -33,9 +33,9 @@ export function createAccessPolicy({ io }) {
   };
   const canCreateUser = (viewer, rank, role) => {
     if (viewer.role === "Super Admin")
-      return ["Agent", "Supervisor", "Response Team", "Admin"].includes(role);
+      return ["Agent", "Supervisor", "Response Team", "Admin", "Stakeholder"].includes(role);
     if (viewer.role === "Admin")
-      return ["Agent", "Supervisor", "Response Team"].includes(role);
+      return ["Agent", "Supervisor", "Response Team", "Stakeholder"].includes(role);
     return false;
   };
   const canDeleteUser = (viewer, target) => {

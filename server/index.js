@@ -21,6 +21,7 @@ import { registerResultRoutes } from './modules/results/routes.js';
 import { registerUserRoutes } from './modules/identity/user-routes.js';
 import { registerAuthRoutes } from './modules/identity/auth-routes.js';
 import { registerReportingRoutes } from './modules/reporting/routes.js';
+import { registerStakeholderRoutes } from './modules/stakeholder/routes.js';
 import { registerReferenceDataRoutes } from './modules/reference-data/routes.js';
 import { registerEvidenceRoutes } from './modules/foundation/evidence-routes.js';
 import { registerTaskRoutes } from './modules/tasks/routes.js';
@@ -259,6 +260,7 @@ const { IREV_OYO_ELECTION_ID, loadOyoIrev, loadOsunIrevPilot } = registerIrevInt
 
 registerIntelligenceRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, canAccessGeography, reverseLocation, openAiPrimaryModel, openAiFallbackModel, groqPrimaryModel, groqFallbackModel, groqNewsModel, callGroq, callGroqWithFallback, normalizeNewsTitle, normalizeNewsDate, isOyoStateNews });
 registerReportingRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, canAccessGeography });
+registerStakeholderRoutes({ app, auth, rateLimit, asyncRoute, store });
 registerReferenceDataRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store });
 registerEvidenceRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, canAccessIncident });
 
