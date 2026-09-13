@@ -823,8 +823,11 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
             method: "POST",
             body: JSON.stringify({ dataUrl, startedAt: segmentStartedAt }),
           });
-        } catch {
-          // Best-effort archive; a failed segment upload never interrupts the live share.
+        } catch (error) {
+          // Best-effort archive; a failed segment upload never interrupts the live share,
+          // but it must not vanish silently either -- a rejected segment is the difference
+          // between "recording" and an empty evidence library.
+          console.warn("[camera] archive segment upload failed:", error.message);
         }
       }
       if (archiveRunningRef.current && sharingCameraRef.current) startArchiveRecording();

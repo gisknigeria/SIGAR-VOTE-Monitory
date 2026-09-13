@@ -3001,6 +3001,27 @@ header {
   text-decoration: none;
   overflow-wrap: anywhere;
 }
+.report-attachment-loading,
+.report-attachment-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4/3;
+  margin: 0;
+  padding: 9px;
+  border: 1px dashed #8b1e46;
+  border-radius: 7px;
+  background: #1c060e;
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.report-attachment-error {
+  border-style: solid;
+  border-color: #a53c4b;
+  color: #ff9d9d;
+}
 .report-livestream-attachment {
   aspect-ratio: 4/3;
 }

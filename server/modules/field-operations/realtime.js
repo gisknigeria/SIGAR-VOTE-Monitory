@@ -208,10 +208,6 @@ export function registerFieldRealtime({ app, auth, rateLimit, io, store, socketL
       await emitAuthorizedUserEvent("camera:share:stop", { userId }, currentUser);
     });
     socket.on("camera:view:request", async ({ officerId } = {}) => {
-      if (process.env.ENABLE_LEGACY_CAMERA_SIGNALING !== 'true') {
-        socket.emit('operation:error', { code: 'MEDIA_SERVICE_REQUIRED', message: 'Live video now uses the dedicated media service.' });
-        return;
-      }
       const viewer = await refreshSocketUser();
       if (!viewer) return;
       if (
@@ -224,10 +220,6 @@ export function registerFieldRealtime({ app, auth, rateLimit, io, store, socketL
       });
     });
     socket.on("camera:signal", async ({ target, data } = {}) => {
-      if (process.env.ENABLE_LEGACY_CAMERA_SIGNALING !== 'true') {
-        socket.emit('operation:error', { code: 'MEDIA_SERVICE_REQUIRED', message: 'Live video signaling now uses the dedicated media service.' });
-        return;
-      }
       const sender = await refreshSocketUser();
       if (!sender) return;
       if (
