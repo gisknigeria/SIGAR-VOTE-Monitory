@@ -172,16 +172,23 @@ app.get("/api/health", rateLimit, (_, res) =>
     service: deployment.name,
     deployment,
     turn: {
-      primary: hasCloudflareTurn
-        ? "cloudflare"
-        : hasExpressTurn
-          ? "expressturn"
-          : "stun-fallback",
+      // `active` is the last observed result, not merely what the env vars claim.
+      // Error detail is deliberately omitted here -- this endpoint is unauthenticated.
+      primary: turnStatus().configured,
+      active: turnStatus().active,
       expressTurnBackup: hasExpressTurn,
     },
   }),
 );
-registerTurnRoutes({ app, auth, rateLimit, asyncRoute, hasExpressTurn, hasCloudflareTurn, expressTurnServers, cloudflareTurnKeyId, cloudflareTurnApiToken, cloudflareTurnTtl });
+const { turnStatus, verifyTurnProvider } = registerTurnRoutes({ app, auth, rateLimit, asyncRoute, hasExpressTurn, hasCloudflareTurn, expressTurnServers, cloudflareTurnKeyId, cloudflareTurnApiToken, cloudflareTurnTtl });
+// Exercise the Cloudflare credential path once at boot so an invalid or revoked token is
+// visible in the deploy log immediately, rather than surfacing as silent STUN-only relaying
+// the first time someone opens a live feed.
+if (hasCloudflareTurn)
+  verifyTurnProvider().then((status) => {
+    if (status.active === 'cloudflare') console.log('[turn] Cloudflare TURN verified and active.');
+    else console.error(`[turn] Cloudflare TURN is configured but NOT working (${status.lastError}). Live video will relay through ${status.active}.`);
+  });
 
 // Liveness (/api/health above) only says the process is up. Readiness checks whether
 // this instance can actually serve traffic -- a real database round trip when one is
@@ -199,7 +206,7 @@ app.get("/api/ready", rateLimit, asyncRoute(async (_req, res) => {
     }
   }
   checks.mediaService = process.env.MEDIA_SERVICE_URL ? "configured" : "not-configured";
-  checks.turn = hasCloudflareTurn ? "cloudflare" : hasExpressTurn ? "expressturn" : "stun-fallback-only";
+  checks.turn = turnStatus();
   const ready = checks.database !== "error";
   res.status(ready ? 200 : 503).json({ ready, checks, checkedAt: new Date().toISOString() });
 }));
