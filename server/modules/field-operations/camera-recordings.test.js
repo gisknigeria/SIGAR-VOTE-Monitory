@@ -10,6 +10,19 @@ function fixture() {
 const actor = { id: 'u1', role: 'Agent', name: 'Test Agent', lga: 'Ibadan North', ward: 'Ward 1', pollingUnit: 'PU 001' };
 const evidenceRef = { id: 'ev-1', mimeType: 'video/webm', byteLength: 12345 };
 
+test('retried segments keep one index entry per actor and retain capture location and time', async () => {
+  const repository = fixture();
+  const input = { actor, evidenceRef, segmentId: 'offline-segment-1', startedAt: '2026-09-13T09:00:00Z', endedAt: '2026-09-13T09:00:45Z', location: { lat: 7.4, lng: 3.9 }, geography: { lga: actor.lga, ward: actor.ward } };
+  const first = await repository.saveCameraRecording(input);
+  const retry = await repository.saveCameraRecording(input);
+  assert.equal(first.id, retry.id);
+  assert.equal((await repository.cameraRecordings()).length, 1);
+  assert.deepEqual(retry.location, input.location);
+  assert.equal(retry.endedAt, input.endedAt);
+  await repository.saveCameraRecording({ ...input, actor: { ...actor, id: 'another-agent' } });
+  assert.equal((await repository.cameraRecordings()).length, 2);
+});
+
 test('saveCameraRecording requires an authenticated actor and a protected evidence reference', async () => {
   const repository = fixture();
   await assert.rejects(() => repository.saveCameraRecording({ actor: null, evidenceRef }), /authenticated actor/);

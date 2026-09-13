@@ -238,6 +238,12 @@ export default function CameraPanel({
   };
 
   const [view, setView] = useState("All");
+  useEffect(() => {
+    if (view !== "Recordings") return;
+    loadRecordings();
+    const timer = setInterval(loadRecordings, 15000);
+    return () => clearInterval(timer);
+  }, [view, authToken]);
 
   const phoneFeeds = phoneShares.map((feed) => ({
     ...feed,
@@ -444,7 +450,7 @@ export default function CameraPanel({
           <p className="alv-note">Every camera-share session is saved automatically as it happens, grouped here by where it was recorded.</p>
           {recordingsError && <p role="alert">{recordingsError} <button onClick={loadRecordings}>Retry</button></p>}
           {!recordingsError && recordings === null && <p role="status">Loading recordings…</p>}
-          {recordings?.length === 0 && <div className="empty-cameras"><b>No recordings yet</b><span>Recordings appear here automatically once a camera share ends.</span></div>}
+          {recordings?.length === 0 && <div className="empty-cameras"><b>No recordings yet</b><span>Recordings appear during each livestream. Offline clips appear when the phone reconnects.</span></div>}
           {recordings?.length > 0 && groupRecordingsByLocation(recordings).map((lgaGroup) => (
             <div className="recordings-lga-group" key={lgaGroup.lga}>
               <h4>{lgaGroup.lga}</h4>
@@ -457,10 +463,11 @@ export default function CameraPanel({
                         <FaPlay size={11} />
                         <span className="recording-item-main">
                           <b>{recording.submittedByName || "Field agent"}</b>
+                          {recording.location?.lat != null && <small>GPS: {recording.location.lat.toFixed(5)}, {recording.location.lng.toFixed(5)}</small>}
                           <small>{recording.submittedByRole} · {recording.geography?.pollingUnit || "Polling unit not assigned"}</small>
                         </span>
                         <span className="recording-item-when">
-                          {formatRecordingWhen(recording.createdAt)}
+                          {formatRecordingWhen(recording.startedAt || recording.createdAt)}
                           {formatRecordingDuration(recording.startedAt, recording.endedAt) && ` · ${formatRecordingDuration(recording.startedAt, recording.endedAt)}`}
                         </span>
                       </button>

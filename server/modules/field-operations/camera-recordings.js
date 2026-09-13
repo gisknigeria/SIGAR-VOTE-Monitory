@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 
 // Base64 inflates raw bytes by ~1.33x, and this rides the existing global JSON
 // body limit (server/middleware/http.js, MAX_REQUEST_BODY_BYTES in security.js)
@@ -30,11 +30,13 @@ export function createCameraRecordingsRepository({ pool, jsonDb, saveJson }) {
     return (await pool.query("select value from app_settings where key like 'camera-recording:%' order by key desc")).rows.map((row) => row.value);
   };
   return {
-    async saveCameraRecording({ actor, evidenceRef, startedAt, endedAt, geography = {} }) {
+    async saveCameraRecording({ actor, evidenceRef, startedAt, endedAt, geography = {}, location = {}, segmentId }) {
       if (!actor?.id) throw new Error('An authenticated actor is required.');
       if (!evidenceRef?.id) throw new Error('A protected evidence reference is required.');
       const record = {
-        id: randomUUID(),
+        id: segmentId ? createHash('sha256').update(JSON.stringify([actor.id, segmentId])).digest('hex') : randomUUID(),
+        segmentId: segmentId || null,
+        location,
         evidenceId: evidenceRef.id,
         submittedBy: actor.id,
         submittedByRole: actor.role || '',

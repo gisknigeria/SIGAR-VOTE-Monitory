@@ -440,9 +440,7 @@ const queueOfflineVideo = async (blob, details) => {
       ...details,
     }),
   );
-  const clips = await listOfflineVideos();
-  for (const clip of clips.slice(0, Math.max(0, clips.length - 20)))
-    await deleteOfflineVideo(clip.id);
+
 };
 const blobToDataUrl = (blob) =>
   new Promise((resolve, reject) => {
@@ -714,30 +712,21 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     try {
       const clips = await listOfflineVideos();
       for (const clip of clips) {
-        const data = await blobToDataUrl(clip.blob);
-        const point = gpsBestRef.current || session.user;
-        await request("/incidents", session.token, {
+        if (clip.userId && clip.userId !== session.user.id) continue;
+        const dataUrl = await blobToDataUrl(clip.blob);
+        const controller = new AbortController();
+        const uploadTimeout = setTimeout(() => controller.abort(), 60000);
+        try {
+        await request("/camera/recordings", session.token, {
           method: "POST",
-          body: JSON.stringify({
-            title: "Recovered offline field video",
-            description: `Automatically recorded while live video was unavailable. Captured ${new Date(clip.createdAt).toLocaleString()}.`,
-            reportType: "Network Connectivity",
-            severity: "High",
-            status: "Open",
-            lat: Number(clip.lat ?? point.lat) || OYO_CENTER[0],
-            lng: Number(clip.lng ?? point.lng) || OYO_CENTER[1],
-            assignedTo: "",
-            visibleTo: [],
-            media: [{
-              name: `offline-field-video-${Date.now()}.${clip.blob.type.includes("mp4") ? "mp4" : "webm"}`,
-              type: "video",
-              mimeType: clip.blob.type,
-              size: clip.blob.size,
-              data,
-            }],
-            style: { source: "offline-video", icon: "video", color: "#d9aa4b", fillColor: "#ecc86f" },
-          }),
+          signal: controller.signal,
+          body: JSON.stringify({ dataUrl, segmentId: clip.id, startedAt: clip.startedAt || clip.createdAt,
+            endedAt: clip.endedAt || clip.createdAt, geography: clip.geography,
+            location: { lat: clip.lat, lng: clip.lng, accuracy: clip.accuracy } }),
         });
+        } finally {
+          clearTimeout(uploadTimeout);
+        }
         await deleteOfflineVideo(clip.id);
       }
       if (clips.length) {
@@ -750,55 +739,14 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
       offlineUploadRef.current = false;
     }
   };
-  const startOfflineVideoRecording = (reason = "Live connection unavailable") => {
-    const stream = localCameraStreamRef.current;
-    if (!stream || offlineRecorderRef.current || typeof MediaRecorder === "undefined") return;
-    offlineFallbackRef.current = true;
-    const mimeType = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(type => MediaRecorder.isTypeSupported(type)) || "";
-    const recorder = new MediaRecorder(stream, {
-      ...(mimeType ? { mimeType } : {}),
-      videoBitsPerSecond: 400000,
-      audioBitsPerSecond: 32000,
-    });
-    offlineChunksRef.current = [];
-    offlineRecorderRef.current = recorder;
-    recorder.ondataavailable = (event) => {
-      if (event.data?.size) offlineChunksRef.current.push(event.data);
-    };
-    recorder.onstop = async () => {
-      clearTimeout(offlineSegmentTimerRef.current);
-      offlineRecorderRef.current = null;
-      const blob = new Blob(offlineChunksRef.current, { type: recorder.mimeType || mimeType || "video/webm" });
-      offlineChunksRef.current = [];
-      if (blob.size) {
-        const point = gpsBestRef.current || session.user;
-        await queueOfflineVideo(blob, { lat: point.lat, lng: point.lng }).catch(() => {});
-        if (navigator.onLine) flushOfflineVideoQueue();
-      }
-      if (offlineFallbackRef.current && sharingCameraRef.current)
-        setTimeout(() => startOfflineVideoRecording(reason), 250);
-    };
-    recorder.start(5000);
-    offlineSegmentTimerRef.current = setTimeout(() => recorder.stop(), 45000);
-    navigator.storage?.persist?.().catch(() => {});
-    setNotice(`${reason}. Recording safely on this device.`);
-  };
-  const stopOfflineVideoRecording = () => {
-    offlineFallbackRef.current = false;
-    clearTimeout(offlineSegmentTimerRef.current);
-    if (offlineRecorderRef.current?.state !== "inactive")
-      offlineRecorderRef.current?.stop();
-  };
-  /**
-   * Auto-saves every camera-share session to the evidence library, regardless
-   * of whether anyone is watching live. Runs in ~45s segments (independent of
-   * the offline-fallback recorder above) so a long session never produces one
-   * blob larger than the server's per-recording byte cap.
-   */
+  // The archive records continuously, including while the live connection is offline.
+  const startOfflineVideoRecording = () => startArchiveRecording();
+  const stopOfflineVideoRecording = () => {};
   const startArchiveRecording = () => {
     const stream = localCameraStreamRef.current;
-    if (!stream || archiveRecorderRef.current || typeof MediaRecorder === "undefined") return;
+    if (!stream || !sharingCameraRef.current || typeof MediaRecorder === "undefined") return;
     archiveRunningRef.current = true;
+    if (archiveRecorderRef.current) return;
     const mimeType = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(type => MediaRecorder.isTypeSupported(type)) || "";
     const recorder = new MediaRecorder(stream, {
       ...(mimeType ? { mimeType } : {}),
@@ -806,32 +754,33 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
       audioBitsPerSecond: 32000,
     });
     const segmentStartedAt = new Date().toISOString();
+    const point = { ...(gpsBestRef.current || session.user) };
+    const geography = { state: session.user.state || "Oyo", lga: session.user.lga, ward: session.user.ward, pollingUnit: session.user.pollingUnit, station: session.user.station };
+    const chunks = [];
     archiveChunksRef.current = [];
     archiveRecorderRef.current = recorder;
     recorder.ondataavailable = (event) => {
-      if (event.data?.size) archiveChunksRef.current.push(event.data);
+      if (event.data?.size) chunks.push(event.data);
     };
     recorder.onstop = async () => {
       clearTimeout(archiveSegmentTimerRef.current);
       archiveRecorderRef.current = null;
-      const blob = new Blob(archiveChunksRef.current, { type: recorder.mimeType || mimeType || "video/webm" });
-      archiveChunksRef.current = [];
+      const endedAt = new Date().toISOString();
+      const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "video/webm" });
+      // Start the next segment before storage or network work can delay recording.
+      if (archiveRunningRef.current && sharingCameraRef.current) startArchiveRecording();
       if (blob.size) {
         try {
-          const dataUrl = await blobToDataUrl(blob);
-          await request("/camera/recordings", session.token, {
-            method: "POST",
-            body: JSON.stringify({ dataUrl, startedAt: segmentStartedAt }),
-          });
+          await queueOfflineVideo(blob, { userId: session.user.id, startedAt: segmentStartedAt, endedAt,
+            geography, lat: point.lat, lng: point.lng, accuracy: point.accuracy });
+          flushOfflineVideoQueue();
         } catch (error) {
-          // Best-effort archive; a failed segment upload never interrupts the live share,
-          // but it must not vanish silently either -- a rejected segment is the difference
-          // between "recording" and an empty evidence library.
-          console.warn("[camera] archive segment upload failed:", error.message);
+          console.error("[camera] Could not save recording on device", error);
+          setNotice("Recording could not be saved: device storage is unavailable or full. Free space before continuing.");
         }
       }
-      if (archiveRunningRef.current && sharingCameraRef.current) startArchiveRecording();
     };
+    navigator.storage?.persist?.().catch(() => {});
     recorder.start(5000);
     archiveSegmentTimerRef.current = setTimeout(() => { if (recorder.state !== "inactive") recorder.stop(); }, 45000);
   };
@@ -896,6 +845,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     });
     socketRef.current = socket;
     window.addEventListener("online", flushOfflineVideoQueue);
+    const uploadRetryTimer = setInterval(flushOfflineVideoQueue, 15000);
     if (navigator.onLine) flushOfflineVideoQueue();
     socket.on("connect_error", () => {
       setNotice("Realtime connection is reconnecting...");
@@ -1255,7 +1205,9 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
               audio: true,
             });
             newStream.getAudioTracks().forEach((track) => { track.enabled = !cameraMicMutedRef.current; });
+            stopArchiveRecording();
             localCameraStreamRef.current = newStream;
+            startArchiveRecording();
             // Replace tracks in all active peer connections
             Object.values(rtcPeersRef.current).forEach((pc) => {
               const newVideo = newStream.getVideoTracks()[0];
@@ -1280,7 +1232,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
             newStream.getVideoTracks()[0]?.addEventListener("ended", () => {
               if (localCameraStreamRef.current !== newStream) return;
               sharingCameraRef.current = false;
-              stopOfflineVideoRecording();
+              stopArchiveRecording();
               socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
               setSharingCamera(false);
               setSelfCameraPreview(false);
@@ -1295,13 +1247,15 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     return () => {
       if (gpsWatchRef.current != null)
         navigator.geolocation?.clearWatch(gpsWatchRef.current);
-      stopOfflineVideoRecording();
+      sharingCameraRef.current = false;
+      stopArchiveRecording();
       localCameraStreamRef.current
         ?.getTracks()
         .forEach((track) => track.stop());
       Object.values(rtcPeersRef.current).forEach((pc) => pc.close());
       socket.close();
       socketRef.current = null;
+      clearInterval(uploadRetryTimer);
       window.removeEventListener("online", flushOfflineVideoQueue);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       releaseWakeLock();
@@ -1742,7 +1696,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const toggleCamera = async () => {
     if (sharingCamera) {
       sharingCameraRef.current = false;
-      stopOfflineVideoRecording();
       stopArchiveRecording();
       localCameraStreamRef.current
         ?.getTracks()
@@ -1794,7 +1747,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         if (localCameraStreamRef.current !== stream) return;
         sharingCameraRef.current = false;
-        stopOfflineVideoRecording();
         stopArchiveRecording();
         socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
         setSharingCamera(false);
@@ -1834,6 +1786,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     const audioTracks = oldStream.getAudioTracks();
     const nextFacingMode = cameraFacingMode === "environment" ? "user" : "environment";
     try {
+      stopArchiveRecording();
       oldVideoTrack?.stop();
       let cameraOnlyStream;
       try {
@@ -1845,6 +1798,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
       if (!nextVideoTrack) throw new Error("The selected camera is unavailable");
       const nextStream = new MediaStream([nextVideoTrack, ...audioTracks]);
       localCameraStreamRef.current = nextStream;
+      startArchiveRecording();
       setCameraFacingMode(nextFacingMode);
       setSelfCameraPreview(false);
       Object.values(rtcPeersRef.current).forEach((pc) => {
@@ -1855,7 +1809,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
       nextStream.getVideoTracks()[0]?.addEventListener("ended", () => {
         if (localCameraStreamRef.current !== nextStream) return;
         sharingCameraRef.current = false;
-        stopOfflineVideoRecording();
+        stopArchiveRecording();
         socketRef.current?.emit("camera:share:stop", { userId: session.user.id });
         setSharingCamera(false);
         setSelfCameraPreview(false);
@@ -1867,6 +1821,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
         const restoredStream = await getCameraStream(cameraFacingMode);
         restoredStream.getAudioTracks().forEach((track) => { track.enabled = !cameraMicMuted; });
         localCameraStreamRef.current = restoredStream;
+        startArchiveRecording();
         Object.values(rtcPeersRef.current).forEach((pc) => {
           const videoSender = pc.getSenders().find((sender) => sender.track?.kind === "video");
           const audioSender = pc.getSenders().find((sender) => sender.track?.kind === "audio");

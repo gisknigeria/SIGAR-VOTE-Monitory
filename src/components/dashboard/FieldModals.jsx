@@ -205,6 +205,7 @@ const ReportTypeIcon = ({ type, size = 14, color = "currentColor" }) => {
 };
 
 export function PollingResultForm({ user, point, parties, onClose, onSave }) {
+  const [submitting, setSubmitting] = useState(false);
   const isAgent = user.role === "Agent";
   const isSupervisor = user.role === "Supervisor";
   const canChooseZone = ["Admin", "Super Admin"].includes(user.role);
@@ -277,24 +278,32 @@ export function PollingResultForm({ user, point, parties, onClose, onSave }) {
     <div className="modal-backdrop">
       <form
         className="modal polling-result-modal"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
+          if (submitting) return;
           const results = rows
             .filter((row) => row.party && row.votes !== "")
             .map((row) => ({ party: row.party, votes: Number(row.votes) }));
           if (!results.length) return setError("Add at least one party and vote number.");
           if (!photo) return setError("A photograph of the signed result is required.");
           if (!assignment.pollingUnit) return setError("Select the polling unit being reported.");
-          onSave({
-            state: assignment.state,
-            pollingUnit: assignment.pollingUnit,
-            lga: assignment.lga,
-            ward: assignment.ward,
-            lat: point.lat,
-            lng: point.lng,
-            results,
-            media: [photo],
-          });
+          setSubmitting(true);
+          try {
+            await onSave({
+              state: assignment.state,
+              pollingUnit: assignment.pollingUnit,
+              lga: assignment.lga,
+              ward: assignment.ward,
+              lat: point.lat,
+              lng: point.lng,
+              results,
+              media: [photo],
+            });
+          } catch (saveError) {
+            setError(saveError.message || "Could not submit the result. Please try again.");
+          } finally {
+            setSubmitting(false);
+          }
         }}
       >
         <div className="panel-title">
@@ -353,8 +362,10 @@ export function PollingResultForm({ user, point, parties, onClose, onSave }) {
         {photo && <div className="result-photo-ready">Photo ready: {photo.name}</div>}
         {error && <div className="error">{error}</div>}
         <div className="actions">
-          <button type="button" className="ghost" onClick={onClose}>Cancel</button>
-          <button className="primary" disabled={!parties.length}>Submit result now</button>
+          <button type="button" className="ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="primary" disabled={!parties.length || submitting} aria-busy={submitting}>
+            {submitting ? "Submitting…" : "Submit result now"}
+          </button>
         </div>
       </form>
     </div>
