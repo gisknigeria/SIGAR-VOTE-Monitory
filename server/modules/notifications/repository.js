@@ -29,6 +29,12 @@ export function createNotificationsRepository({ pool, jsonDb, saveJson, mappers 
       const { rows } = await pool.query('select * from notification_outbox where status=$1 and available_at <= $2 order by created_at limit $3', ['pending', now, limit]);
       return rows.map((row) => ({ ...row, dedupeKey: row.dedupe_key, notificationId: row.notification_id, userId: row.user_id, payload: row.payload, availableAt: row.available_at, createdAt: row.created_at }));
     },
+    /** Exact pending count, unlike pendingNotificationOutbox's page-sized (and therefore cappable) result. */
+    async countPendingNotificationOutbox({ now = new Date().toISOString() } = {}) {
+      if (!pool) return Object.values(jsonDb.outbox || {}).filter((item) => item.status === 'pending' && new Date(item.availableAt).getTime() <= new Date(now).getTime()).length;
+      const { rows } = await pool.query('select count(*)::int as count from notification_outbox where status=$1 and available_at <= $2', ['pending', now]);
+      return rows[0]?.count ?? 0;
+    },
     async markNotificationDelivered(id, deliveredAt = new Date().toISOString()) {
       if (!pool) { const item = Object.values(jsonDb.outbox || {}).find((value) => value.id === id); if (item) { item.status = 'delivered'; item.deliveredAt = deliveredAt; item.updatedAt = deliveredAt; saveJson(); } return item; }
       const { rows } = await pool.query('update notification_outbox set status=$2,delivered_at=$3,updated_at=$3 where id=$1 returning *', [id, 'delivered', deliveredAt]);

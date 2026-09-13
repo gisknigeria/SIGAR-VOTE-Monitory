@@ -208,9 +208,9 @@ app.get("/api/ready", rateLimit, asyncRoute(async (_req, res) => {
 // alert dispatcher (no email/Slack/PagerDuty integration exists in this codebase) --
 // it is the data an external monitor would poll to raise one.
 app.get("/api/metrics", auth, adminOnly, rateLimit, asyncRoute(async (_req, res) => {
-  const [incidents, pendingOutbox, tasks, referenceReleases, auditRecent] = await Promise.all([
+  const [incidents, pendingOutboxCount, tasks, referenceReleases, auditRecent] = await Promise.all([
     store.incidents(),
-    store.pendingNotificationOutbox({ limit: 1000 }),
+    store.countPendingNotificationOutbox(),
     store.tasks({}),
     store.referenceDataReleases({ status: "pending-approval" }),
     store.auditEvents({ limit: 1, since: new Date(Date.now() - 86400000).toISOString() }),
@@ -220,11 +220,11 @@ app.get("/api/metrics", auth, adminOnly, rateLimit, asyncRoute(async (_req, res)
   res.json({
     generatedAt: new Date().toISOString(),
     incidents: { total: incidents.length, open: openIncidents },
-    notificationOutbox: { pendingApprox: pendingOutbox.length, cappedAt: 1000 },
+    notificationOutbox: { pending: pendingOutboxCount },
     tasks: { total: tasks.length, overdue: overdueTasks },
     referenceData: { pendingApproval: referenceReleases.length },
     audit: { eventsLast24h: auditRecent.total },
-    limitations: ["notificationOutbox.pendingApprox is capped and does not reflect true unbounded queue depth.", "No alert dispatch is wired to these numbers; an external monitor must poll this endpoint."],
+    limitations: ["No alert dispatch is wired to these numbers; an external monitor must poll this endpoint."],
   });
 }));
 

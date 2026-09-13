@@ -52,8 +52,12 @@ export function createReconciliationRepository({ pool, jsonDb, saveJson, mappers
       const officialType = String(officialRecord.sourceType || '').toLowerCase();
       if (sourceClassification !== 'authoritative-master' || !sourceReleaseId || !['official-publication', 'ocr'].includes(officialType)) throw new Error('Official reconciliation requires an approved authoritative publication source release.');
       if (officialType === 'ocr' && !officialRecord.derivedFromEvidenceId) throw new Error('OCR transcriptions must retain their source evidence reference.');
-      const discrepancies = records.flatMap((record) => compareResults(record.resultCount, officialRecord.resultCount).map((item) => ({ ...item, resultRecordId: record.id, submittedBy: record.submittedBy }))); 
-      return save('resultReconciliations', { id: randomUUID(), ...first, resultRecordIds: records.map((record) => record.id), officialRecord: { ...officialRecord, sourceReleaseId, sourceClassification }, discrepancies, status: reviewedBy ? 'reviewed' : 'pending-review', reviewerId: reviewedBy, reviewerDecision: reviewedBy ? { decision: 'created', by: reviewedBy } : null, correctionId: '', createdAt: new Date().toISOString(), reviewedAt: reviewedBy ? new Date().toISOString() : null });
+      const discrepancies = records.flatMap((record) => compareResults(record.resultCount, officialRecord.resultCount).map((item) => ({ ...item, resultRecordId: record.id, submittedBy: record.submittedBy })));
+      // Carried from the source result record(s) so reconciliations can be scoped by
+      // lga/ward, not just polling unit -- see reporting/repository.js's use of this.
+      const lga = String(records[0]?.lga || officialRecord.lga || '').trim();
+      const ward = String(records[0]?.ward || officialRecord.ward || '').trim();
+      return save('resultReconciliations', { id: randomUUID(), ...first, lga, ward, resultRecordIds: records.map((record) => record.id), officialRecord: { ...officialRecord, sourceReleaseId, sourceClassification }, discrepancies, status: reviewedBy ? 'reviewed' : 'pending-review', reviewerId: reviewedBy, reviewerDecision: reviewedBy ? { decision: 'created', by: reviewedBy } : null, correctionId: '', createdAt: new Date().toISOString(), reviewedAt: reviewedBy ? new Date().toISOString() : null });
     },
     async resultReconciliations(filters = {}) { return (await read('resultReconciliations')).filter((item) => (!filters.status || item.status === filters.status) && (!filters.pollingUnit || normalize(item.pollingUnit) === normalize(filters.pollingUnit))); },
     async reviewReconciliation(id, { reviewerId = '', decision = '', reason = '', correctedResult = null } = {}) {

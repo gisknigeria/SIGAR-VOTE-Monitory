@@ -213,15 +213,10 @@ export function createReportingRepository({ pool, jsonDb, saveJson, mappers }) {
       const signals = sources.signals.filter((item) => matches(item, geography) && withinWindow(item, window));
       const tasks = sources.tasks.map(toTask).filter((item) => matches(item.geography, geography) && withinWindow(item, window));
       const dedicatedResults = sources.dedicatedResults.filter((item) => matches(item, geography) && withinWindow(item, window));
-      // Reconciliation records only carry a flat pollingUnit + electionId (no lga/ward), so
-      // they cannot use matchesGeography's lga/ward check without excluding everything; an
-      // LGA/ward-only filter therefore returns every matched-election reconciliation (see
-      // the limitation note below) rather than silently reporting zero.
       const reconciliations = sources.reconciliations.filter((item) => {
         const contestFilter = filter.electionId || filter.contestId || '';
         if (contestFilter && item.electionId && normalizeKey(item.electionId) !== normalizeKey(contestFilter)) return false;
-        if (geography.pollingUnit && normalizeKey(item.pollingUnit) !== normalizeKey(geography.pollingUnit)) return false;
-        return withinWindow(item, window);
+        return matches(item, geography) && withinWindow(item, window);
       });
       const now = Date.now();
       const responseTimes = incidents.flatMap((item) => {
@@ -269,7 +264,7 @@ export function createReportingRepository({ pool, jsonDb, saveJson, mappers }) {
         'Coverage denominator uses the selected geography and reference polling-unit data.',
         'Metrics exclude records outside the requested geography and contest.',
         'A missing timestamp or geography reduces completeness rather than being inferred.',
-        'Reconciliation records are only geography-scoped by polling unit; an LGA/ward-only filter without a polling unit returns every matched-election reconciliation, not just this geography\'s.',
+        'Reconciliations created before this geography scoping was added have no stored lga/ward and will not appear under an LGA/ward filter until reconciled again.',
         'Reconciliation and decision outcomes marked pending/unreviewed are provisional and must never be read as final results.',
       ];
       if (window.since || window.until) limitations.push(`Results are scoped to ${window.since || 'the start of records'} through ${window.until || 'now'}${window.phase ? ` (${window.phase})` : ''}; a record with no usable timestamp is excluded rather than assumed current.`);

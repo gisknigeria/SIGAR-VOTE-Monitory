@@ -180,8 +180,9 @@ test('operationalReport joins tasks, reconciliations and resource utilization wi
       't2': { id: 't2', status: 'open', geography: { state: 'Oyo', lga: 'Atiba' }, createdAt: '2026-06-01T09:00:00.000Z' },
     },
     resultReconciliations: {
-      r1: { id: 'r1', electionId: 'ng-oyo-election', pollingUnit: 'PU 1', status: 'pending-review', discrepancies: [{ party: 'A' }], createdAt: '2026-06-01T08:00:00.000Z' },
-      r2: { id: 'r2', electionId: 'ng-oyo-election', pollingUnit: 'PU 2', status: 'reviewed', correctionId: 'c1', discrepancies: [], createdAt: '2026-06-01T08:00:00.000Z' },
+      r1: { id: 'r1', electionId: 'ng-oyo-election', lga: 'Atiba', pollingUnit: 'PU 1', status: 'pending-review', discrepancies: [{ party: 'A' }], createdAt: '2026-06-01T08:00:00.000Z' },
+      r2: { id: 'r2', electionId: 'ng-oyo-election', lga: 'Atiba', pollingUnit: 'PU 2', status: 'reviewed', correctionId: 'c1', discrepancies: [], createdAt: '2026-06-01T08:00:00.000Z' },
+      r3: { id: 'r3', electionId: 'ng-oyo-election', lga: 'Ibadan North', pollingUnit: 'PU 9', status: 'pending-review', discrepancies: [{ party: 'B' }], createdAt: '2026-06-01T08:00:00.000Z' },
     },
   };
   const report = await createReportingRepository({ pool: null, jsonDb }).operationalReport({ lga: 'Atiba' });
@@ -196,6 +197,8 @@ test('operationalReport joins tasks, reconciliations and resource utilization wi
   assert.equal(report.metrics.reconciliation.reviewed, 1);
   assert.equal(report.metrics.reconciliation.corrected, 1);
   assert.equal(report.metrics.reconciliation.totalDiscrepancies, 1);
+  // r3 is scoped to a different LGA and must not leak into this Atiba-scoped report.
+  assert.equal(report.sources.reconciliations, 2);
 });
 
 test('operationalReport groups dedicated result records by source version without conflating them with the legacy incident count', async () => {

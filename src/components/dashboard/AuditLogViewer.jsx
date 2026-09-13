@@ -220,7 +220,7 @@ function SystemHealthTab({ authToken }) {
           <div className="sh-stat-grid">
             <StatCard label="Incidents" value={metrics.data.incidents.total} hint={`${metrics.data.incidents.open} open`} warn={metrics.data.incidents.open > 0} />
             <StatCard label="Tasks" value={metrics.data.tasks.total} hint={`${metrics.data.tasks.overdue} overdue`} warn={metrics.data.tasks.overdue > 0} />
-            <StatCard label="Notification outbox" value={metrics.data.notificationOutbox.pendingApprox} hint={`capped at ${metrics.data.notificationOutbox.cappedAt}`} warn={metrics.data.notificationOutbox.pendingApprox > 0} />
+            <StatCard label="Notification outbox" value={metrics.data.notificationOutbox.pending} hint="pending delivery" warn={metrics.data.notificationOutbox.pending > 0} />
             <StatCard label="Reference data" value={metrics.data.referenceData.pendingApproval} hint="pending approval" warn={metrics.data.referenceData.pendingApproval > 0} />
             <StatCard label="Audit events" value={metrics.data.audit.eventsLast24h} hint="last 24h" />
           </div>
