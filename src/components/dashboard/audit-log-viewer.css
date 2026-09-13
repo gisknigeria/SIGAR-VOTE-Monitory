@@ -12,7 +12,7 @@
 .alv-summary{font-size:12px;color:#d6c4cc}
 /* Scroll vertically too, so many more rows are visible at once and the sticky header below
    actually has something to stick to. */
-.alv-table-wrap{overflow:auto;max-height:65vh;border:1px solid #744052;border-radius:10px}
+.audit-log-viewer > .alv-table-wrap{overflow:auto;max-height:calc(20 * 5.5rem + 44px);border:1px solid #744052;border-radius:10px}
 .alv-table{width:100%;border-collapse:collapse;font-size:12px;min-width:760px}
 .alv-table th,.alv-table td{padding:10px 12px;border-bottom:1px solid #4a2a35;text-align:left;vertical-align:top}
 .alv-table th{color:#ffdf99;font-weight:600;background:#20101a;position:sticky;top:0}
