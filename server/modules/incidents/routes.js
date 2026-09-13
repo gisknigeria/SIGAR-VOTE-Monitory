@@ -2,7 +2,7 @@ import { createId, normalizeText, validateMediaPayload, validateCoordinates } fr
 import { emitChatRoom } from "../../chat-realtime.js";
 import { requireOyoState, deployment } from '../../config/deployment.js';
 import { validateOyoAssignment } from '../geography/validation.js';
-import { INCIDENT_STATUSES, normalizeIncidentStatus } from './lifecycle.js';
+import { INCIDENT_STATUSES, normalizeIncidentStatus, canTransitionIncident, incidentTransitionPath } from './lifecycle.js';
 import { normalizeSyncEnvelope, syncConflictResponse } from '../foundation/sync-contract.js';
 import { recordAudit } from '../foundation/audit-helper.js';
 export function registerIncidentRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, io, isAdminRole, canAccessIncident, canSupervisorAssign, emitIncidentToViewers, emitNotification, logIp, getClientIp, isSosIncident, sosVisibleTo, emitEmergencyAlert, emitAuthorized }) {
@@ -248,7 +248,21 @@ export function registerIncidentRoutes({ app, auth, adminOnly, rateLimit, asyncR
         const recordPatch = { ...patch };
         for (const key of ['status', 'deadlineAt', 'ownerId', 'escalationLevel', 'verificationEvidence', 'transitionReason']) delete recordPatch[key];
         const transitionWork = async (transactionStore) => {
-          let next = await transactionStore.transitionIncident(req.params.id, patch.status, { actor: req.user, ...transitionPatch });
+          // The lifecycle only allows single steps, so a responder completing an incident that is
+          // still `assigned` would otherwise be rejected outright. Walk the legal path instead,
+          // applying every intermediate step for real so transitionHistory stays complete.
+          const steps = canTransitionIncident(current.status, patch.status)
+            ? [normalizeIncidentStatus(patch.status)]
+            : incidentTransitionPath(current.status, patch.status);
+          if (!steps.length) {
+            const error = new Error(`Illegal incident transition from ${normalizeIncidentStatus(current.status || 'reported')} to ${normalizeIncidentStatus(patch.status)}`);
+            error.code = 'INVALID_INCIDENT_TRANSITION';
+            throw error;
+          }
+          let next;
+          for (const step of steps) {
+            next = await transactionStore.transitionIncident(req.params.id, step, { actor: req.user, ...transitionPatch });
+          }
           if (Object.keys(recordPatch).length) next = await transactionStore.updateIncident(req.params.id, recordPatch);
           return next;
         };

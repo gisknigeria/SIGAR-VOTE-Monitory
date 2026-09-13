@@ -203,11 +203,15 @@ function SystemHealthTab({ authToken }) {
         <div className={`sh-ready-banner ${ready.data.ready ? 'sh-ready-ok' : 'sh-ready-down'}`}>
           <b>{ready.data.ready ? 'Ready to serve traffic' : 'Not ready'}</b>
           <div className="sh-chip-row">
-            {Object.entries(ready.data.checks).filter(([key]) => key !== 'databaseError').map(([key, value]) => (
-              <span key={key} className={`sh-chip ${READY_OK_VALUES.includes(value) ? 'sh-chip-ok' : READY_WARN_VALUES.includes(value) ? 'sh-chip-warn' : value === 'error' ? 'sh-chip-error' : ''}`}>
-                {key}: {value}
-              </span>
-            ))}
+            {Object.entries(ready.data.checks).filter(([key]) => key !== 'databaseError').map(([key, value]) => {
+              // Render defensively: a non-scalar check value used to crash this whole screen.
+              const text = value && typeof value === 'object' ? JSON.stringify(value) : String(value);
+              return (
+                <span key={key} className={`sh-chip ${READY_OK_VALUES.includes(text) ? 'sh-chip-ok' : READY_WARN_VALUES.includes(text) ? 'sh-chip-warn' : text === 'error' ? 'sh-chip-error' : ''}`}>
+                  {key}: {text}
+                </span>
+              );
+            })}
           </div>
           {ready.data.checks.databaseError && <p role="alert" className="sh-error-detail">Database error: {ready.data.checks.databaseError}</p>}
         </div>
@@ -235,43 +239,6 @@ function SystemHealthTab({ authToken }) {
   );
 }
 
-function PolicyTab({ authToken }) {
-  const policy = useQuery({ queryKey: ['security-policy', authToken], queryFn: ({ signal }) => apiRequest('/security/policy', authToken, { signal }) });
-  if (policy.isPending) return <p role="status">Loading policy…</p>;
-  if (policy.isError) return <p role="alert">{policy.error.message} <button onClick={() => policy.refetch()}>Retry</button></p>;
-  const data = policy.data;
-  return (
-    <div className="alv-policy">
-      <p className="alv-note">These are the fixed rules the platform enforces automatically — nobody can turn them off from within the app.</p>
-      <div className="alv-policy-card">
-        <h4>How long we keep records</h4>
-        <p>Evidence (photos, documents): {data.retention.evidenceDays} days. Audit log entries: {data.retention.auditLogsDays} days.</p>
-        <p className="area-note">Rule: {data.retention.deletionPolicy}</p>
-      </div>
-      <div className="alv-policy-card">
-        <h4>Account check-up schedule</h4>
-        <p>Every admin-level account gets reviewed at least every {data.accessReview.cadenceDays} days{data.accessReview.requiredForAdminChanges ? ', and before any admin-level change can be made' : ''}.</p>
-      </div>
-      <div className="alv-policy-card">
-        <h4>System security setup</h4>
-        <p>Running in {data.environment} mode{data.secretManagement.enforceProductionEnv ? ' — production security rules are enforced' : ''}.</p>
-        <p className="area-note">Login security key length: {data.secretManagement.jwtSecretLength} bytes (longer is stronger).</p>
-      </div>
-      <div className="alv-policy-card alv-policy-wide">
-        <h4>Who can do what</h4>
-        <table className="alv-table">
-          <thead><tr><th>Role</th><th>Can see/act on</th><th>Widest reach</th></tr></thead>
-          <tbody>
-            {Object.entries(data.roleScope).map(([role, scope]) => (
-              <tr key={role}><td>{role}</td><td>{scope.geographies.join(', ')}</td><td>{scope.maxScope}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 export default function AuditLogViewer({ authToken, onClose }) {
   const [tab, setTab] = useState('log');
   return (
@@ -279,24 +246,22 @@ export default function AuditLogViewer({ authToken, onClose }) {
       <div className="camera-head">
         <div>
           <span className="eyebrow">SECURITY &amp; GOVERNANCE</span>
-          <h2>{tab === 'log' ? 'Activity Log' : tab === 'review' ? 'Access Review' : tab === 'health' ? 'System Health' : 'Policy'}</h2>
+          <h2>{tab === 'log' ? 'Activity Log' : tab === 'review' ? 'Access Review' : 'System Health'}</h2>
         </div>
         <button className="icon-btn" onClick={onClose}><FaTimes /></button>
       </div>
       <p className="alv-intro">
         A tamper-proof record of who did what, so any dispute about a result or an action can be proven either way.{' '}
         <b>Activity Log</b> is the permanent record itself. <b>Access Review</b> checks that admin accounts still need the access they have.{' '}
-        <b>Policy</b> is the plain rules this is all built on. <b>System Health</b> is a separate check on whether the platform itself is running well.
+        <b>System Health</b> is a separate check on whether the platform itself is running well.
       </p>
       <div className="rc-tab-bar">
         <button className={tab === 'log' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('log')}>Activity Log</button>
         <button className={tab === 'review' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('review')}>Access Review</button>
-        <button className={tab === 'policy' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('policy')}>Policy</button>
         <button className={tab === 'health' ? 'rc-tab active' : 'rc-tab'} onClick={() => setTab('health')}>System Health</button>
       </div>
       {tab === 'log' && <AuditLogTab authToken={authToken} />}
       {tab === 'review' && <AccessReviewTab authToken={authToken} />}
-      {tab === 'policy' && <PolicyTab authToken={authToken} />}
       {tab === 'health' && <SystemHealthTab authToken={authToken} />}
     </section>
   );

@@ -10,7 +10,9 @@
 .alv-filters input,.alv-filters select{border:1px solid #825063;border-radius:8px;background:#10070b;color:#fff;padding:9px;font:inherit;color-scheme:dark}
 .alv-filters input:focus,.alv-filters select:focus,.alv-inline-review input:focus{outline:none;border-color:#d9aa4b;box-shadow:0 0 0 3px #d9aa4b80}
 .alv-summary{font-size:12px;color:#d6c4cc}
-.alv-table-wrap{overflow-x:auto;border:1px solid #744052;border-radius:10px}
+/* Scroll vertically too, so many more rows are visible at once and the sticky header below
+   actually has something to stick to. */
+.alv-table-wrap{overflow:auto;max-height:65vh;border:1px solid #744052;border-radius:10px}
 .alv-table{width:100%;border-collapse:collapse;font-size:12px;min-width:760px}
 .alv-table th,.alv-table td{padding:10px 12px;border-bottom:1px solid #4a2a35;text-align:left;vertical-align:top}
 .alv-table th{color:#ffdf99;font-weight:600;background:#20101a;position:sticky;top:0}
@@ -24,12 +26,7 @@
 .alv-badge.alv-overdue{color:#ff9d9d;border-color:#c0524a}
 .alv-inline-review{display:flex;gap:10px;align-items:center;padding:8px 0}
 .alv-inline-review input{flex:1;border:1px solid #825063;border-radius:8px;background:#10070b;color:#fff;padding:8px;font:inherit;color-scheme:dark}
-.alv-policy{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.alv-policy-card{padding:14px;border:1px solid #744052;border-radius:10px;background:#20101a}
-.alv-policy-card h4{margin:0 0 8px;font-size:13px;color:#ffdf99}
-.alv-policy-card p{margin:0 0 4px;font-size:12px;color:#f2dce5}
-.alv-policy-wide{grid-column:1/-1}
-@media(max-width:900px){.alv-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.alv-policy{grid-template-columns:1fr}}
+@media(max-width:900px){.alv-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sh-toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .sh-checked-at{font-size:11px;color:#d6c4cc}
 .sh-ready-banner{display:grid;gap:10px;padding:14px;border-radius:10px;border:1px solid #3f7a5e;background:#0f1c15}

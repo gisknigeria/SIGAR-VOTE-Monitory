@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createIncidentsRepository } from './repository.js';
 import { createStore } from '../../store.js';
+import { canTransitionIncident, incidentTransitionPath } from './lifecycle.js';
 
 function fixture() {
   const jsonDb = { incidents: [] };
@@ -55,6 +56,28 @@ test('incident lifecycle records legal transitions, deadline, owner, and escalat
   assert.equal(current.lifecycle.escalationLevel, 1);
   assert.equal(current.lifecycle.transitionHistory.length, 9);
   assert.equal(current.lifecycle.verifiedBy, 'supervisor-1');
+});
+
+test('a responder completing an assigned incident has a legal route to resolved', async () => {
+  // The agent taps "Done" on an incident still sitting at `assigned`. The lifecycle forbids
+  // jumping straight to resolved, so without a path the completion is rejected outright and the
+  // admin is never told the work finished.
+  assert.equal(canTransitionIncident('assigned', 'resolved'), false);
+  assert.deepEqual(incidentTransitionPath('assigned', 'resolved'), ['acknowledged', 'in progress', 'resolved']);
+  assert.deepEqual(incidentTransitionPath('reported', 'resolved'), ['triaged', 'assigned', 'acknowledged', 'in progress', 'resolved']);
+  assert.deepEqual(incidentTransitionPath('Resolved', 'resolved'), [], 'same status needs no steps');
+  assert.deepEqual(incidentTransitionPath('closed', 'resolved'), [], 'closed is terminal');
+
+  // Walking that path must actually apply each step, leaving a complete history.
+  const { repository } = fixture();
+  await repository.createIncident({ ...incident(), status: 'assigned', assignedTo: 'agent-1' });
+  const agent = { id: 'agent-1', role: 'Agent' };
+  let current;
+  for (const step of incidentTransitionPath('assigned', 'resolved')) {
+    current = await repository.transitionIncident('incident-1', step, { actor: agent });
+  }
+  assert.equal(current.status, 'resolved');
+  assert.deepEqual(current.lifecycle.transitionHistory.map((entry) => entry.to).slice(-3), ['acknowledged', 'in progress', 'resolved']);
 });
 
 test('resolved cannot be closed without a prior authorized verification transition', async () => {

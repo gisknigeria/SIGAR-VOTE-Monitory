@@ -7,6 +7,7 @@ import PreElectionAnalysis from "./PreElectionAnalysis.jsx";
 import AnalyticsPanel from "./AnalyticsPanel.jsx";
 import AiGenerationBadge from "./AiGenerationBadge.jsx";
 import ReconciliationReview from "./ReconciliationReview.jsx";
+import { EvidenceThumb } from "./EvidenceMedia.jsx";
 import OverVotingCheck from "./OverVotingCheck.jsx";
 
 export default function ResultsCenter({ incidents, parties = [], officers = [], personnel = [], mapLayers = [], selected, onClose, authToken, canAdmin = false, initialFocusParty = "", initialView = "pulse", onPartyMapChange, onFocusLocation, onTool, onCsv, onClear, helpers }) {
@@ -571,7 +572,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
               <thead><tr><th>Source</th><th>LGA</th><th>Ward</th><th>Polling unit</th>{fieldTopParties.map(party => <th key={party}>{party}</th>)}<th>Location</th><th>Evidence</th><th>Uploaded</th></tr></thead>
               <tbody>
                 {displayedResultRows.map((row) => (
-                  <tr key={row.id}><td><span className={`result-source-badge source-${row.resultSource.toLowerCase().replace(/[^a-z]+/g, "-")}`}>{row.resultSource}</span></td><td>{row.lga || "—"}</td><td>{row.ward || "—"}</td><td><b>{row.pollingUnit || "—"}</b></td>{fieldTopParties.map(party => <td key={party}>{renderFieldVote(row, party)}</td>)}<td>{Number(row.lat).toFixed(5)}, {Number(row.lng).toFixed(5)}</td><td><div className="result-evidence">{(row.media || []).filter((item) => item.type === "image").slice(0, 2).map((item, index) => <a href={item.data} target="_blank" rel="noreferrer" key={`${row.id}-${index}`}><img src={item.data} alt={`Evidence for ${row.pollingUnit}`} /></a>)}</div></td><td>{new Date(row.createdAt).toLocaleString()}</td></tr>
+                  <tr key={row.id}><td><span className={`result-source-badge source-${row.resultSource.toLowerCase().replace(/[^a-z]+/g, "-")}`}>{row.resultSource}</span></td><td>{row.lga || "—"}</td><td>{row.ward || "—"}</td><td><b>{row.pollingUnit || "—"}</b></td>{fieldTopParties.map(party => <td key={party}>{renderFieldVote(row, party)}</td>)}<td>{Number(row.lat).toFixed(5)}, {Number(row.lng).toFixed(5)}</td><td><div className="result-evidence">{(row.media || []).filter((item) => item.type === "image").slice(0, 2).map((item, index) => <EvidenceThumb item={item} token={authToken} alt={`Evidence for ${row.pollingUnit}`} key={item.id || `${row.id}-${index}`} />)}</div></td><td>{new Date(row.createdAt).toLocaleString()}</td></tr>
                 ))}
                 {!displayedResultRows.length && <tr><td className="result-empty" colSpan={fieldTopParties.length + 8}>No {resultSourceFilter || "polling-unit"} results have been uploaded yet.</td></tr>}
               </tbody>

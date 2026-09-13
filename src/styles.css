@@ -2210,6 +2210,8 @@ header {
     max-height: 100dvh;
     overflow: hidden;
     padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+    /* Fully opaque on a phone: at 96% the map and its toolbar showed through the panel. */
+    background: #260711 !important;
   }
   .chat-layout {
     display: flex;
@@ -2218,9 +2220,18 @@ header {
     overflow: hidden;
   }
   .chat-rooms {
+    /* Cap and scroll the room picker. With `overflow: visible` and no ceiling it grew past the
+       panel and pushed the message thread and composer off the bottom of the screen. */
     flex: 0 0 auto;
+    max-height: 45dvh;
     padding: 8px;
-    overflow: visible;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  /* The shared camera empty-state carries a 220px floor that does not fit a phone panel. */
+  .chat-rooms .empty-cameras {
+    min-height: 0;
+    padding: 18px 12px;
   }
   .chat-room-selector-label,
   .chat-room-selector {
@@ -6176,6 +6187,22 @@ body.resizing-sidebar {
   border: 1px solid #d9aa4b;
   border-radius: 6px;
 }
+.result-evidence-loading,
+.result-evidence-missing {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px dashed #8b1e46;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+.result-evidence-missing {
+  border-style: solid;
+  border-color: #a53c4b;
+  color: #ff9d9d;
+}
 .result-empty {
   text-align: center;
   padding: 40px !important;
@@ -7437,6 +7464,22 @@ body.resizing-sidebar {
 .map-data-layer-toggle.active {
   background: #8b1e46;
   border-color: #d9aa4b !important;
+}
+/* This is a Leaflet "topright" control, so by default it anchors to the map's own top edge at
+   Leaflet's z-index 1000 -- landing on the header's search/profile row, and sitting above the
+   incident detail panel (z-index 800) and other overlays. Drop it below both. The topright
+   corner holds no other control, so this affects only this button. */
+.leaflet-top.leaflet-right {
+  z-index: 700;
+}
+.leaflet-top.leaflet-right .map-data-layer-toggle {
+  margin-top: 74px;
+  margin-right: 12px;
+}
+@media (max-width: 650px) {
+  .leaflet-top.leaflet-right .map-data-layer-toggle {
+    margin-top: 68px;
+  }
 }
 .map-data-layer-legend {
   background: rgba(10, 18, 30, 0.95);

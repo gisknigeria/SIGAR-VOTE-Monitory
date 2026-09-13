@@ -38,6 +38,34 @@ export function canTransitionIncident(fromStatus, toStatus) {
   return INCIDENT_STATUSES.includes(from) && TRANSITIONS.get(from)?.has(to) === true;
 }
 
+/**
+ * Shortest legal route between two statuses, as the list of steps to apply (excluding the
+ * starting status). Returns [] when the target is unreachable.
+ *
+ * The lifecycle only permits single steps, but a responder pressing "Done" on an incident that
+ * is still `assigned` means "I have completed this" -- not "skip the record of acknowledging and
+ * working it". Walking the path applies each step for real, so transitionHistory still records
+ * every stage instead of the completion silently failing.
+ */
+export function incidentTransitionPath(fromStatus, toStatus) {
+  const from = normalizeIncidentStatus(fromStatus || 'reported');
+  const to = normalizeIncidentStatus(toStatus);
+  if (!INCIDENT_STATUSES.includes(from) || !INCIDENT_STATUSES.includes(to) || from === to) return [];
+  const queue = [[from, []]];
+  const seen = new Set([from]);
+  while (queue.length) {
+    const [status, path] = queue.shift();
+    for (const next of TRANSITIONS.get(status) || []) {
+      if (seen.has(next)) continue;
+      const nextPath = [...path, next];
+      if (next === to) return nextPath;
+      seen.add(next);
+      queue.push([next, nextPath]);
+    }
+  }
+  return [];
+}
+
 export function hasVerificationEvidence(verificationEvidence) {
   return Array.isArray(verificationEvidence) && verificationEvidence.some((item) => {
     if (!item || typeof item !== 'object') return false;

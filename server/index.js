@@ -206,7 +206,13 @@ app.get("/api/ready", rateLimit, asyncRoute(async (_req, res) => {
     }
   }
   checks.mediaService = process.env.MEDIA_SERVICE_URL ? "configured" : "not-configured";
-  checks.turn = turnStatus();
+  // Every entry in `checks` must stay a scalar -- the System Health tab renders them straight
+  // into chips, so an object here crashes that screen. `active` is the verified truth,
+  // `turnConfigured` is what the env vars claim; the error detail stays out of this
+  // unauthenticated endpoint.
+  const turn = turnStatus();
+  checks.turn = turn.active;
+  checks.turnConfigured = turn.configured;
   const ready = checks.database !== "error";
   res.status(ready ? 200 : 503).json({ ready, checks, checkedAt: new Date().toISOString() });
 }));

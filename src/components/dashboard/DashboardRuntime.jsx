@@ -1352,13 +1352,15 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
       method: "PUT",
     });
     setNotifications((old) => old.map((item) => (item.id === updated.id ? updated : item)));
-    setSelectedIncident((old) => (old && old.id === incidentId ? { ...old, status: "Resolved" } : old));
-    setIncidents((old) => old.map((item) => (item.id === incidentId ? { ...item, status: "Resolved" } : item)));
     if (incidentId) {
-      await request(`/incidents/${incidentId}`, session.token, {
+      // Let a failure surface: swallowing it here showed the responder a success while the
+      // incident never moved and the admin was never notified.
+      const resolved = await request(`/incidents/${incidentId}`, session.token, {
         method: "PUT",
-        body: JSON.stringify({ status: "Resolved" }),
-      }).catch(() => {});
+        body: JSON.stringify({ status: "resolved" }),
+      });
+      setIncidents((old) => old.map((item) => (item.id === incidentId ? resolved : item)));
+      setSelectedIncident((old) => (old && old.id === incidentId ? resolved : old));
     }
     setNotificationModalOpen(false);
     setSelectedNotification(null);
