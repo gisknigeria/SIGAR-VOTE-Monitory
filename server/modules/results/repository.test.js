@@ -72,6 +72,12 @@ test('postgres result repository writes JSON fields and maps the returned row', 
   assert.equal(queries[0].values[1], record.submissionId);
   assert.deepEqual(JSON.parse(queries[0].values[7]), record.geography);
   assert.deepEqual(saved, { id: record.id, submissionId: record.submissionId, evidence: record.evidence });
+
+  // Postgres rejects the whole statement ("INSERT has more expressions than target columns")
+  // when these three drift apart, and a fake pool that ignores the SQL cannot catch it.
+  const [, columnList, placeholderList] = queries[0].text.match(/insert into result_records \(([^)]+)\) values \(([^)]+)\)/);
+  assert.equal(placeholderList.split(',').length, columnList.split(',').length, 'placeholder count must match column count');
+  assert.equal(queries[0].values.length, columnList.split(',').length, 'bound value count must match column count');
 });
 
 test('resultRecordsPage bounds the JSON-store result to a page scoped by geography', async () => {

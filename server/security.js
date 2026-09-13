@@ -37,12 +37,14 @@ export function validateMediaPayload(media) {
       continue;
     }
     const data = String(item.data || '');
-    const match = data.match(/^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]*={0,2})$/i);
+    // Tolerate MIME parameters -- MediaRecorder emits "video/webm;codecs=vp8,opus" and the
+    // codec list itself contains a comma, so anything stricter rejects real recordings.
+    const match = data.match(/^data:(.+?);base64,([A-Za-z0-9+/]*={0,2})$/i);
     if (!match) {
       errors.push('Unsupported or malformed media payload');
       continue;
     }
-    const mime = match[1].toLowerCase();
+    const mime = match[1].split(';')[0].trim().toLowerCase();
     const mimeMatchesType =
       (type === 'image' && IMAGE_MIME_PATTERN.test(mime)) ||
       (type === 'video' && VIDEO_MIME_PATTERN.test(mime)) ||

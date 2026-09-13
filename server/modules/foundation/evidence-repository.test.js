@@ -42,6 +42,18 @@ test('media is stored privately with hash, custody, scan, retention, and restric
   assert.ok(Object.values(jsonDb.privateEvidence)[0].custody.some((event) => event.event === 'accessed'));
 });
 
+test('a camera recording keeps its codec parameters and is still stored under its base MIME type', async () => {
+  const { repository } = fixture();
+  // A real webm from MediaRecorder: EBML magic bytes, and a type carrying "codecs=vp8,opus".
+  const webm = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x02, 0x03, 0x04]).toString('base64');
+  const [ref] = await repository.protectMediaPayload(
+    [{ type: 'video', data: `data:video/webm;codecs=vp8,opus;base64,${webm}` }],
+    { actorId: 'agent-1' },
+  );
+  assert.equal(ref.mimeType, 'video/webm');
+  assert.equal(ref.type, 'video');
+});
+
 test('invalid media, unavailable scans, and oversized objects are quarantined or rejected', async () => {
   const { repository } = fixture();
   await assert.rejects(repository.protectMediaPayload([{ type: 'document', data: 'data:application/pdf;base64,aGVsbG8=' }]), /does not match its declared media type/);

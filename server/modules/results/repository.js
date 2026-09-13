@@ -56,7 +56,7 @@ export function createResultsRepository({ pool, jsonDb, saveJson, mappers }) {
       }
 
       const { rows } = await pool.query(
-        'insert into result_records (id,submission_id,payload_hash,election_id,scope_id,source_release_id,result_id,geography,provenance,state,lga,ward,polling_unit,result_source,submitted_by,submitted_by_role,result_count,evidence,created_at,updated_at,capture_time,server_receipt_at,record_version) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) on conflict (submission_id) do nothing returning *',
+        'insert into result_records (id,submission_id,payload_hash,election_id,scope_id,source_release_id,result_id,geography,provenance,state,lga,ward,polling_unit,result_source,submitted_by,submitted_by_role,result_count,evidence,created_at,updated_at,capture_time,server_receipt_at,record_version) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) on conflict (submission_id) do nothing returning *',
         [
           record.id,
           record.submissionId,

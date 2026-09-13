@@ -32,7 +32,10 @@ const MEDIA_TYPES = new Map([
   ['text/plain', (bytes) => bytes.length > 0],
   ['text/csv', (bytes) => bytes.length > 0],
 ]);
-const dataUrlPattern = /^data:([^;]+);base64,([A-Za-z0-9+/]*={0,2})$/;
+// MediaRecorder reports its type with codec parameters ("video/webm;codecs=vp8,opus"), which
+// FileReader carries into the data URL. Matching only up to the first ";" rejected every real
+// camera recording as malformed, so the parameters are tolerated here and stripped below.
+const dataUrlPattern = /^data:(.+?);base64,([A-Za-z0-9+/]*={0,2})$/;
 const scannerEndpoint = process.env.EVIDENCE_SCANNER_URL || '';
 const clamdHost = process.env.CLAMD_HOST || '';
 const clamdPort = Number(process.env.CLAMD_PORT || 3310);
@@ -141,7 +144,7 @@ export function createEvidenceRepository({ pool, jsonDb, saveJson, scanner = def
           continue;
         }
         const match = String(item?.data || '').match(dataUrlPattern);
-        const mimeType = String(match?.[1] || '').toLowerCase();
+        const mimeType = String(match?.[1] || '').split(';')[0].trim().toLowerCase();
         const signature = MEDIA_TYPES.get(mimeType);
         if (!match || !signature) throw new Error('Evidence media is malformed or unsupported.');
         const bytes = Buffer.from(match[2], 'base64');
