@@ -19,6 +19,7 @@
     "export:backend": "node scripts/export-backend.mjs"
   },
   "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.102.8",
     "@vitejs/plugin-react": "latest",
@@ -33,6 +34,7 @@
     "react": "latest",
     "react-dom": "latest",
     "react-icons": "^5.6.0",
+    "redis": "^6.2.1",
     "sharp": "^0.35.3",
     "shpjs": "^6.2.0",
     "socket.io": "latest",

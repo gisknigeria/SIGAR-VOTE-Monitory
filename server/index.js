@@ -36,6 +36,7 @@ import cors from "cors";
 
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+import { attachRealtimeCluster } from "./infrastructure/realtime-cluster.js";
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -73,6 +74,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1_000_000,
   perMessageDeflate: false,
 });
+await attachRealtimeCluster(io);
 const activeCameraShares = new Map();
 const loginLimiter = createRateLimitState();
 const generalLimiter = createRateLimitState();
