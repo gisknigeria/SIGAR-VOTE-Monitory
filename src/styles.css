@@ -2220,18 +2220,17 @@ header {
     overflow: hidden;
   }
   .chat-rooms {
-    /* Cap and scroll the room picker. With `overflow: visible` and no ceiling it grew past the
-       panel and pushed the message thread and composer off the bottom of the screen. */
-    flex: 0 0 auto;
-    max-height: 45dvh;
-    padding: 8px;
-    overflow-y: auto;
+    flex: 0 0 10dvh;
+    height: 10dvh;
+    max-height: 10dvh;
+    min-height: 0;
+    padding: 4px 8px;
+    overflow: hidden;
     overflow-x: hidden;
   }
   /* The shared camera empty-state carries a 220px floor that does not fit a phone panel. */
   .chat-rooms .empty-cameras {
-    min-height: 0;
-    padding: 18px 12px;
+    display: none;
   }
   .chat-room-selector-label,
   .chat-room-selector {
@@ -2239,7 +2238,7 @@ header {
   }
   .chat-room-selector-label {
     color: #8ba3bd;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -2250,13 +2249,13 @@ header {
     border-radius: 7px;
     background: #081321;
     color: #e6f1fb;
-    padding: 10px;
+    padding: 6px 10px;
   }
   .chat-rooms > button {
     display: none;
   }
   .chat-create-toggle {
-    display: block;
+    display: none;
     border: 1px solid #8b1e46;
     border-radius: 7px;
     background: #310a18;
