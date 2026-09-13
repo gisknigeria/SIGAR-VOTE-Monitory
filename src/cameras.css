@@ -81,9 +81,17 @@
 .recording-item-when{flex:0 0 auto;font-size:9px;color:#d6c4cc;white-space:nowrap}
 
 .live-fullscreen-overlay{position:fixed;inset:0;z-index:2100;background:#0a0206f5;display:flex;flex-direction:column;padding:18px}
-.live-fullscreen-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;color:#f2dce5}
-.live-fullscreen-head b{display:block;font-size:15px;color:#fff}
-.live-fullscreen-head small{display:block;font-size:10px;color:#d6a9b6;margin-top:3px}
+/* The close control used the global .icon-btn -- borderless, transparent, muted grey -- which
+   is effectively invisible on this near-black overlay. Fullscreen gets a real titled bar and a
+   labelled close button instead. */
+.live-fullscreen-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex:0 0 auto;margin-bottom:12px;padding:12px 14px;border:1px solid #8b1e46;border-radius:10px;background:#260711;color:#f2dce5}
+.live-fullscreen-title{display:flex;flex-direction:column;gap:3px;min-width:0}
+.live-fullscreen-title .live-badge,.live-fullscreen-title .recording-badge{display:inline-flex;align-items:center;width:fit-content;font:700 8px 'JetBrains Mono';letter-spacing:.08em;color:#ff7c8a}
+.live-fullscreen-title .recording-badge{color:var(--gold-300)}
+.live-fullscreen-head b{display:block;font-size:16px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-fullscreen-head small{display:block;font-size:11px;color:#d6a9b6;overflow-wrap:anywhere}
+.live-fullscreen-close{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;min-height:40px;padding:9px 16px;border:1px solid var(--gold-500);border-radius:8px;background:#4a1228;color:var(--gold-300);font-size:12px;font-weight:700;cursor:pointer}
+.live-fullscreen-close:hover{border-color:var(--gold-400);background:#5d1733;color:var(--cream)}
 /* The shared .video-shell centres (and squares) its child, which left the fullscreen player
    sized to content and clipped. Fullscreen stretches instead, and `contain` keeps the whole
    frame visible inside whatever space is left after the header -- never cropped, never scrolled. */

@@ -583,20 +583,24 @@ export default function CameraPanel({
       {fullscreen && (
         <div className="live-fullscreen-overlay">
           <div className="live-fullscreen-head">
-            <div>
+            <div className="live-fullscreen-title">
               {fullscreen.type === "live" ? (
                 <>
-                  <b>{fullscreen.feed.name || "Agent"} — LIVE</b>
+                  <span className="live-badge"><FaCircle size={8} style={{ marginRight: 4 }} />LIVE</span>
+                  <b>{fullscreen.feed.name || "Agent"}</b>
                   <small>{[fullscreen.feed.pollingUnit || fullscreen.feed.station, fullscreen.feed.ward, fullscreen.feed.lga].filter(Boolean).join(" · ") || "Location not assigned"}</small>
                 </>
               ) : (
                 <>
-                  <b>{fullscreen.recording.submittedByName || "Field agent"} — Recording</b>
+                  <span className="recording-badge">RECORDING</span>
+                  <b>{fullscreen.recording.submittedByName || "Field agent"}</b>
                   <small>{formatRecordingWhen(fullscreen.recording.createdAt)} · {[fullscreen.recording.geography?.pollingUnit, fullscreen.recording.geography?.ward, fullscreen.recording.geography?.lga].filter(Boolean).join(" · ") || "Location not assigned"}</small>
                 </>
               )}
             </div>
-            <button className="icon-btn" onClick={() => setFullscreen(null)}><FaTimes /></button>
+            <button type="button" className="live-fullscreen-close" onClick={() => setFullscreen(null)}>
+              <FaTimes /> Close
+            </button>
           </div>
           <div className="live-fullscreen-body video-shell">
             {fullscreen.type === "live" ? (
