@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
 // Base64 inflates raw bytes by ~1.33x, and this rides the existing global JSON
-// body limit (12MB, server/middleware/http.js) rather than widening it just
-// for this route -- 8MB raw stays safely under that after encoding overhead.
-export const MAX_RECORDING_BYTES = 8 * 1024 * 1024;
+// body limit (server/middleware/http.js, MAX_REQUEST_BODY_BYTES in security.js)
+// rather than widening it just for this route -- 40MB raw stays safely under
+// that after encoding overhead.
+export const MAX_RECORDING_BYTES = 40 * 1024 * 1024;
 const key = (id) => `camera-recording:${id}`;
 
 /**

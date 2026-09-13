@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { validateContentLength } from '../security.js';
+import { validateContentLength, MAX_REQUEST_BODY_BYTES } from '../security.js';
 export function configureHttp({ app, isAllowedOrigin }) {
   app.disable("x-powered-by");
   app.set("trust proxy", process.env.TRUST_PROXY === "true" ? 1 : false);
@@ -15,12 +15,10 @@ export function configureHttp({ app, isAllowedOrigin }) {
   );
   // Keep the parser limit aligned with the attachment policy.  This prevents
   // oversized JSON from consuming memory before endpoint-level validation runs.
-  app.use(express.json({ limit: "12mb" }));
+  app.use(express.json({ limit: MAX_REQUEST_BODY_BYTES }));
   app.use(express.urlencoded({ extended: false, limit: "1mb" }));
   app.use((req, res, next) => {
     const bodySize = Number(req.headers["content-length"] || 0);
-    if (bodySize > 12 * 1024 * 1024)
-      return res.status(413).json({ message: "Request body is too large." });
     if (!validateContentLength(bodySize))
       return res.status(413).json({ message: "Request body is too large." });
     res.setHeader("X-Content-Type-Options", "nosniff");

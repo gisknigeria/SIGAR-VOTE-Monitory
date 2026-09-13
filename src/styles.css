@@ -112,6 +112,19 @@ textarea {
 }
 button {
   cursor: pointer;
+  transition: transform 0.08s ease, filter 0.08s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.96);
+  filter: brightness(0.85);
+}
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+  button:active:not(:disabled) {
+    transform: none;
+  }
 }
 .muted {
   color: #7f91a8;
@@ -2969,6 +2982,31 @@ header {
   text-align: center;
   font-size: 9px;
   text-decoration: none;
+}
+.report-document-attachment,
+.report-livestream-attachment button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 60px;
+  padding: 7px 9px;
+  border: 1px solid #8b1e46;
+  border-radius: 7px;
+  background: #310a18;
+  color: #ffd7df;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.report-livestream-attachment {
+  aspect-ratio: 4/3;
+}
+.report-livestream-attachment button {
+  height: 100%;
+  cursor: pointer;
 }
 .area-action-grid {
   display: grid;

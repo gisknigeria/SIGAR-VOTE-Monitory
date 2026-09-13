@@ -53,12 +53,12 @@ export function registerIncidentRoutes({ app, auth, adminOnly, rateLimit, asyncR
           total + Buffer.byteLength(String(item?.data || ""), "utf8"),
         0,
       );
-      if (mediaBytes > 10 * 1024 * 1024)
+      if (mediaBytes > 120 * 1024 * 1024)
         return res
           .status(413)
           .json({
             message:
-              "Incident attachments are too large. Keep the total under 10MB.",
+              "Incident attachments are too large. Keep the total under 120MB.",
           });
       const allowedTypes = new Set([
         "SOS-Emergency",

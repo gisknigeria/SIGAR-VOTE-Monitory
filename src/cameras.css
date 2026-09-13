@@ -46,6 +46,10 @@
 .live-notification-line{font-size:10px;color:#d6c4cc;overflow-wrap:anywhere}
 .live-notification-cta{margin-top:auto;padding-top:8px;font-size:10px;font-weight:700;color:var(--gold-400)}
 .connect-feed.connecting{cursor:default;color:#d6a9b6}
+.connect-feed.connect-failed{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:360px;padding:20px 22px;text-align:center;background:#3a0f1e;border-color:#a53c4b}
+.connect-feed.connect-failed p{margin:0;font-size:12px;line-height:1.6;color:var(--cream)}
+.connect-feed.connect-failed button{border:1px solid var(--gold-500);background:#4a1228;color:var(--gold-300);border-radius:6px;padding:8px 16px;font-size:11px;font-weight:600;cursor:pointer}
+.connect-feed.connect-failed button:hover{border-color:var(--gold-400);color:var(--cream)}
 
 .recordings-browser{display:grid;gap:16px;padding-bottom:10px}
 .recordings-lga-group{border:1px solid #8b1e46;border-radius:9px;background:#260711;padding:12px 14px}

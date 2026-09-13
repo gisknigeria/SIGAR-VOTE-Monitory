@@ -33,6 +33,7 @@ export default function DashboardOverlays({ controller }) {
     setAssignIncidentOpen,
     setCameraPreviewMode,
     setIncidentToAssign,
+    setCameraPanel,
     setSelected,
     setSelfCameraPreview,
     sharingCamera,
@@ -40,6 +41,7 @@ export default function DashboardOverlays({ controller }) {
     switchCamera,
     toggleCamera,
     toggleCameraMicrophone,
+    viewPhoneCamera,
   } = controller;
 
   return (
@@ -171,7 +173,28 @@ export default function DashboardOverlays({ controller }) {
           {selected.media?.length > 0 && (
             <div className="report-media-grid">
               {selected.media.map((item, index) =>
-                item.type === "video" ? (
+                item.type === "livestream" ? (
+                  <div className="report-livestream-attachment" key={index}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCameraPanel(true);
+                        viewPhoneCamera(item.userId);
+                      }}
+                    >
+                      View live stream
+                    </button>
+                  </div>
+                ) : item.type === "document" ? (
+                  <a
+                    className="report-document-attachment"
+                    key={index}
+                    href={item.data}
+                    download={item.name || `report-document-${index + 1}`}
+                  >
+                    {item.name || `Document ${index + 1}`}
+                  </a>
+                ) : item.type === "video" ? (
                   <div className="report-video-attachment" key={index}>
                     <video controls playsInline preload="metadata">
                       <source

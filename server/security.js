@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+export const MAX_MEDIA_BYTES = 40 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 4000;
-const MAX_REQUEST_BODY_BYTES = 20 * 1024 * 1024;
+export const MAX_REQUEST_BODY_BYTES = 170 * 1024 * 1024;
+const IMAGE_MIME_PATTERN = /^image\/(?:png|jpe?g|webp|gif|heic|heif)$/;
+const VIDEO_MIME_PATTERN = /^video\/(?:webm|mp4|quicktime|3gpp|3gpp2|x-msvideo)$/;
+const DOCUMENT_MIME_PATTERN = /^(?:application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.(?:wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|application\/vnd\.ms-excel|application\/vnd\.ms-powerpoint|text\/plain|text\/csv)$/;
 
 export function sanitizeString(value, fallback = '') {
   if (value === null || value === undefined) return fallback;
@@ -25,19 +28,27 @@ export function validateMediaPayload(media) {
       continue;
     }
     const type = String(item.type || '').toLowerCase();
-    if (!['image', 'video'].includes(type)) {
+    if (type === 'livestream') {
+      if (!item.userId || typeof item.userId !== 'string') errors.push('Live stream attachment is missing its source');
+      continue;
+    }
+    if (!['image', 'video', 'document'].includes(type)) {
       errors.push('Unsupported media type');
       continue;
     }
     const data = String(item.data || '');
-    const match = data.match(/^data:(image\/(?:png|jpeg|webp)|video\/(?:webm|mp4));base64,([A-Za-z0-9+/]*={0,2})$/);
+    const match = data.match(/^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]*={0,2})$/i);
     if (!match) {
       errors.push('Unsupported or malformed media payload');
       continue;
     }
-    const mime = match[1];
-    if ((type === 'image') !== mime.startsWith('image/')) {
-      errors.push('Declared media type does not match its MIME type');
+    const mime = match[1].toLowerCase();
+    const mimeMatchesType =
+      (type === 'image' && IMAGE_MIME_PATTERN.test(mime)) ||
+      (type === 'video' && VIDEO_MIME_PATTERN.test(mime)) ||
+      (type === 'document' && DOCUMENT_MIME_PATTERN.test(mime));
+    if (!mimeMatchesType) {
+      errors.push('Unsupported or malformed media payload');
       continue;
     }
     const declaredMime = String(item.mimeType || '').split(';')[0].trim().toLowerCase();

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FaTimes, FaImage, FaVideo, FaCheck, FaShare } from "react-icons/fa";
+import { FaTimes, FaImage, FaVideo, FaCheck, FaShare, FaFileAlt, FaBroadcastTower } from "react-icons/fa";
 
 export default function IncidentNotificationModal({
   notification,
@@ -51,6 +51,8 @@ export default function IncidentNotificationModal({
   const getMediaIcon = (type) => {
     if (type?.startsWith("image")) return <FaImage />;
     if (type?.startsWith("video")) return <FaVideo />;
+    if (type === "document") return <FaFileAlt />;
+    if (type === "livestream") return <FaBroadcastTower />;
     return null;
   };
 

@@ -201,6 +201,7 @@ export default function CameraPanel({
   cameras,
   phoneShares,
   remoteStreams,
+  viewerConnectFailed,
   turnStatus,
   isAdmin,
   authToken,
@@ -583,6 +584,11 @@ export default function CameraPanel({
             {fullscreen.type === "live" ? (
               remoteStreams[fullscreen.feed.userId] ? (
                 <StreamVideo stream={remoteStreams[fullscreen.feed.userId]} watermark={fullscreen.feed} />
+              ) : viewerConnectFailed?.[fullscreen.feed.userId] ? (
+                <div className="connect-feed connect-failed" role="alert">
+                  <p>{viewerConnectFailed[fullscreen.feed.userId]}</p>
+                  <button onClick={() => onView(fullscreen.feed.userId)}>Retry connection</button>
+                </div>
               ) : (
                 <div className="connect-feed connecting">Connecting…</div>
               )

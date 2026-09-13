@@ -553,6 +553,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const [cameraPanel, setCameraPanel] = useState(false);
   const [phoneShares, setPhoneShares] = useState([]);
   const [remoteStreams, setRemoteStreams] = useState({});
+  const [viewerConnectFailed, setViewerConnectFailed] = useState({});
   const [turnStatus, setTurnStatus] = useState({ provider: "checking", region: "", route: "pending" });
   const [sharingCamera, setSharingCamera] = useState(false);
   const [selfCameraPreview, setSelfCameraPreview] = useState(false);
@@ -971,19 +972,36 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
         return "direct";
       }
     };
+    const clearViewerConnectFailed = (userId) =>
+      setViewerConnectFailed((old) => {
+        if (!(userId in old)) return old;
+        const next = { ...old };
+        delete next[userId];
+        return next;
+      });
+    const CONNECT_FAILED_MESSAGE =
+      "Unable to connect — likely a network issue on the agent's device. This session is still being recorded and will be available in Recordings shortly.";
+    const CONNECT_INTERRUPTED_MESSAGE =
+      "Live video connection interrupted. Recording continues in the background.";
     const makePeer = async (key, remoteUserId) => {
       const iceConfiguration = await iceConfigurationPromise;
       const pc = new RTCPeerConnection({
         iceServers: iceConfiguration.iceServers,
       });
+      if (remoteUserId) clearViewerConnectFailed(remoteUserId);
       const connectionTimer = setTimeout(() => {
-        if (pc.connectionState !== "connected" && localCameraStreamRef.current)
-          startOfflineVideoRecording("Live video could not connect");
+        if (pc.connectionState !== "connected") {
+          if (localCameraStreamRef.current)
+            startOfflineVideoRecording("Live video could not connect");
+          if (remoteUserId)
+            setViewerConnectFailed((old) => ({ ...old, [remoteUserId]: CONNECT_FAILED_MESSAGE }));
+        }
       }, 15000);
       pc.onconnectionstatechange = async () => {
         if (pc.connectionState === "connected") {
           clearTimeout(connectionTimer);
           stopOfflineVideoRecording();
+          if (remoteUserId) clearViewerConnectFailed(remoteUserId);
           const route = await detectIceRoute(pc);
           setTurnStatus({ provider: iceConfiguration.provider, region: iceConfiguration.region, route });
           setNotice(route === "turn" ? "Live video connected via Metered TURN" : "Live video connected directly");
@@ -994,6 +1012,11 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
               ? "Live video could not connect"
               : "Live video connection interrupted",
           );
+          if (remoteUserId)
+            setViewerConnectFailed((old) => ({
+              ...old,
+              [remoteUserId]: pc.connectionState === "failed" ? CONNECT_FAILED_MESSAGE : CONNECT_INTERRUPTED_MESSAGE,
+            }));
         }
       };
       pc.onicecandidate = (event) => {
@@ -1153,6 +1176,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
         delete next[userId];
         return next;
       });
+      clearViewerConnectFailed(userId);
     });
     socket.on("camera:viewer:request", async ({ viewerSocketId }) => {
       const stream = localCameraStreamRef.current;
@@ -1169,6 +1193,11 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     socket.on("camera:signal", async ({ from, fromUserId, data }) => {
       let pc = rtcPeersRef.current[from];
       if (data.sdp?.type === "offer") {
+        if (pc && ["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+          pc.close();
+          delete rtcPeersRef.current[from];
+          pc = null;
+        }
         pc ||= await makePeer(from, fromUserId);
         await pc.setRemoteDescription(data.sdp);
         const answer = await pc.createAnswer();
@@ -1879,6 +1908,12 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
       setNotice("Realtime connection is offline. Please retry in a moment.");
       return;
     }
+    setViewerConnectFailed((old) => {
+      if (!(officerId in old)) return old;
+      const next = { ...old };
+      delete next[officerId];
+      return next;
+    });
     socketRef.current.emit("camera:view:request", { officerId });
     setNotice("Connecting to live phone camera...");
     setTimeout(() => setNotice(""), 5000);
@@ -2205,6 +2240,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     updateReady,
     updateUserPassword,
     users,
+    viewerConnectFailed,
     viewPhoneCamera,
     visible,
   };

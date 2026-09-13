@@ -5,13 +5,32 @@ import { connect } from 'node:net';
 import { createId } from '../../security.js';
 
 const MAX_RETENTION_DAYS = 3650;
-const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MAX_BYTES = 40 * 1024 * 1024;
+const isftyp = (bytes) => bytes.length > 8 && bytes.subarray(4, 8).toString('ascii') === 'ftyp';
+const isZipContainer = (bytes) => bytes.subarray(0, 2).toString('ascii') === 'PK';
+const isOleContainer = (bytes) => bytes.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
 const MEDIA_TYPES = new Map([
   ['image/png', (bytes) => bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))],
   ['image/jpeg', (bytes) => bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255]))],
   ['image/webp', (bytes) => bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP'],
+  ['image/gif', (bytes) => bytes.subarray(0, 3).toString('ascii') === 'GIF'],
+  ['image/heic', isftyp],
+  ['image/heif', isftyp],
   ['video/webm', (bytes) => bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))],
-  ['video/mp4', (bytes) => bytes.subarray(4, 8).toString('ascii') === 'ftyp'],
+  ['video/mp4', isftyp],
+  ['video/quicktime', isftyp],
+  ['video/3gpp', isftyp],
+  ['video/3gpp2', isftyp],
+  ['video/x-msvideo', (bytes) => bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 11).toString('ascii') === 'AVI'],
+  ['application/pdf', (bytes) => bytes.subarray(0, 4).toString('ascii') === '%PDF'],
+  ['application/msword', isOleContainer],
+  ['application/vnd.ms-excel', isOleContainer],
+  ['application/vnd.ms-powerpoint', isOleContainer],
+  ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', isZipContainer],
+  ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', isZipContainer],
+  ['application/vnd.openxmlformats-officedocument.presentationml.presentation', isZipContainer],
+  ['text/plain', (bytes) => bytes.length > 0],
+  ['text/csv', (bytes) => bytes.length > 0],
 ]);
 const dataUrlPattern = /^data:([^;]+);base64,([A-Za-z0-9+/]*={0,2})$/;
 const scannerEndpoint = process.env.EVIDENCE_SCANNER_URL || '';
@@ -116,6 +135,11 @@ export function createEvidenceRepository({ pool, jsonDb, saveJson, scanner = def
       const expiresAt = new Date(Date.now() + retention * 86400000).toISOString();
       const refs = [];
       for (const item of Array.isArray(media) ? media : []) {
+        if (item?.type === 'livestream') {
+          if (!item.userId) throw new Error('Live stream attachment is missing its source.');
+          refs.push({ id: createId('evidence'), type: 'livestream', userId: String(item.userId), name: item.name || 'Live camera stream' });
+          continue;
+        }
         const match = String(item?.data || '').match(dataUrlPattern);
         const mimeType = String(match?.[1] || '').toLowerCase();
         const signature = MEDIA_TYPES.get(mimeType);

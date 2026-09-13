@@ -96,6 +96,7 @@ export default function DashboardModals({ controller }) {
     sendChatMessage,
     sendEmergency,
     session,
+    sharingCamera,
     setAreaSearchResult,
     setAssignIncidentOpen,
     setCameraPanel,
@@ -132,6 +133,7 @@ export default function DashboardModals({ controller }) {
     updateOfficer,
     updateUserPassword,
     users,
+    viewerConnectFailed,
     viewPhoneCamera,
   } = controller;
 
@@ -146,6 +148,7 @@ export default function DashboardModals({ controller }) {
             onSave={save}
             isAdmin={canCreateCustomReportType}
             currentUser={session.user}
+            sharingCamera={sharingCamera}
           />
         </Suspense>
       )}
@@ -279,6 +282,7 @@ export default function DashboardModals({ controller }) {
             cameras={cameras}
             phoneShares={phoneShares}
             remoteStreams={remoteStreams}
+            viewerConnectFailed={viewerConnectFailed}
             turnStatus={turnStatus}
             isAdmin={canAdmin}
             authToken={session.token}

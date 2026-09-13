@@ -44,7 +44,8 @@ test('media is stored privately with hash, custody, scan, retention, and restric
 
 test('invalid media, unavailable scans, and oversized objects are quarantined or rejected', async () => {
   const { repository } = fixture();
-  await assert.rejects(repository.protectMediaPayload([{ type: 'document', data: 'data:application/pdf;base64,aGVsbG8=' }]), /malformed or unsupported/);
+  await assert.rejects(repository.protectMediaPayload([{ type: 'document', data: 'data:application/pdf;base64,aGVsbG8=' }]), /does not match its declared media type/);
+  await assert.rejects(repository.protectMediaPayload([{ type: 'document', data: 'data:application/vnd.android.package-archive;base64,aGVsbG8=' }]), /malformed or unsupported/);
   await assert.rejects(repository.protectMediaPayload([{ type: 'image', data: `data:image/png;base64,${png}` }], { scanner: async () => ({ status: 'unavailable', scanner: 'down' }) }), /quarantined/);
   await assert.rejects(repository.protectMediaPayload([{ type: 'image', data: `data:image/png;base64,${png}` }], { maxBytes: 1 }), /size limit/);
 });
