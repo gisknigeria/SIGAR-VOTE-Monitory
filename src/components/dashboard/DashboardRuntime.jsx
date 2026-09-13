@@ -778,6 +778,8 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
           console.error("[camera] Could not save recording on device", error);
           setNotice("Recording could not be saved: device storage is unavailable or full. Free space before continuing.");
         }
+      } else {
+        setNotice("The live stream ended before a video segment was captured.");
       }
     };
     navigator.storage?.persist?.().catch(() => {});

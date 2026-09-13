@@ -33,6 +33,10 @@
 /* Feeds read as a scannable roster, not a wall of tiles: one row per agent, scrolling
    inside its own region so the panel header and tabs stay put while paging through them. */
 .camera-feed-list{display:flex;flex-direction:column;gap:8px;max-height:calc(100dvh - 250px);overflow-y:auto;padding-right:4px}
+
+/* Keep the live view inside the viewport instead of growing the document. */
+.camera-panel{height:calc(100dvh - 66px);overflow:hidden}
+.live-fullscreen-overlay{width:100vw;height:100dvh;box-sizing:border-box;overflow:hidden}
 .camera-feed-row{display:flex;align-items:stretch;gap:10px;padding:10px 12px;border:1px solid #8b1e46;border-radius:8px;background:#260711}
 .camera-feed-row:hover{border-color:var(--gold-500)}
 .camera-feed-main{display:flex;align-items:center;gap:12px;flex:1;min-width:0;padding:0;border:0;background:transparent;color:#f2dce5;text-align:left;font:inherit;cursor:pointer}

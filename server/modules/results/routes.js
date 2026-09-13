@@ -123,23 +123,27 @@ export function registerResultRoutes({ app, auth, rateLimit, adminOnly, superAdm
       const geography = store.canonicalGeography
         ? store.canonicalGeography({ state, lga, ward, pollingUnit })
         : { country: 'Nigeria', state, lga, ward, pollingUnit, scopeId: deployment.scopeId };
-      const sourceReleaseId = String(req.body.referenceReleaseId || req.body.referenceDataReleaseId || '').trim();
-      if (!sourceReleaseId || typeof store.referenceDataReleases !== 'function')
+      const requestedReleaseId = String(req.body.referenceReleaseId || req.body.referenceDataReleaseId || '').trim();
+      if (typeof store.referenceDataReleases !== 'function')
         return res.status(400).json({ message: 'An approved reference data release is required for operational records.' });
       const approvedReleases = await store.referenceDataReleases({ status: 'approved' });
-      const sourceRelease = approvedReleases.find((release) => release.id === sourceReleaseId);
-      if (!sourceRelease)
-        return res.status(400).json({ message: 'The referenced source release is not approved or does not exist.' });
-      if (String(sourceRelease.scopeId || sourceRelease.records?.[0]?.scopeId || deployment.scopeId) !== String(deployment.scopeId))
-        return res.status(400).json({ message: 'The referenced source release is outside the active deployment scope.' });
-      const covered = (sourceRelease.records || []).some((record) =>
+      const coversGeography = (release) => (release.records || []).some((record) =>
         record.validationStatus !== 'quarantined' &&
         (!record.state || normalizeKey(record.state) === normalizeKey(state)) &&
         (!record.lga || normalizeKey(record.lga) === normalizeKey(lga)) &&
         (!record.ward || normalizeKey(record.ward) === normalizeKey(ward)) &&
         (!record.pollingUnit || normalizeKey(record.pollingUnit) === normalizeKey(pollingUnit)),
       );
-      if (!covered)
+      const sourceRelease = requestedReleaseId
+        ? approvedReleases.find((release) => release.id === requestedReleaseId)
+        : [...approvedReleases]
+          .filter(coversGeography)
+          .sort((left, right) => String(right.ingestedAt || '').localeCompare(String(left.ingestedAt || '')))[0];
+      if (!sourceRelease)
+        return res.status(400).json({ message: requestedReleaseId ? 'The referenced source release is not approved or does not exist.' : 'An approved reference data release covering this polling unit is required for operational records.' });
+      if (String(sourceRelease.scopeId || sourceRelease.records?.[0]?.scopeId || deployment.scopeId) !== String(deployment.scopeId))
+        return res.status(400).json({ message: 'The referenced source release is outside the active deployment scope.' });
+      if (!coversGeography(sourceRelease))
         return res.status(400).json({ message: 'The referenced approved source release does not cover this geography.' });
       const submissionId = syncEnvelope.submissionId;
       const normalizedPayload = {
@@ -148,6 +152,7 @@ export function registerResultRoutes({ app, auth, rateLimit, adminOnly, superAdm
         lga,
         ward,
         pollingUnit,
+        referenceReleaseId: sourceRelease.id,
         lat,
         lng,
         results: entries,
@@ -187,7 +192,7 @@ export function registerResultRoutes({ app, auth, rateLimit, adminOnly, superAdm
             verificationStatus: 'unverified',
             electionId: sourceRelease.records?.[0]?.electionId || deployment.electionId,
             sourceVersion: sourceRelease.sourceVersion,
-            sourceReleaseId,
+            sourceReleaseId: sourceRelease.id,
           })
         : {
             classification: 'field-observed',
@@ -195,7 +200,7 @@ export function registerResultRoutes({ app, auth, rateLimit, adminOnly, superAdm
             source: 'manual-submission',
             sourceVersion: sourceRelease.sourceVersion,
             electionId: sourceRelease.records?.[0]?.electionId || deployment.electionId,
-            sourceReleaseId,
+            sourceReleaseId: sourceRelease.id,
             recordedBy: req.user.id,
             recordedAt: createdAt,
             verificationStatus: 'unverified',
@@ -210,7 +215,7 @@ export function registerResultRoutes({ app, auth, rateLimit, adminOnly, superAdm
         payloadHash,
         electionId: sourceRelease.records?.[0]?.electionId || deployment.electionId,
         scopeId: deployment.scopeId,
-        sourceReleaseId,
+        sourceReleaseId: sourceRelease.id,
         captureTime: syncEnvelope.captureTime,
         serverReceiptTime: syncEnvelope.serverReceiptTime,
         recordVersion: syncEnvelope.recordVersion,
