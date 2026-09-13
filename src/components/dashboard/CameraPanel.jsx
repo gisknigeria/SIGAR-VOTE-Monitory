@@ -142,29 +142,40 @@ function StreamVideo({ src, stream, muted = false, showControls = true, watermar
     }
     const video = ref.current;
     try {
+      if (typeof MediaRecorder === "undefined") throw new Error("Recording is not supported in this browser");
       const source =
         stream || video?.captureStream?.() || video?.mozCaptureStream?.();
       if (!source)
         throw new Error("Recording is not supported in this browser");
+      if (!source.getVideoTracks?.().length) throw new Error("This stream has no video track to record");
       const prepared = watermark ? await createWatermarkedStream(source, watermark) : { stream: source, cleanup: () => {} };
       chunksRef.current = [];
-      const recorder = new MediaRecorder(prepared.stream, {
-        mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-          ? "video/webm;codecs=vp9,opus"
-          : "video/webm",
-      });
+      const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+        .find((type) => MediaRecorder.isTypeSupported?.(type));
+      const recorder = new MediaRecorder(prepared.stream, mimeType ? { mimeType } : undefined);
       recorder.ondataavailable = (event) => {
         if (event.data?.size) chunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setRecording(false);
+        prepared.cleanup();
+        alert("The live stream recorder stopped unexpectedly. Please try again.");
       };
       recorder.onstop = () => {
         setRecording(false);
         prepared.cleanup();
-        const blob = new Blob(chunksRef.current, { type: "video/webm" });
+        if (!chunksRef.current.length) {
+          alert("No video was captured. Keep the live stream open and try again.");
+          return;
+        }
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || mimeType || "video/webm" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `election-monitor-recording-${Date.now()}.webm`;
+        link.download = `election-monitor-recording-${Date.now()}.${(recorder.mimeType || mimeType || "video/webm").includes("mp4") ? "mp4" : "webm"}`;
+        document.body.appendChild(link);
         link.click();
+        link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       };
       recorderRef.current = recorder;
@@ -490,30 +501,32 @@ export default function CameraPanel({
           <span>Record all live feeds to this device</span>
         </label>
       )}
-      <div className="camera-grid compact">
+      <div className="camera-feed-list">
         {feeds.map((feed) =>
           feed.feedType === "Phone" ? (
             <article
-              className="camera-card agent-feed-card"
+              className="camera-feed-row"
               key={feed.id}
               title={`${feed.name || "Agent"} — ${feed.pollingUnit || feed.station || "Polling unit not assigned"}`}
             >
-              <button type="button" className="live-notification" onClick={() => viewLiveFeed(feed)}>
+              <button type="button" className="camera-feed-main" onClick={() => viewLiveFeed(feed)}>
                 <span className="live-badge">
                   <FaCircle size={8} style={{ marginRight: 3 }} />
                   LIVE
                 </span>
-                <b>{feed.name || "Agent"} is live</b>
-                <small>{feed.role || "Agent"}</small>
-                <span className="live-notification-line">
-                  Registered to: {[feed.pollingUnit || feed.station, feed.ward, feed.lga].filter(Boolean).join(" · ") || "Not assigned"}
+                <span className="camera-feed-text">
+                  <b>{feed.name || "Agent"}</b>
+                  <small>{feed.role || "Agent"}</small>
+                  <span className="camera-feed-line">
+                    {[feed.pollingUnit || feed.station, feed.ward, feed.lga].filter(Boolean).join(" · ") || "Not assigned"}
+                  </span>
+                  <span className="camera-feed-line">
+                    At: {feed.location?.label || (Number.isFinite(Number(feed.lat)) && Number.isFinite(Number(feed.lng)) ? `${Number(feed.lat).toFixed(5)}, ${Number(feed.lng).toFixed(5)}` : "Waiting for GPS")}
+                  </span>
                 </span>
-                <span className="live-notification-line">
-                  Currently at: {feed.location?.label || (Number.isFinite(Number(feed.lat)) && Number.isFinite(Number(feed.lng)) ? `${Number(feed.lat).toFixed(5)}, ${Number(feed.lng).toFixed(5)}` : "Waiting for GPS")}
-                </span>
-                <span className="live-notification-cta">View live stream →</span>
+                <span className="camera-feed-cta">View →</span>
               </button>
-              <div className="camera-actions">
+              <div className="camera-feed-actions">
                 {feed.lat && (
                   <button onClick={() => onShowMap(feed)}>Show on map</button>
                 )}
@@ -523,17 +536,15 @@ export default function CameraPanel({
               </div>
             </article>
           ) : (
-            <article className="camera-card" key={feed.id}>
-              <div className="video-shell">
+            <article className="camera-feed-row" key={feed.id}>
+              <div className="camera-feed-thumb">
                 <StreamVideo src={feed.url} muted />
               </div>
-              <div className="camera-meta">
-                <div>
-                  <b>{feed.name}</b>
-                  <small>
-                    {feed.feedType} / {feed.lat.toFixed(4)}, {feed.lng.toFixed(4)}
-                  </small>
-                </div>
+              <div className="camera-feed-text">
+                <b>{feed.name}</b>
+                <small>
+                  {feed.feedType} / {feed.lat.toFixed(4)}, {feed.lng.toFixed(4)}
+                </small>
                 <span
                   className={
                     feed.feedType === "Drone" ? "live-badge" : "online-badge"
@@ -541,6 +552,9 @@ export default function CameraPanel({
                 >
                   {feed.feedType === "Drone" ? "DRONE" : "ONLINE"}
                 </span>
+              </div>
+              <div className="camera-feed-actions">
+                <button onClick={() => onShowMap(feed)}>Show on map</button>
                 {isAdmin && (
                   <button
                     className="camera-delete"
@@ -549,9 +563,6 @@ export default function CameraPanel({
                     Delete
                   </button>
                 )}
-              </div>
-              <div className="camera-actions">
-                <button onClick={() => onShowMap(feed)}>Show on map</button>
               </div>
             </article>
           ),

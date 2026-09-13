@@ -77,23 +77,35 @@ export default function StreamVideo({ src, stream, muted = false, showControls =
     }
     const video = videoRef.current;
     try {
+      if (typeof MediaRecorder === "undefined") throw new Error("Recording is not supported in this browser");
       const source = stream || video?.captureStream?.() || video?.mozCaptureStream?.();
       if (!source) throw new Error("Recording is not supported in this browser");
+      if (!source.getVideoTracks?.().length) throw new Error("This stream has no video track to record");
       chunksRef.current = [];
-      const recorder = new MediaRecorder(source, {
-        mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" : "video/webm",
-      });
+      const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+        .find((type) => MediaRecorder.isTypeSupported?.(type));
+      const recorder = new MediaRecorder(source, mimeType ? { mimeType } : undefined);
       recorder.ondataavailable = (event) => {
         if (event.data?.size) chunksRef.current.push(event.data);
       };
+      recorder.onerror = () => {
+        setRecording(false);
+        alert("The live stream recorder stopped unexpectedly. Please try again.");
+      };
       recorder.onstop = () => {
         setRecording(false);
-        const blob = new Blob(chunksRef.current, { type: "video/webm" });
+        if (!chunksRef.current.length) {
+          alert("No video was captured. Keep the live stream open and try again.");
+          return;
+        }
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || mimeType || "video/webm" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `election-monitor-recording-${Date.now()}.webm`;
+        link.download = `election-monitor-recording-${Date.now()}.${(recorder.mimeType || mimeType || "video/webm").includes("mp4") ? "mp4" : "webm"}`;
+        document.body.appendChild(link);
         link.click();
+        link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       };
       recorderRef.current = recorder;

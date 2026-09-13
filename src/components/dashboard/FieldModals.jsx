@@ -205,7 +205,8 @@ const ReportTypeIcon = ({ type, size = 14, color = "currentColor" }) => {
 };
 
 export function PollingResultForm({ user, point, parties, onClose, onSave }) {
-  const [submitting, setSubmitting] = useState(false);
+  const [submitState, setSubmitState] = useState("idle");
+  const submitting = submitState === "submitting";
   const isAgent = user.role === "Agent";
   const isSupervisor = user.role === "Supervisor";
   const canChooseZone = ["Admin", "Super Admin"].includes(user.role);
@@ -278,16 +279,26 @@ export function PollingResultForm({ user, point, parties, onClose, onSave }) {
     <div className="modal-backdrop">
       <form
         className="modal polling-result-modal"
+        onInvalidCapture={() => setSubmitState("idle")}
         onSubmit={async (event) => {
           event.preventDefault();
           if (submitting) return;
           const results = rows
             .filter((row) => row.party && row.votes !== "")
             .map((row) => ({ party: row.party, votes: Number(row.votes) }));
-          if (!results.length) return setError("Add at least one party and vote number.");
-          if (!photo) return setError("A photograph of the signed result is required.");
-          if (!assignment.pollingUnit) return setError("Select the polling unit being reported.");
-          setSubmitting(true);
+          if (!results.length) {
+            setSubmitState("idle");
+            return setError("Add at least one party and vote number.");
+          }
+          if (!photo) {
+            setSubmitState("idle");
+            return setError("A photograph of the signed result is required.");
+          }
+          if (!assignment.pollingUnit) {
+            setSubmitState("idle");
+            return setError("Select the polling unit being reported.");
+          }
+          setSubmitState("submitting");
           try {
             await onSave({
               state: assignment.state,
@@ -302,7 +313,7 @@ export function PollingResultForm({ user, point, parties, onClose, onSave }) {
           } catch (saveError) {
             setError(saveError.message || "Could not submit the result. Please try again.");
           } finally {
-            setSubmitting(false);
+            setSubmitState("idle");
           }
         }}
       >
@@ -363,8 +374,8 @@ export function PollingResultForm({ user, point, parties, onClose, onSave }) {
         {error && <div className="error">{error}</div>}
         <div className="actions">
           <button type="button" className="ghost" onClick={onClose} disabled={submitting}>Cancel</button>
-          <button className="primary" disabled={!parties.length || submitting} aria-busy={submitting}>
-            {submitting ? "Submitting…" : "Submit result now"}
+          <button type="submit" className="primary" disabled={!parties.length || submitting} aria-busy={submitting || submitState === "clicked"} onClick={() => setSubmitState("clicked")}>
+            {submitting || submitState === "clicked" ? "Submitting…" : "Submit result now"}
           </button>
         </div>
       </form>
