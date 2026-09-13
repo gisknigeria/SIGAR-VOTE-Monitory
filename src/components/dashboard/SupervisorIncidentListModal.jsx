@@ -219,13 +219,13 @@ export default function SupervisorIncidentListModal({
                             display: "inline-block",
                             padding: "0.25rem 0.75rem",
                             backgroundColor:
-                              incident.status === "Resolved"
+                              String(incident.status || "").toLowerCase() === "resolved"
                                 ? "#d1fae5"
                                 : incident.status === "In Progress"
                                   ? "#fef3c7"
                                   : "#e0e7ff",
                             color:
-                              incident.status === "Resolved"
+                              String(incident.status || "").toLowerCase() === "resolved"
                                 ? "#065f46"
                                 : incident.status === "In Progress"
                                   ? "#92400e"

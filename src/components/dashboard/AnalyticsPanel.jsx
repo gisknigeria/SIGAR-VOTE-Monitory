@@ -97,8 +97,8 @@ export default function AnalyticsPanel({
   const anythingToday = incidents.filter((i) => isToday(i.createdAt)).length;
   const run = async (tool) => setResult(await onTool(tool));
   const totalIncidents = incidents.length;
-  const resolvedCount = incidents.filter(i => i.status === "Resolved").length;
-  const openCount = incidents.filter(i => i.status === "Open" || !i.status).length;
+  const resolvedCount = incidents.filter(i => String(i.status || "").toLowerCase() === "resolved").length;
+  const openCount = incidents.filter(i => !["resolved", "closed"].includes(String(i.status || "").toLowerCase())).length;
   const resolvedPct = totalIncidents ? Math.round((resolvedCount / totalIncidents) * 100) : 0;
 
   // Donut chart values for severity

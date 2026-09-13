@@ -219,7 +219,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
   }, [focusParty, partyAnalysis, onPartyMapChange]);
   const actionableIntel = useMemo(() => {
     const critical = incidents.filter(i => i.severity === "Critical" || i.reportType === "SOS-Emergency").length;
-    const open = incidents.filter(i => !["Resolved", "Submitted"].includes(i.status)).length;
+    const open = incidents.filter(i => !["resolved", "closed", "submitted"].includes(String(i.status || "").toLowerCase())).length;
     return { critical, otherOpen: Math.max(0, open - critical) };
   }, [incidents]);
   const postElection = useMemo(() => {
@@ -299,7 +299,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
       });
       const consistencyRate = comparable ? matching / comparable : 0.5;
       const authoredIncidents = incidents.filter((item) => item.createdBy === creatorId && item.reportType !== POLLING_RESULT_TYPE);
-      const closureRate = authoredIncidents.length ? authoredIncidents.filter((item) => item.status === "Resolved").length / authoredIncidents.length : 1;
+      const closureRate = authoredIncidents.length ? authoredIncidents.filter((item) => ["resolved", "closed"].includes(String(item.status || "").toLowerCase())).length / authoredIncidents.length : 1;
       return { id: creatorId, name: people.get(creatorId)?.name || creatorId, role: people.get(creatorId)?.role || rows[0]?.resultSource || "Field", submissions: rows.length, evidenceRate, consistencyRate, closureRate };
     });
     const maxSubmissions = Math.max(1, ...performance.map((item) => item.submissions));
