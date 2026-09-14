@@ -209,6 +209,21 @@ export default function StakeholderDashboard({ session, onLogout }) {
   );
   const activePhase = PHASES.find((item) => item.id === phase);
 
+  const summaryCards = [
+    { label: "Coverage status", value: data?.summary?.coverageState || "—", sub: data?.summary?.coverageNarrative || "Pending" },
+    { label: "Decision confidence", value: data ? `${data.summary?.decisionConfidence ?? 0}%` : "—", sub: "Based on return depth and risk signals" },
+    { label: "Current leader", value: data?.leading ? data.leading.party : "—", sub: data?.leading ? `${num(data.leading.margin)} vote lead` : "No lead established" },
+    { label: "Fastest LGA", value: data?.summary?.leadingLga ? data.summary.leadingLga.lga : "—", sub: data?.summary?.leadingLga ? `${data.summary.leadingLga.reporting} units reported` : "No reporting yet" },
+  ];
+
+  const readinessCards = phase === "pre-election" ? [
+    { label: "Active agents", value: num(data?.preElection?.agentCount ?? 0), sub: `${pct(data?.preElection?.staffingCoverage ?? 0)} of polling units covered` },
+    { label: "Supervisors", value: num(data?.preElection?.supervisorCount ?? 0), sub: "Deployment and oversight coverage" },
+    { label: "Training completion", value: `${pct(data?.preElection?.trainingCompletion ?? 0)}`, sub: "Field orientation and process readiness" },
+    { label: "Equipment readiness", value: `${pct(data?.preElection?.equipmentReadiness ?? 0)}`, sub: "BVAS and critical equipment availability" },
+    { label: "Logistics readiness", value: `${pct(data?.preElection?.logisticsReadiness ?? 0)}`, sub: `${num(data?.preElection?.totalAvailableResources ?? 0)} / ${num(data?.preElection?.totalRequiredResources ?? 0)} resources ready` },
+  ] : [];
+
   return (
     <main className="stakeholder-shell">
       <header className="sh-head">
@@ -263,7 +278,56 @@ export default function StakeholderDashboard({ session, onLogout }) {
             <StatTile label="Incidents reported" value={num(data.incidents.total)} sub="Counts only" />
           </section>
 
+          <section className="sh-panel sh-panel-wide sh-summary-panel">
+            <div className="sh-summary-header">
+              <div>
+                <h2>Stakeholder summary</h2>
+                <p className="sh-panel-sub">{data.summary?.keyMessage}</p>
+              </div>
+              <div className="sh-confidence-badge" aria-live="polite">{data.summary?.decisionConfidence ?? 0}% confidence</div>
+            </div>
+            <div className="sh-summary-grid">
+              {summaryCards.map((card) => (
+                <div key={card.label} className="sh-summary-card">
+                  <span>{card.label}</span>
+                  <strong>{card.value}</strong>
+                  <small>{card.sub}</small>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {phase === "pre-election" && readinessCards.length > 0 && (
+            <section className="sh-panel sh-panel-wide">
+              <h2>Pre-election readiness</h2>
+              <p className="sh-panel-sub">Operational capacity before the polls open.</p>
+              <div className="sh-readiness-grid">
+                {readinessCards.map((card) => (
+                  <div key={card.label} className="sh-readiness-card">
+                    <span>{card.label}</span>
+                    <strong>{card.value}</strong>
+                    <small>{card.sub}</small>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="sh-grid">
+            <article className="sh-panel">
+              <h2>Watchlist</h2>
+              <p className="sh-panel-sub">What to watch before the next leadership decision.</p>
+              <ul className="sh-watchlist">
+                {(data.watchlist || []).map((item) => (
+                  <li key={item.label} className={`sh-watch-item ${item.tone}`}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                    <small>{item.detail}</small>
+                  </li>
+                ))}
+              </ul>
+            </article>
+
             <article className="sh-panel sh-panel-wide">
               <h2>Where results have come in</h2>
               <p className="sh-panel-sub">Shaded by how many polling units have reported in each LGA. Hover an LGA for its figures.</p>

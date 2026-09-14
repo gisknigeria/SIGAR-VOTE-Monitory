@@ -33,6 +33,9 @@ test('tallies parties, coverage and turnout from submitted results', () => {
   assert.deepEqual(view.parties.map((p) => [p.party, p.votes]), [['PDP', 200], ['APC', 150]]);
   assert.equal(view.leading.party, 'PDP');
   assert.equal(view.leading.margin, 50);
+  assert.match(view.summary.coverageState, /monitor|early|healthy/i);
+  assert.ok(view.watchlist.length >= 1);
+  assert.ok(view.summary.decisionConfidence >= 0);
 });
 
 test('a lead on partial returns is never reported as decisive', () => {
@@ -81,6 +84,36 @@ test('incidents are reduced to counts, never detail', () => {
   for (const leak of ['agent-7', 'evidence-9', 'names and details', 'PU 9', 'W1']) {
     assert.equal(serialized.includes(leak), false, `stakeholder payload must not contain "${leak}"`);
   }
+});
+
+test('pre-election readiness includes staffing, training and equipment signals the stakeholder can act on', () => {
+  const view = buildStakeholderOverview({
+    incidents: [],
+    phase: 'pre-election',
+    users: [
+      { id: 'a1', role: 'Agent', active: true, lga: 'AFIJIO', ward: 'W1', pollingUnit: 'PU 1' },
+      { id: 'a2', role: 'Agent', active: true, lga: 'AFIJIO', ward: 'W1', pollingUnit: 'PU 2' },
+      { id: 's1', role: 'Supervisor', active: true, lga: 'AFIJIO' },
+      { id: 'a3', role: 'Agent', active: false, lga: 'ATIBA' },
+    ],
+    tasks: [
+      { title: 'Agent training', status: 'completed', description: 'BVAS onboarding' },
+      { title: 'Supervisor briefing', status: 'open', description: 'Field procedures' },
+    ],
+    resourceReadiness: [
+      { resourceType: 'BVAS', required: 10, available: 8, arrived: 8 },
+      { resourceType: 'Materials', required: 8, available: 5, arrived: 5 },
+    ],
+    scope,
+  });
+
+  assert.equal(view.preElection.agentCount, 2);
+  assert.equal(view.preElection.supervisorCount, 1);
+  assert.equal(view.preElection.staffingCoverage, 20);
+  assert.equal(view.preElection.trainingCompletion, 50);
+  assert.equal(view.preElection.equipmentReadiness, 80);
+  assert.ok(view.preElection.logisticsReadiness >= 0);
+  assert.ok(view.summary.coverageState === 'Low reporting' || view.summary.coverageState === 'Early reporting');
 });
 
 test('turnout is reported as unavailable rather than invented when no register is loaded', () => {

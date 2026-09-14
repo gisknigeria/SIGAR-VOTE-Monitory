@@ -39,9 +39,19 @@ export function registerStakeholderRoutes({ app, auth, rateLimit, asyncRoute, st
       }
 
       res.set('Cache-Control', 'private, max-age=15');
+      const [incidents, users, resourceReadiness, tasks] = await Promise.all([
+        store.incidents(),
+        store.users(),
+        store.resourceAdequacy ? store.resourceAdequacy() : [],
+        store.tasks ? store.tasks() : [],
+      ]);
+
       res.json(
         buildStakeholderOverview({
-          incidents: await store.incidents(),
+          incidents,
+          users,
+          resourceReadiness,
+          tasks,
           registeredVoters,
           registeredVotersBasis,
           phase,
