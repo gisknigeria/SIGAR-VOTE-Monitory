@@ -124,12 +124,6 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
     };
     const prompt = `Act as a senior neutral survey analyst. Analyze only the supplied aggregate results from a campaign voter survey. Do not invent facts, forecast an election, target individuals, or recommend manipulation or partisan persuasion. Clearly distinguish what respondents said from what the survey can support. Give practical, ethical campaign planning implications without micro-targeting. Return no more than 500 words with these plain-text sections: EXECUTIVE SUMMARY, STRONGEST SIGNALS, IMPORTANT DIFFERENCES, WHAT TO DO NEXT, LIMITATIONS.\n\nAGGREGATE SURVEY DATA:\n${JSON.stringify(context)}`;
 
-    if (process.env.GROQ_API_KEY && callGroqWithFallback) {
-      try {
-        const result = await callGroqWithFallback(prompt);
-        if (String(result.text || '').trim()) return res.json({ analysis: result.text, provider: 'groq', model: result.model });
-      } catch (error) { console.error('[survey-ai] Groq failed:', error.message); }
-    }
     if (geminiApiKeys.length) {
       const models = [process.env.GEMINI_MODEL || 'gemini-2.0-flash', process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite'];
       for (const model of models) {
@@ -147,6 +141,12 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
           } catch (error) { console.error(`[survey-ai] Gemini ${model} failed:`, error.message); }
         }
       }
+    }
+    if (process.env.GROQ_API_KEY && callGroqWithFallback) {
+      try {
+        const result = await callGroqWithFallback(prompt);
+        if (String(result.text || '').trim()) return res.json({ analysis: result.text, provider: 'groq', model: result.model });
+      } catch (error) { console.error('[survey-ai] Groq failed:', error.message); }
     }
     if (process.env.OPENAI_API_KEY) {
       const call = async (model) => {
