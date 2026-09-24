@@ -2,9 +2,9 @@ import { sanitizeString } from "../security.js";
 export function createAiProviders({}) {
   const openAiPrimaryModel = process.env.OPENAI_MODEL || "gpt-5.6-terra";
   const openAiFallbackModel = process.env.OPENAI_FALLBACK_MODEL || "gpt-5.6-luna";
-  const groqPrimaryModel = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+  const groqPrimaryModel = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
   const groqFallbackModel =
-    process.env.GROQ_FALLBACK_MODEL || "openai/gpt-oss-20b";
+    process.env.GROQ_FALLBACK_MODEL || "llama-3.3-70b-versatile";
   const groqNewsModel = process.env.GROQ_NEWS_MODEL || "groq/compound-mini";
   const geminiVisionModel =
     process.env.GEMINI_VISION_MODEL || "gemini-3.5-flash-lite";
@@ -96,22 +96,18 @@ export function createAiProviders({}) {
     return body.choices?.[0]?.message?.content || "";
   };
   const callGroqWithFallback = async (prompt) => {
-    try {
-      return {
-        text: await callGroq(prompt, groqPrimaryModel),
-        model: groqPrimaryModel,
-      };
-    } catch (primaryError) {
-      console.error(
-        "[groq] primary failed:",
-        primaryError.status || "",
-        primaryError.message,
-      );
-      return {
-        text: await callGroq(prompt, groqFallbackModel),
-        model: groqFallbackModel,
-      };
+    const models = [...new Set([groqPrimaryModel, groqFallbackModel, "openai/gpt-oss-20b", "llama-3.3-70b-versatile"])];
+    let lastError;
+    for (const model of models) {
+      try {
+        const text = await callGroq(prompt, model);
+        if (String(text || '').trim()) return { text, model };
+      } catch (error) {
+        lastError = error;
+        console.error(`[groq] ${model} failed:`, error.status || "", error.message);
+      }
     }
+    throw lastError || new Error("No Groq model returned usable analysis.");
   };
   const normalizeNewsTitle = (value, articleUrl = "") => {
     const normalized = sanitizeString(

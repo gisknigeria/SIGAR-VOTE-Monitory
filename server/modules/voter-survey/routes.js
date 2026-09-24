@@ -125,7 +125,7 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
     const prompt = `Act as a senior neutral survey analyst. Analyze only the supplied aggregate results from a campaign voter survey. Do not invent facts, forecast an election, target individuals, or recommend manipulation or partisan persuasion. Clearly distinguish what respondents said from what the survey can support. Give practical, ethical campaign planning implications without micro-targeting. Return no more than 500 words with these plain-text sections: EXECUTIVE SUMMARY, STRONGEST SIGNALS, IMPORTANT DIFFERENCES, WHAT TO DO NEXT, LIMITATIONS.\n\nAGGREGATE SURVEY DATA:\n${JSON.stringify(context)}`;
 
     if (geminiApiKeys.length) {
-      const models = [process.env.GEMINI_MODEL || 'gemini-2.0-flash', process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite'];
+      const models = [...new Set([process.env.GEMINI_MODEL || 'gemini-3.6-flash', process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'])];
       for (const model of models) {
         for (const apiKey of geminiApiKeys) {
           try {
