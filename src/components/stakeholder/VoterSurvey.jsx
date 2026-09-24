@@ -499,7 +499,7 @@ export default function VoterSurvey({ token }) {
             : "Voter survey"}
         </p>
         <p className="sh-headline-sub">
-          {num(data.filter.responses)} people{filter.lga ? ` in ${data.filter.lga}` : ` across ${num(data.source.lgas)} LGAs`}{filter.respondent ? ` · ${filter.respondent}` : ""}. A campaign survey, not a random sample of voters. Read with the warnings under Data quality.
+          {num(data.filter.responses)} people{filter.lga ? ` in ${data.filter.lga}` : ` across ${num(data.source.lgas)} LGAs`}{filter.respondent ? ` · ${filter.respondent}` : ""}. A campaign survey, not a random sample of voters.
         </p>
       </section>
 

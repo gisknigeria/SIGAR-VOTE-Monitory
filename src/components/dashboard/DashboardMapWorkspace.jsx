@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { MdPoll } from "react-icons/md";
 
 const VoterSurvey = lazy(() => import("../stakeholder/VoterSurvey.jsx"));
 
@@ -35,7 +34,6 @@ function VoterSurveyOverlay({ token, onClose }) {
 }
 
 export default function DashboardMapWorkspace({ controller }) {
-  const [surveyOpen, setSurveyOpen] = useState(false);
   const {
     addArea,
     addToolPoint,
@@ -112,7 +110,7 @@ export default function DashboardMapWorkspace({ controller }) {
     selectedBoundaryState,
     session,
     setCameraPanel,
-    setCoords,
+    surveyOpen,
     setDataLayer,
     setEmergencyOpen,
     setFocusedOfficerId,
@@ -128,6 +126,7 @@ export default function DashboardMapWorkspace({ controller }) {
     setSelected,
     setSelectedBoundaryLabel,
     setSelectedBoundaryState,
+    setSurveyOpen,
     setShowBoundaryNames,
     setShowLgaBorders,
     setShowReports,
@@ -397,14 +396,6 @@ export default function DashboardMapWorkspace({ controller }) {
             >
               <MdAssessment />
             </button>
-            {canAdmin && <button
-              className={`map-action election-phase-action voter-survey-action${surveyOpen ? " active" : ""}`}
-              onClick={() => setSurveyOpen(true)}
-              title="Voter survey"
-              aria-label="Open voter survey"
-            >
-              <MdPoll />
-            </button>}
             <button
               className={`map-action emergency-open ${sosHolding ? "sos-holding" : ""}`}
               {...sosHoldProps}

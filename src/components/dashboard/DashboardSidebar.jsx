@@ -1,3 +1,5 @@
+import { MdPoll } from "react-icons/md";
+
 export default function DashboardSidebar({ controller }) {
   const {
     areas,
@@ -55,6 +57,7 @@ export default function DashboardSidebar({ controller }) {
     setPartyManagerOpen,
     setProfileOpen,
     setSearch,
+    setSurveyOpen,
     setSelected,
     setSituationalOpen,
     setSupervisorIncidentsOpen,
@@ -243,6 +246,11 @@ export default function DashboardSidebar({ controller }) {
                 {canAdmin && (
                   <button onClick={() => setPartyManagerOpen(true)}>
                     <FaUserCog /> Political Parties
+                  </button>
+                )}
+                {canAdmin && (
+                  <button onClick={() => { setSurveyOpen(true); setOperationsOpen(false); }}>
+                    <MdPoll /> Voter Survey
                   </button>
                 )}
               </div>}
