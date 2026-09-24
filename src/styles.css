@@ -4767,6 +4767,19 @@ body.resizing-sidebar {
   background: #1d4ed8;
   color: #fff;
 }
+.map-top-left .voter-survey-action {
+  order: 13;
+}
+.map-action.voter-survey-action {
+  border-color: #c084fc;
+  background: #6b21a8;
+}
+.map-action.voter-survey-action:hover,
+.map-action.voter-survey-action.active {
+  border-color: #e9d5ff;
+  background: #7e22ce;
+  color: #fff;
+}
 .map-action.clear-tools-btn.active {
   border-color: #f87171;
   background: #2a1016;

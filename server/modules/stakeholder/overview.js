@@ -246,6 +246,11 @@ export function buildStakeholderOverview({
     equipmentReadiness,
     totalRequiredResources: resourceReadiness.reduce((sum, item) => sum + (Number(item.required) || 0), 0),
     totalAvailableResources: resourceReadiness.reduce((sum, item) => sum + (Number(item.available || item.arrived || 0) || 0), 0),
+    // A percentage of nothing reads as "0% ready", which is a false alarm. These say whether
+    // anything has been recorded at all, so the view can show "No data yet" instead.
+    hasTrainingData: trainingTasks.length > 0,
+    hasEquipmentData: equipmentReadinessSource.length > 0,
+    hasLogisticsData: Array.isArray(resourceReadiness) && resourceReadiness.length > 0,
   };
 
   const notes = [];
@@ -256,7 +261,7 @@ export function buildStakeholderOverview({
   if (leading && !leading.decisive)
     notes.push('The current lead is based on partial returns and should not be read as a result.');
   if (phase === 'pre-election')
-    notes.push(`Pre-election readiness shows ${agentCount.toLocaleString()} active agents and ${supervisorCount.toLocaleString()} supervisors in the field. Logistics readiness is ${logisticsReadiness}% across planned resources.`);
+    notes.push(`Pre-election readiness shows ${agentCount.toLocaleString()} active agents and ${supervisorCount.toLocaleString()} supervisors in the field.${preElection.hasLogisticsData ? ` Logistics readiness is ${logisticsReadiness}% across planned resources.` : ' No logistics plan has been recorded yet.'}`);
   notes.push('Incident figures are counts only. Locations below LGA, reporter identities and evidence are deliberately excluded from this view.');
 
   return {

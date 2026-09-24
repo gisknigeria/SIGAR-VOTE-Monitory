@@ -16,6 +16,7 @@ import { createResultsRepository } from './modules/results/repository.js';
 import { createReconciliationRepository } from './modules/results/reconciliation-repository.js';
 import { createTasksRepository } from './modules/tasks/repository.js';
 import { createCameraRecordingsRepository } from './modules/field-operations/camera-recordings.js';
+import { createVoterSurveyRepository } from './modules/voter-survey/repository.js';
 
 // Compatibility facade: modules own persistence; existing consumers keep their API.
 export function createStore(context) {
@@ -38,6 +39,7 @@ export function createStore(context) {
     ...createReconciliationRepository(context),
     ...createTasksRepository(context),
     ...createCameraRecordingsRepository(context),
+    ...createVoterSurveyRepository(context),
   };
   if (context.transactionDisabled) return repositories;
 

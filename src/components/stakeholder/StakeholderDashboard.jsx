@@ -1,19 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import L from "leaflet";
 import { apiRequest } from "../../api/client.js";
-import { oyoBoundariesQuery } from "../../queries/boundaries.js";
+import { BarList, BigNumbers, GOLD_RAMP, LgaMap, lgaKey, NO_DATA_FILL, num, Panel, pct, time } from "./ui.jsx";
 import "./stakeholder.css";
 
+const VoterSurvey = lazy(() => import("./VoterSurvey.jsx"));
+
 const PHASES = [
-  { id: "pre-election", label: "Pre-election", blurb: "Readiness and coverage before polls open." },
-  { id: "election-day", label: "Election day", blurb: "Results as they arrive from polling units." },
-  { id: "post-election", label: "Post-election", blurb: "Final tallies, turnout and outstanding checks." },
+  { id: "pre-election", label: "Before the election" },
+  { id: "election-day", label: "Election day" },
+  { id: "post-election", label: "After the election" },
 ];
 
-// Sequential gold ramp, light to dark. Monotonic by lightness; the darkest step still clears
-// 2:1 on the wine surface, so the lowest band never disappears into the panel.
-const GOLD_RAMP = ["#6d4a12", "#a8761f", "#d9aa4b", "#f5dc9a"];
 // Fixed status palette. Every use is paired with a visible label -- these hues are never
 // allowed to carry meaning on their own.
 const SEVERITY = {
@@ -23,65 +21,41 @@ const SEVERITY = {
   Low: "#0ca30c",
 };
 
-// Boundary features name their LGA "Ibadan North-West" while results carry "IBADAN NORTH WEST",
-// so matching has to ignore case and punctuation or every LGA silently shades as zero.
-//
-// Four LGAs are also spelled differently between the two authoritative sources -- the bundled
-// polling-unit register and the official boundary file. They are the same four real LGAs, and
-// without this reconciliation 4 of 33 would render as "no results" on the map even while
-// reporting, which on an election map reads as a real finding rather than a spelling mismatch.
-// Verified by diffing the full 33 names from both sources; extend only from that same diff.
-const LGA_SPELLING_VARIANTS = {
-  atigbo: "atisbo",
-  "ogbomosho north": "ogbomoso north",
-  "ogbomosho south": "ogbomoso south",
-  orelope: "oorelope",
-};
-const lgaKey = (value) => {
-  const normalized = String(value ?? "").trim().replace(/[^a-z0-9]+/gi, " ").replace(/\s+/g, " ").toLowerCase();
-  return LGA_SPELLING_VARIANTS[normalized] || normalized;
-};
-const featureLgaName = (feature) =>
-  String(feature?.properties?.ADM2_EN || feature?.properties?.ADM2_REF || feature?.properties?.lga || feature?.properties?.name || "").trim();
-
-const num = (value) => (Number.isFinite(Number(value)) ? Number(value).toLocaleString() : "—");
-const pct = (value) => (value === null || value === undefined ? "—" : `${Number(value).toFixed(1)}%`);
-
-function StatTile({ label, value, sub, emphasis = false }) {
+/** One readiness measure as a progress line. Nothing recorded reads "No data yet", never "0%". */
+function ReadinessRow({ label, value, hasData = true, detail }) {
+  const shown = hasData && value !== null && value !== undefined;
+  const width = shown ? Math.min(Math.max(Number(value), 0), 100) : 0;
   return (
-    <div className={emphasis ? "sh-tile sh-tile-lead" : "sh-tile"}>
-      <span className="sh-tile-label">{label}</span>
-      <strong className="sh-tile-value">{value}</strong>
-      {sub && <span className="sh-tile-sub">{sub}</span>}
-    </div>
+    <li className="sh-ready-row">
+      <span className="sh-ready-label">{label}</span>
+      <span className="sh-ready-track" aria-hidden="true"><span className="sh-ready-fill" style={{ width: `${width}%` }} /></span>
+      <strong className={shown ? "sh-ready-value" : "sh-ready-value sh-ready-none"}>{shown ? `${width < 10 ? width.toFixed(1) : Math.round(width)}%` : "No data yet"}</strong>
+      {detail && <small className="sh-ready-detail">{detail}</small>}
+    </li>
   );
 }
 
-/** Horizontal magnitude bars: one measure, direct-labelled, so colour never carries the identity. */
-function BarList({ rows, total, emptyMessage, formatValue = num }) {
-  if (!rows.length) return <p className="sh-empty">{emptyMessage}</p>;
-  const max = Math.max(...rows.map((row) => row.value), 1);
+/** Incidents in one place: severity as labelled chips, the most common types as bars. */
+function IncidentsPanel({ incidents, wide = false }) {
+  const typeRows = (incidents.byType || []).slice(0, 5).map((entry) => ({ name: entry.name, value: entry.count }));
   return (
-    <ul className="sh-bars">
-      {rows.map((row, index) => (
-        <li key={row.name}>
-          <span className="sh-bar-name" title={row.name}>{row.name}</span>
-          <span className="sh-bar-track">
-            <span
-              className="sh-bar-fill"
-              style={{
-                width: `${Math.max((row.value / max) * 100, row.value > 0 ? 2 : 0)}%`,
-                background: row.color || GOLD_RAMP[Math.min(index, GOLD_RAMP.length - 1)],
-              }}
-            />
-          </span>
-          <span className="sh-bar-value">
-            {formatValue(row.value)}
-            {total > 0 && <em>{((row.value / total) * 100).toFixed(1)}%</em>}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <Panel wide={wide} title="Incidents reported" sub={incidents.total ? `${num(incidents.total)} in total. Counts only, no locations or names.` : undefined}>
+      {incidents.total === 0 ? (
+        <p className="sh-empty">No incidents have been reported.</p>
+      ) : (
+        <>
+          <ul className="sh-chips" aria-label="By severity">
+            {(incidents.bySeverity || []).map((entry) => (
+              <li key={entry.name}>
+                <i style={{ background: SEVERITY[entry.name] || "#a8761f" }} aria-hidden="true" />
+                {entry.name} <b>{num(entry.count)}</b>
+              </li>
+            ))}
+          </ul>
+          <BarList rows={typeRows} total={incidents.total} emptyMessage="" />
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -116,258 +90,270 @@ function ReturnsChart({ timeline }) {
   );
 }
 
-/** LGA choropleth: reporting volume as a sequential gold ramp over the real Oyo boundaries. */
+/** Reporting volume per LGA as a sequential gold ramp. */
 function CoverageMap({ byLga }) {
-  const holder = useRef(null);
-  const mapRef = useRef(null);
-  const layerRef = useRef(null);
-  const boundaries = useQuery(oyoBoundariesQuery);
-
-  const byName = useMemo(() => {
-    const lookup = new Map();
-    for (const row of byLga) lookup.set(lgaKey(row.lga), row);
-    return lookup;
-  }, [byLga]);
+  const rowsByKey = useMemo(() => new Map(byLga.map((row) => [lgaKey(row.lga), row])), [byLga]);
   const peak = useMemo(() => Math.max(...byLga.map((row) => row.reporting), 1), [byLga]);
-
-  useEffect(() => {
-    if (!holder.current || mapRef.current) return;
-    mapRef.current = L.map(holder.current, { zoomControl: true, attributionControl: true, scrollWheelZoom: false }).setView([8.1, 3.6], 8);
-    // Same tile source as the operations map, so this view needs no key of its own and falls
-    // back to OpenStreetMap exactly as that one does.
-    const maptilerKey = import.meta.env.VITE_MAPTILER_KEY;
-    (maptilerKey
-      ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${maptilerKey}`, {
-          attribution: "&copy; MapTiler &copy; OpenStreetMap contributors",
-          maxZoom: 12,
-        })
-      : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "&copy; OpenStreetMap contributors",
-          maxZoom: 12,
-        })
-    ).addTo(mapRef.current);
-    return () => { mapRef.current?.remove(); mapRef.current = null; };
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const lgas = boundaries.data?.lgas;
-    if (!map || !lgas) return;
-    layerRef.current?.remove();
-    const shade = (count) => {
-      if (!count) return "#3a1420";
-      const step = Math.min(Math.floor((count / peak) * GOLD_RAMP.length), GOLD_RAMP.length - 1);
-      return GOLD_RAMP[step];
-    };
-    layerRef.current = L.geoJSON(lgas, {
-      style: (feature) => {
-        const row = byName.get(lgaKey(featureLgaName(feature)));
-        return { color: "#8b1e46", weight: 1, fillColor: shade(row?.reporting || 0), fillOpacity: 0.82 };
-      },
-      onEachFeature: (feature, layer) => {
-        const rawName = featureLgaName(feature);
-        const row = byName.get(lgaKey(rawName));
-        layer.bindTooltip(
-          `<b>${rawName || "Unnamed LGA"}</b><br>${row?.reporting || 0} unit${row?.reporting === 1 ? "" : "s"} reported<br>${num(row?.votes || 0)} votes${row?.leadingParty ? `<br>Leading: ${row.leadingParty}` : ""}`,
-          { sticky: true },
-        );
-      },
-    }).addTo(map);
-    try { map.fitBounds(layerRef.current.getBounds(), { padding: [12, 12] }); } catch { /* empty geometry */ }
-  }, [boundaries.data, byName, peak]);
-
+  const fill = useCallback((row) => {
+    const count = row?.reporting || 0;
+    if (!count) return NO_DATA_FILL;
+    return GOLD_RAMP[Math.min(Math.floor((count / peak) * GOLD_RAMP.length), GOLD_RAMP.length - 1)];
+  }, [peak]);
+  const tooltip = useCallback(
+    (name, row) => `<b>${name}</b><br>${row?.reporting || 0} unit${row?.reporting === 1 ? "" : "s"} reported<br>${num(row?.votes || 0)} votes${row?.leadingParty ? `<br>Leading: ${row.leadingParty}` : ""}`,
+    [],
+  );
   return (
-    <div className="sh-map-holder">
-      <div ref={holder} className="sh-map" />
-      {boundaries.isError && <p className="sh-empty sh-map-note">The boundary service is unavailable, so the map cannot be drawn. The figures beside it are unaffected.</p>}
-      <div className="sh-legend" aria-hidden="true">
-        <span>Fewer units reported</span>
+    <LgaMap
+      rowsByKey={rowsByKey}
+      fill={fill}
+      tooltip={tooltip}
+      legend={<>
+        <span>Fewer reported</span>
         <span className="sh-legend-swatches">
-          <i style={{ background: "#3a1420" }} />
+          <i style={{ background: NO_DATA_FILL }} />
           {GOLD_RAMP.map((step) => <i key={step} style={{ background: step }} />)}
         </span>
         <span>More</span>
-      </div>
-    </div>
+      </>}
+    />
   );
 }
 
-export default function StakeholderDashboard({ session, onLogout }) {
-  const [phase, setPhase] = useState("election-day");
-  const overview = useQuery({
-    queryKey: ["stakeholder-overview", phase],
-    queryFn: ({ signal }) => apiRequest(`/stakeholder/overview?phase=${phase}`, session.token, { signal }),
+const OYO10X_SOURCE = {
+  ok: (at) => `Live from oyo10x · updated ${time(at) || "just now"}`,
+  stale: (at) => `oyo10x is not responding. Showing the last figures received${at ? ` at ${time(at)}` : ""}.`,
+  unavailable: () => "oyo10x is not responding right now. Figures will appear once it recovers.",
+  "not-configured": () => "oyo10x is not connected to this platform yet.",
+};
+
+/**
+ * Grassroots mobilisation, read from the campaign's oyo10x platform through our own backend
+ * (the API key never reaches the browser). Fetched separately from the election overview so an
+ * oyo10x outage can never take the rest of this page down with it.
+ */
+function MobilisationPanel({ token, scope }) {
+  const query = useQuery({
+    queryKey: ["oyo10x-mobilisation"],
+    queryFn: ({ signal }) => apiRequest("/integrations/oyo10x", token, { signal }),
     refetchInterval: 60_000,
   });
-
-  const data = overview.data;
-  const partyRows = useMemo(() => (data?.parties || []).map((entry) => ({ name: entry.party, value: entry.votes })), [data]);
-  const incidentRows = useMemo(() => (data?.incidents?.byType || []).slice(0, 8).map((entry) => ({ name: entry.name, value: entry.count })), [data]);
-  const severityRows = useMemo(
-    () => (data?.incidents?.bySeverity || []).map((entry) => ({ name: entry.name, value: entry.count, color: SEVERITY[entry.name] || "#a8761f" })),
+  const result = query.data;
+  const data = result?.data;
+  const statusText = (OYO10X_SOURCE[result?.status] || OYO10X_SOURCE.unavailable)(result?.fetchedAt);
+  const districtRows = useMemo(
+    () => (data?.bySenatorialDistrict || []).map((row) => ({ name: row.name, value: row.members })),
     [data],
   );
-  const activePhase = PHASES.find((item) => item.id === phase);
-
-  const summaryCards = [
-    { label: "Coverage status", value: data?.summary?.coverageState || "—", sub: data?.summary?.coverageNarrative || "Pending" },
-    { label: "Decision confidence", value: data ? `${data.summary?.decisionConfidence ?? 0}%` : "—", sub: "Based on return depth and risk signals" },
-    { label: "Current leader", value: data?.leading ? data.leading.party : "—", sub: data?.leading ? `${num(data.leading.margin)} vote lead` : "No lead established" },
-    { label: "Fastest LGA", value: data?.summary?.leadingLga ? data.summary.leadingLga.lga : "—", sub: data?.summary?.leadingLga ? `${data.summary.leadingLga.reporting} units reported` : "No reporting yet" },
-  ];
-
-  const readinessCards = phase === "pre-election" ? [
-    { label: "Active agents", value: num(data?.preElection?.agentCount ?? 0), sub: `${pct(data?.preElection?.staffingCoverage ?? 0)} of polling units covered` },
-    { label: "Supervisors", value: num(data?.preElection?.supervisorCount ?? 0), sub: "Deployment and oversight coverage" },
-    { label: "Training completion", value: `${pct(data?.preElection?.trainingCompletion ?? 0)}`, sub: "Field orientation and process readiness" },
-    { label: "Equipment readiness", value: `${pct(data?.preElection?.equipmentReadiness ?? 0)}`, sub: "BVAS and critical equipment availability" },
-    { label: "Logistics readiness", value: `${pct(data?.preElection?.logisticsReadiness ?? 0)}`, sub: `${num(data?.preElection?.totalAvailableResources ?? 0)} / ${num(data?.preElection?.totalRequiredResources ?? 0)} resources ready` },
-  ] : [];
 
   return (
-    <main className="stakeholder-shell">
-      <header className="sh-head">
-        <div>
-          <span className="sh-eyebrow">Oyo State · Election observatory</span>
-          <h1>Election overview</h1>
-        </div>
-        <div className="sh-head-right">
-          <span className="sh-who">{session.user.name}<small>Stakeholder</small></span>
-          <button type="button" className="sh-logout" onClick={onLogout}>Sign out</button>
-        </div>
-      </header>
-
-      <nav className="sh-phases" aria-label="Election phase">
-        {PHASES.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={item.id === phase ? "sh-phase active" : "sh-phase"}
-            aria-pressed={item.id === phase}
-            onClick={() => setPhase(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
-      <p className="sh-blurb">{activePhase?.blurb}</p>
-
-      {overview.isPending && <p className="sh-empty" role="status">Loading the latest figures…</p>}
-      {overview.isError && (
+    <Panel title="Supporters and mobilisers" sub={query.isPending ? "Connecting to oyo10x…" : statusText} wide>
+      {query.isError && (
         <p className="sh-error" role="alert">
-          {overview.error?.message || "The overview is unavailable right now."}{" "}
-          <button type="button" onClick={() => overview.refetch()}>Try again</button>
+          {query.error?.message || "Mobilisation figures are unavailable."}{" "}
+          <button type="button" onClick={() => query.refetch()}>Try again</button>
         </p>
       )}
 
       {data && (
         <>
-          <section className="sh-tiles" aria-label="Headline figures">
-            <StatTile
-              label="Polling units reported"
-              value={`${num(data.coverage.reportingUnits)} / ${num(data.coverage.totalUnits)}`}
-              sub={`${pct(data.coverage.percent)} of Oyo State`}
-            />
-            <StatTile label="Votes counted" value={num(data.turnout.votesCounted)} sub={data.turnout.basis ? `Turnout ${pct(data.turnout.percent)}` : "Turnout unavailable"} />
-            <StatTile
-              label={data.leading ? (data.leading.decisive ? "Leading" : "Leading so far") : "Leading"}
-              value={data.leading ? data.leading.party : "—"}
-              sub={data.leading ? `${num(data.leading.margin)} ahead · ${pct(data.leading.marginPercent)} of counted` : "No results yet"}
-              emphasis
-            />
-            <StatTile label="Incidents reported" value={num(data.incidents.total)} sub="Counts only" />
-          </section>
-
-          <section className="sh-panel sh-panel-wide sh-summary-panel">
-            <div className="sh-summary-header">
-              <div>
-                <h2>Stakeholder summary</h2>
-                <p className="sh-panel-sub">{data.summary?.keyMessage}</p>
-              </div>
-              <div className="sh-confidence-badge" aria-live="polite">{data.summary?.decisionConfidence ?? 0}% confidence</div>
+          <div className="sh-mini-numbers">
+            <div>
+              <strong>{num(data.totals.registered)}</strong>
+              <span>supporters registered</span>
+              <small>{num(data.totals.verified)} verified</small>
             </div>
-            <div className="sh-summary-grid">
-              {summaryCards.map((card) => (
-                <div key={card.label} className="sh-summary-card">
-                  <span>{card.label}</span>
-                  <strong>{card.value}</strong>
-                  <small>{card.sub}</small>
-                </div>
-              ))}
+            <div>
+              <strong>{num(data.totals.unitPromoters + data.totals.grassroots)}</strong>
+              <span>mobilisers</span>
+              <small>{num(data.totals.unitPromoters)} unit promoters · {num(data.totals.grassroots)} grassroots</small>
             </div>
-          </section>
+            <div>
+              <strong>{num(data.coverage.pollingUnits)}</strong>
+              <span>polling units reached</span>
+              <small>of {num(scope?.pollingUnits)} in the state</small>
+            </div>
+          </div>
 
-          {phase === "pre-election" && readinessCards.length > 0 && (
-            <section className="sh-panel sh-panel-wide">
-              <h2>Pre-election readiness</h2>
-              <p className="sh-panel-sub">Operational capacity before the polls open.</p>
-              <div className="sh-readiness-grid">
-                {readinessCards.map((card) => (
-                  <div key={card.label} className="sh-readiness-card">
-                    <span>{card.label}</span>
-                    <strong>{card.value}</strong>
-                    <small>{card.sub}</small>
-                  </div>
-                ))}
-              </div>
-            </section>
+          {districtRows.length > 0 && (
+            <>
+              <h3 className="sh-subhead">Supporters by senatorial district</h3>
+              <BarList rows={districtRows} total={data.totals.registered} emptyMessage="" />
+            </>
           )}
 
-          <section className="sh-grid">
-            <article className="sh-panel">
-              <h2>Watchlist</h2>
-              <p className="sh-panel-sub">What to watch before the next leadership decision.</p>
-              <ul className="sh-watchlist">
-                {(data.watchlist || []).map((item) => (
-                  <li key={item.label} className={`sh-watch-item ${item.tone}`}>
-                    <span>{item.label}</span>
-                    <strong>{item.value}</strong>
-                    <small>{item.detail}</small>
-                  </li>
-                ))}
-              </ul>
-            </article>
-
-            <article className="sh-panel sh-panel-wide">
-              <h2>Where results have come in</h2>
-              <p className="sh-panel-sub">Shaded by how many polling units have reported in each LGA. Hover an LGA for its figures.</p>
-              <CoverageMap byLga={data.byLga} />
-            </article>
-
-            <article className="sh-panel">
-              <h2>Votes by party</h2>
-              <p className="sh-panel-sub">Across {num(data.coverage.reportingUnits)} reporting polling units.</p>
-              <BarList rows={partyRows} total={data.turnout.votesCounted} emptyMessage="No results have been submitted yet." />
-            </article>
-
-            <article className="sh-panel sh-panel-wide">
-              <h2>Returns over time</h2>
-              <p className="sh-panel-sub">Cumulative polling units reported.</p>
-              <ReturnsChart timeline={data.timeline} />
-            </article>
-
-            <article className="sh-panel">
-              <h2>Incidents by type</h2>
-              <p className="sh-panel-sub">Reported by field agents. Counts only.</p>
-              <BarList rows={incidentRows} total={data.incidents.total} emptyMessage="No incidents have been reported." />
-            </article>
-
-            <article className="sh-panel">
-              <h2>Incidents by severity</h2>
-              <p className="sh-panel-sub">Each severity is labelled, never shown by colour alone.</p>
-              <BarList rows={severityRows} total={data.incidents.total} emptyMessage="No incidents have been reported." />
-            </article>
-          </section>
-
-          <section className="sh-panel sh-notes">
-            <h2>How to read these figures</h2>
-            <ul>
-              {data.notes.map((note) => <li key={note}>{note}</li>)}
-            </ul>
-            <p className="sh-generated">Updated {new Date(data.generatedAt).toLocaleString()} · refreshes every minute</p>
-          </section>
+          <p className="sh-footline">
+            {num(data.candidates.total)} candidates on the ticket · {num(data.candidates.nomineesVerified)} of {num(data.candidates.nomineesTotal)} nominees verified
+          </p>
         </>
       )}
+    </Panel>
+  );
+}
+
+/** The one sentence a stakeholder should leave with, written from the figures for each phase. */
+function headline(phase, data) {
+  const { coverage, leading, preElection } = data;
+  const units = `${num(coverage.reportingUnits)} of ${num(coverage.totalUnits)} polling units have reported (${pct(coverage.percent)}).`;
+
+  if (phase === "pre-election") {
+    return {
+      title: `${num(preElection.agentCount)} agents and ${num(preElection.supervisorCount)} supervisors are registered.`,
+      sub: `Oyo State has ${num(data.scope.pollingUnits)} polling units across ${num(data.scope.lgas)} LGAs.`,
+    };
+  }
+  if (!coverage.reportingUnits) {
+    return { title: "No results have come in yet.", sub: "Figures appear here as soon as polling units start reporting." };
+  }
+  if (!leading) return { title: units, sub: "No votes have been recorded yet." };
+
+  return {
+    title: `${leading.party} is ahead by ${num(leading.margin)} votes${leading.decisive ? "" : " so far"}.`,
+    sub: `${units}${leading.decisive ? "" : " The lead can still change."}${phase === "post-election" ? " Official results are declared by INEC." : ""}`,
+  };
+}
+
+export default function StakeholderDashboard({ session, onLogout }) {
+  const [phase, setPhase] = useState("election-day");
+  const isSurvey = phase === "survey";
+  const overview = useQuery({
+    queryKey: ["stakeholder-overview", phase],
+    queryFn: ({ signal }) => apiRequest(`/stakeholder/overview?phase=${phase}`, session.token, { signal }),
+    refetchInterval: 60_000,
+    enabled: !isSurvey,
+  });
+
+  const data = isSurvey ? null : overview.data;
+  const partyRows = useMemo(() => (data?.parties || []).map((entry) => ({ name: entry.party, value: entry.votes })), [data]);
+  const lead = data ? headline(phase, data) : null;
+  const critical = data?.summary?.riskSummary?.critical || 0;
+  const serious = critical + (data?.summary?.riskSummary?.high || 0);
+
+  const resultNumbers = data ? [
+    {
+      label: "Polling units reported",
+      value: `${num(data.coverage.reportingUnits)} of ${num(data.coverage.totalUnits)}`,
+      sub: `${pct(data.coverage.percent)} of the state`,
+    },
+    {
+      label: data.leading?.decisive ? "Leading" : "Leading so far",
+      value: data.leading ? data.leading.party : "—",
+      sub: data.leading ? `${num(data.leading.votes)} votes · ${num(data.leading.margin)} ahead` : "No votes counted yet",
+      lead: true,
+    },
+    phase === "post-election"
+      ? { label: "Turnout", value: data.turnout.percent === null ? "—" : pct(data.turnout.percent), sub: `${num(data.turnout.votesCounted)} votes counted` }
+      : { label: "Votes counted", value: num(data.turnout.votesCounted), sub: data.turnout.percent === null ? "Turnout not available" : `Turnout ${pct(data.turnout.percent)}` },
+  ] : [];
+
+  return (
+    <main className="stakeholder-shell">
+      <div className="sh-page">
+        <div className="sh-head" role="banner">
+          <div>
+            <span className="sh-eyebrow">Oyo State</span>
+            <h1>Election overview</h1>
+          </div>
+          <div className="sh-head-right">
+            <span className="sh-who">{session.user.name}</span>
+            <button type="button" className="sh-logout" onClick={onLogout}>Sign out</button>
+          </div>
+        </div>
+
+        <nav className="sh-phases" aria-label="Election phase">
+          {[...PHASES, { id: "survey", label: "Voter survey" }].map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={item.id === phase ? "sh-phase active" : "sh-phase"}
+              aria-pressed={item.id === phase}
+              onClick={() => setPhase(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        {isSurvey && (
+          <Suspense fallback={<p className="sh-empty" role="status">Loading the voter survey…</p>}>
+            <VoterSurvey token={session.token} />
+          </Suspense>
+        )}
+
+        {!isSurvey && overview.isPending && <p className="sh-empty" role="status">Loading the latest figures…</p>}
+        {!isSurvey && overview.isError && (
+          <p className="sh-error" role="alert">
+            {overview.error?.message || "The overview is unavailable right now."}{" "}
+            <button type="button" onClick={() => overview.refetch()}>Try again</button>
+          </p>
+        )}
+
+        {data && (
+          <>
+            <section className="sh-headline" aria-live="polite">
+              <p className="sh-headline-title">{lead.title}</p>
+              <p className="sh-headline-sub">{lead.sub}</p>
+              <p className="sh-updated">Updated {time(data.generatedAt)} · refreshes every minute</p>
+            </section>
+
+            {phase !== "pre-election" && serious > 0 && (
+              <p className="sh-alert" role="status">
+                <b>{num(serious)} serious incident{serious === 1 ? "" : "s"}</b> reported
+                {critical > 0 && ` (${num(critical)} critical)`}. The operations team is following up.
+              </p>
+            )}
+
+            {phase === "pre-election" ? (
+              <div className="sh-grid">
+                <Panel title="Are we ready?" sub="How prepared the field team is before polls open.">
+                  <ul className="sh-ready">
+                    <ReadinessRow
+                      label="Agent coverage"
+                      value={data.preElection.staffingCoverage}
+                      detail={`${num(data.preElection.agentCount)} agents for ${num(data.scope.pollingUnits)} polling units`}
+                    />
+                    <ReadinessRow label="Training done" value={data.preElection.trainingCompletion} hasData={data.preElection.hasTrainingData} />
+                    <ReadinessRow label="Equipment ready" value={data.preElection.equipmentReadiness} hasData={data.preElection.hasEquipmentData} />
+                    <ReadinessRow
+                      label="Logistics ready"
+                      value={data.preElection.logisticsReadiness}
+                      hasData={data.preElection.hasLogisticsData}
+                      detail={data.preElection.hasLogisticsData ? `${num(data.preElection.totalAvailableResources)} of ${num(data.preElection.totalRequiredResources)} items in place` : undefined}
+                    />
+                  </ul>
+                </Panel>
+                <IncidentsPanel incidents={data.incidents} />
+                <MobilisationPanel token={session.token} scope={data.scope} />
+              </div>
+            ) : (
+              <>
+                <BigNumbers items={resultNumbers} />
+                <div className="sh-grid">
+                  <Panel title="Votes by party" sub={data.coverage.reportingUnits ? `From ${num(data.coverage.reportingUnits)} polling units so far.` : undefined}>
+                    <BarList rows={partyRows} total={data.turnout.votesCounted} emptyMessage="No votes have been counted yet." />
+                  </Panel>
+                  <Panel title="Where results have come in" sub="Brighter gold means more polling units have reported. Tap an LGA for its figures.">
+                    <CoverageMap byLga={data.byLga} />
+                  </Panel>
+                  {data.timeline.length >= 2 && (
+                    <Panel title="Results coming in" sub="Total polling units reported, hour by hour." wide>
+                      <ReturnsChart timeline={data.timeline} />
+                    </Panel>
+                  )}
+                  <IncidentsPanel incidents={data.incidents} wide />
+                </div>
+              </>
+            )}
+
+            <details className="sh-notes">
+              <summary>About these figures</summary>
+              <ul>
+                {data.notes.map((note) => <li key={note}>{note}</li>)}
+              </ul>
+            </details>
+          </>
+        )}
+      </div>
     </main>
   );
 }

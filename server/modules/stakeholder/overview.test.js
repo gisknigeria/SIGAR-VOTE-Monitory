@@ -36,6 +36,8 @@ test('tallies parties, coverage and turnout from submitted results', () => {
   assert.match(view.summary.coverageState, /monitor|early|healthy/i);
   assert.ok(view.watchlist.length >= 1);
   assert.ok(view.summary.decisionConfidence >= 0);
+  assert.equal(view.preElection.hasTrainingData, false, 'nothing recorded must not read as 0% trained');
+  assert.equal(view.preElection.hasLogisticsData, false);
 });
 
 test('a lead on partial returns is never reported as decisive', () => {
@@ -113,6 +115,9 @@ test('pre-election readiness includes staffing, training and equipment signals t
   assert.equal(view.preElection.trainingCompletion, 50);
   assert.equal(view.preElection.equipmentReadiness, 80);
   assert.ok(view.preElection.logisticsReadiness >= 0);
+  assert.equal(view.preElection.hasTrainingData, true);
+  assert.equal(view.preElection.hasEquipmentData, true);
+  assert.equal(view.preElection.hasLogisticsData, true);
   assert.ok(view.summary.coverageState === 'Low reporting' || view.summary.coverageState === 'Early reporting');
 });
 

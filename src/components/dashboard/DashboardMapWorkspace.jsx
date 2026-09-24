@@ -1,4 +1,41 @@
+import { lazy, Suspense, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { MdPoll } from "react-icons/md";
+
+const VoterSurvey = lazy(() => import("../stakeholder/VoterSurvey.jsx"));
+
+/**
+ * The voter survey, full-screen over the map for admins (stakeholders see it as a tab on their
+ * own page). Portalled to <body>: the map chrome uses backdrop-filter, which would otherwise
+ * become the containing block for this fixed overlay and clip it.
+ */
+function VoterSurveyOverlay({ token, onClose }) {
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return createPortal(
+    <div className="stakeholder-shell sv-overlay" role="dialog" aria-modal="true" aria-label="Voter survey">
+      <div className="sh-page">
+        <div className="sh-head">
+          <div>
+            <span className="sh-eyebrow">Oyo State</span>
+            <h1>Voter survey</h1>
+          </div>
+          <button type="button" className="sh-logout" onClick={onClose}>Close</button>
+        </div>
+        <Suspense fallback={<p className="sh-empty" role="status">Loading the voter survey…</p>}>
+          <VoterSurvey token={token} />
+        </Suspense>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function DashboardMapWorkspace({ controller }) {
+  const [surveyOpen, setSurveyOpen] = useState(false);
   const {
     addArea,
     addToolPoint,
@@ -360,6 +397,14 @@ export default function DashboardMapWorkspace({ controller }) {
             >
               <MdAssessment />
             </button>
+            {canAdmin && <button
+              className={`map-action election-phase-action voter-survey-action${surveyOpen ? " active" : ""}`}
+              onClick={() => setSurveyOpen(true)}
+              title="Voter survey"
+              aria-label="Open voter survey"
+            >
+              <MdPoll />
+            </button>}
             <button
               className={`map-action emergency-open ${sosHolding ? "sos-holding" : ""}`}
               {...sosHoldProps}
@@ -593,6 +638,7 @@ export default function DashboardMapWorkspace({ controller }) {
           <LuLocateFixed />
         </button>}
       </section>
+      {surveyOpen && <VoterSurveyOverlay token={session.token} onClose={() => setSurveyOpen(false)} />}
     </>
   );
 }
