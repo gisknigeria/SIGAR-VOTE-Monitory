@@ -466,7 +466,7 @@ export default function VoterSurvey({ token }) {
       const result = await apiRequest("/voter-survey/ai", token, { method: "POST", body: JSON.stringify(filter) });
       setAi({ status: "done", ...result });
     } catch (error) {
-      setAi({ status: "error", message: error.message });
+      setAi({ status: "error", message: error.message, configured: error.configured });
     }
   };
 
@@ -520,7 +520,7 @@ export default function VoterSurvey({ token }) {
         {query.isFetching && <span className="sv-updating" role="status">Updating…</span>}
         <button type="button" className="sv-clear" onClick={requestAi} disabled={ai.status === "loading"}>{ai.status === "loading" ? "Analysing…" : "Generate AI analysis"}</button>
       </div>
-      {ai.status === "error" && <p className="sh-error" role="alert">{ai.message}</p>}
+      {ai.status === "error" && <p className="sh-error" role="alert">{ai.message}{ai.configured && ` Detected: ${Object.entries(ai.configured).filter(([, available]) => available).map(([provider]) => provider).join(", ") || "none"}.`}</p>}
       {ai.status === "done" && <Panel title="AI survey analysis" sub={`Generated from the aggregate survey figures${ai.model ? ` using ${ai.model}` : ""}.`} wide><div className="sv-ai-output">{ai.analysis}</div></Panel>}
       {data.canImport && <ImportPanel token={token} />}
       {data.filter.smallSample && <p className="sh-alert" role="status">Only {num(data.filter.responses)} people in this selection. Percentages can swing a lot with numbers this small.</p>}

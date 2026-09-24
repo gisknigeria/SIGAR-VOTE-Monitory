@@ -161,6 +161,18 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
         if (analysis.trim()) return res.json({ analysis, provider: 'openai', model });
       } catch (error) { console.error('[survey-ai] OpenAI failed:', error.message); }
     }
-    return res.status(503).json({ message: 'Survey AI is not configured. Statistical analysis is still available.' });
+    const configured = {
+      groq: Boolean(process.env.GROQ_API_KEY && callGroqWithFallback),
+      gemini: geminiApiKeys.length > 0,
+      openai: Boolean(process.env.OPENAI_API_KEY),
+    };
+    const anyConfigured = Object.values(configured).some(Boolean);
+    console.error('[survey-ai] no provider returned usable analysis', configured);
+    return res.status(503).json({
+      message: anyConfigured
+        ? 'Survey AI providers are configured, but none returned usable analysis. Check the Render logs for the provider error. Statistical analysis is still available.'
+        : 'No survey AI provider key is available to the running server. Check the Render environment variables and redeploy. Statistical analysis is still available.',
+      configured,
+    });
   }));
 }

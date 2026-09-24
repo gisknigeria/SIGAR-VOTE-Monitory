@@ -37,6 +37,7 @@ export async function apiRequest(path, token, options = {}) {
   if (!response.ok) {
     const error = new Error(safeApiErrorMessage(response.status, body, contentType));
     error.code = typeof body === "object" && body ? body.code : "";
+    error.configured = typeof body === "object" && body ? body.configured : undefined;
     error.status = response.status;
     throw error;
   }
