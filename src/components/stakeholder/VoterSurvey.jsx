@@ -404,7 +404,6 @@ function QualityTab({ data, canImport, token }) {
         </ul>
         <p className="sh-footline">Percentages on these pages use people who answered each question as the base. Collectors' names and submission IDs were removed when the file was imported.</p>
       </Panel>
-      {canImport && <ImportPanel token={token} />}
     </div>
   );
 }
@@ -523,6 +522,7 @@ export default function VoterSurvey({ token }) {
       </div>
       {ai.status === "error" && <p className="sh-error" role="alert">{ai.message}</p>}
       {ai.status === "done" && <Panel title="AI survey analysis" sub={`Generated from the aggregate survey figures${ai.model ? ` using ${ai.model}` : ""}.`} wide><div className="sv-ai-output">{ai.analysis}</div></Panel>}
+      {data.canImport && <ImportPanel token={token} />}
       {data.filter.smallSample && <p className="sh-alert" role="status">Only {num(data.filter.responses)} people in this selection. Percentages can swing a lot with numbers this small.</p>}
 
       <nav className="sv-tabs" aria-label="Survey sections">

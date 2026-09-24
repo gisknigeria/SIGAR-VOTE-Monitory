@@ -127,7 +127,7 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
     if (process.env.GROQ_API_KEY && callGroqWithFallback) {
       try {
         const result = await callGroqWithFallback(prompt);
-        return res.json({ analysis: result.text, provider: 'groq', model: result.model });
+        if (String(result.text || '').trim()) return res.json({ analysis: result.text, provider: 'groq', model: result.model });
       } catch (error) { console.error('[survey-ai] Groq failed:', error.message); }
     }
     if (geminiApiKeys.length) {
@@ -143,7 +143,7 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(body?.error?.message || 'Gemini request failed');
             const analysis = body.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('') || '';
-            if (analysis) return res.json({ analysis, provider: 'gemini', model });
+            if (analysis.trim()) return res.json({ analysis, provider: 'gemini', model });
           } catch (error) { console.error(`[survey-ai] Gemini ${model} failed:`, error.message); }
         }
       }
@@ -157,7 +157,8 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
       };
       try {
         const model = openAiPrimaryModel || process.env.OPENAI_MODEL || 'gpt-5.6-terra';
-        return res.json({ analysis: await call(model), provider: 'openai', model });
+        const analysis = await call(model);
+        if (analysis.trim()) return res.json({ analysis, provider: 'openai', model });
       } catch (error) { console.error('[survey-ai] OpenAI failed:', error.message); }
     }
     return res.status(503).json({ message: 'Survey AI is not configured. Statistical analysis is still available.' });
