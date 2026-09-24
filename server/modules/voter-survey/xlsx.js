@@ -129,3 +129,58 @@ export function openWorkbook(buffer) {
     },
   };
 }
+
+function parseCsvLine(line, delimiter) {
+  const cells = [];
+  let value = '';
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      if (quoted && line[index + 1] === '"') { value += '"'; index += 1; }
+      else quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      cells.push(value.trim());
+      value = '';
+    } else {
+      value += char;
+    }
+  }
+  cells.push(value.trim());
+  return cells;
+}
+
+function csvRecords(text) {
+  const records = [];
+  let record = '';
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '"') {
+      if (quoted && text[index + 1] === '"') { record += '""'; index += 1; }
+      else { quoted = !quoted; record += char; }
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && text[index + 1] === '\n') index += 1;
+      if (record.trim()) records.push(record);
+      record = '';
+    } else {
+      record += char;
+    }
+  }
+  if (record.trim()) records.push(record);
+  return records;
+}
+
+/** Opens a UTF-8 CSV as the same sheet interface used by the xlsx reader. */
+export function openCsvWorkbook(buffer) {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error('No CSV file was received.');
+  const text = buffer.toString('utf8').replace(/^\uFEFF/, '');
+  const records = csvRecords(text);
+  if (!records.length) throw new Error('The CSV file is empty.');
+  const first = records[0];
+  const delimiter = [',', ';', '\t'].sort((left, right) => first.split(right).length - first.split(left).length)[0];
+  return {
+    sheetNames: ['CSV upload'],
+    rows: (name) => name === 'CSV upload' ? records.map((record) => parseCsvLine(record, delimiter)) : null,
+  };
+}

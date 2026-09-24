@@ -173,3 +173,41 @@ export function buildSurveyDataset(workbook, { sourceFile = '', importedBy = '',
     workbookTotals: readWorkbookTotals(workbook),
   };
 }
+
+/** Appends a newly imported dataset while keeping one compatible encoded dataset in storage. */
+export function appendSurveyDataset(existing, incoming, { sourceFile = '', importedBy = '', now = new Date() } = {}) {
+  if (!existing) return { ...incoming, sourceFile: String(sourceFile || incoming.sourceFile || '').slice(0, 200), importedBy: String(importedBy || '') };
+  const fields = [...new Set([...existing.fields, ...incoming.fields])];
+  const read = (dataset, row, field) => {
+    const index = dataset.fields.indexOf(field);
+    return index < 0 ? '' : dataset.values[field][row[index]] || '';
+  };
+  const values = Object.fromEntries(fields.map((field) => [field, ['']]));
+  const indexes = new Map(fields.map((field) => [field, new Map([['', 0]])]));
+  const encode = (field, value) => {
+    const dictionary = indexes.get(field);
+    if (!dictionary.has(value)) dictionary.set(value, dictionary.size);
+    return dictionary.get(value);
+  };
+  const agentOffset = Math.max(0, ...existing.rows.map((row) => Number(row[existing.fields.length]) || 0));
+  const encodeRows = (dataset, offset = 0) => dataset.rows.map((row) => [
+    ...fields.map((field) => encode(field, read(dataset, row, field))),
+    (Number(row[dataset.fields.length]) || 0) + offset,
+  ]);
+  const rows = [...encodeRows(existing), ...encodeRows(incoming, agentOffset)];
+  for (const field of fields) values[field] = [...indexes.get(field).keys()];
+  return {
+    id: randomUUID(),
+    importedAt: now.toISOString(),
+    importedBy: String(importedBy || ''),
+    sourceFile: [existing.sourceFile, sourceFile || incoming.sourceFile].filter(Boolean).join(', ').slice(0, 200),
+    sourceSheet: `${existing.sourceSheet}, ${incoming.sourceSheet}`.slice(0, 200),
+    responseCount: rows.length,
+    agentCount: new Set(rows.map((row) => row[fields.length]).filter(Boolean)).size,
+    fields,
+    values,
+    rows,
+    questions: { ...(existing.questions || {}), ...(incoming.questions || {}) },
+    workbookTotals: {},
+  };
+}

@@ -219,6 +219,7 @@
 .sv-import { display: flex; flex-direction: column; gap: 10px; font-size: 15px; }
 .sv-import input[type="file"] { color: var(--sh-ink); font: inherit; font-size: 14px; }
 .sv-import p { margin: 0; }
+.sv-ai-output { white-space: pre-wrap; line-height: 1.65; color: var(--sh-ink); }
 .sv-checks { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
 .sv-checks .ok { color: #7fdc8a; }
 .sv-checks .bad { color: #ff9d8a; }

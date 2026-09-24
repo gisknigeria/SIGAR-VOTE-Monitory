@@ -1,8 +1,8 @@
 import express from 'express';
 import { getRegistrationLocationOptions } from '../../../shared/electionData.js';
 import { recordAudit } from '../foundation/audit-helper.js';
-import { openWorkbook } from './xlsx.js';
-import { buildSurveyDataset } from './import.js';
+import { openCsvWorkbook, openWorkbook } from './xlsx.js';
+import { appendSurveyDataset, buildSurveyDataset } from './import.js';
 import { analyzeSurvey, lgaKey } from './analysis.js';
 
 const CAN_VIEW = ['Stakeholder', 'Admin', 'Super Admin'];
@@ -28,7 +28,7 @@ function pollingUnitWeights() {
  * returned, and written-answer examples are shown only once a phrase recurs, so a single
  * respondent's words cannot be picked out.
  */
-export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, store }) {
+export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, store, openAiPrimaryModel, openAiFallbackModel, callGroqWithFallback, geminiApiKeys = [] }) {
   const fallbackWeights = pollingUnitWeights();
   const cache = new Map();
 
@@ -74,19 +74,22 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
 
       let dataset;
       try {
-        dataset = buildSurveyDataset(openWorkbook(req.body), { sourceFile: fileName, importedBy: req.user.id });
+        const isCsv = /\.csv$/i.test(fileName) || String(req.headers['content-type'] || '').includes('text/csv');
+        dataset = buildSurveyDataset(isCsv ? openCsvWorkbook(req.body) : openWorkbook(req.body), { sourceFile: fileName, importedBy: req.user.id });
       } catch (error) {
         return res.status(400).json({ message: error.message });
       }
       if (!dataset.responseCount) return res.status(400).json({ message: 'The survey sheet has no responses.' });
 
-      await store.saveVoterSurvey(dataset);
+      const previous = await store.voterSurvey();
+      const combined = appendSurveyDataset(previous, dataset, { sourceFile: fileName, importedBy: req.user.id });
+      await store.saveVoterSurvey(combined);
       cache.clear();
       await recordAudit(store, req, {
         action: 'voter_survey.imported',
         entityType: 'dataset',
-        entityId: dataset.id,
-        details: { sourceFile: dataset.sourceFile, sheet: dataset.sourceSheet, responses: dataset.responseCount, collectors: dataset.agentCount },
+        entityId: combined.id,
+        details: { sourceFile: fileName, sheet: dataset.sourceSheet, addedResponses: dataset.responseCount, totalResponses: combined.responseCount, collectors: dataset.agentCount },
         source: 'upload',
       });
 
@@ -99,7 +102,64 @@ export function registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, st
         ['Sen. Alli first-choice votes', totals.focusVotes, analysis.focus?.votes],
       ].filter(([, expected]) => Number.isFinite(expected)).map(([label, expected, actual]) => ({ label, workbook: expected, imported: actual, matches: expected === actual }));
 
-      res.status(201).json({ id: dataset.id, sourceFile: dataset.sourceFile, sheet: dataset.sourceSheet, responses: dataset.responseCount, collectors: dataset.agentCount, fields: dataset.fields.length, checks });
+      res.status(201).json({ id: combined.id, sourceFile: fileName, sheet: dataset.sourceSheet, addedResponses: dataset.responseCount, totalResponses: combined.responseCount, collectors: dataset.agentCount, fields: dataset.fields.length, checks });
     }),
   );
+
+  app.post('/api/voter-survey/ai', auth, rateLimit, asyncRoute(async (req, res) => {
+    if (!CAN_VIEW.includes(req.user?.role)) return res.status(403).json({ message: 'The voter survey is available to stakeholders and administrators.' });
+    const dataset = await store.voterSurvey();
+    if (!dataset) return res.status(404).json({ message: 'Load a survey before requesting an analysis.' });
+    const filter = { lga: String(req.body?.lga || '').slice(0, 80), respondent: String(req.body?.respondent || '').slice(0, 80) };
+    const view = analyzeSurvey(dataset, filter);
+    const context = {
+      responses: view.filter.responses,
+      lgas: view.source.lgas,
+      firstChoice: view.vote.firstChoice.slice(0, 8),
+      weightedFirstChoice: view.vote.weighted?.rows?.slice(0, 8) || [],
+      secondChoice: view.vote.transfers,
+      topQuestions: Object.fromEntries(Object.entries(view.questions).map(([key, value]) => [key, value.rows.slice(0, 5)])),
+      sentiment: { answers: view.sentiment.answers, tone: view.sentiment.tone, themes: view.sentiment.themes.slice(0, 8) },
+      lgaLeaders: view.byLga.map((row) => ({ lga: row.lga, responses: row.responses, leader: row.leader, leaderShare: row.leaderShare })).slice(0, 33),
+    };
+    const prompt = `Act as a senior neutral survey analyst. Analyze only the supplied aggregate results from a campaign voter survey. Do not invent facts, forecast an election, target individuals, or recommend manipulation or partisan persuasion. Clearly distinguish what respondents said from what the survey can support. Give practical, ethical campaign planning implications without micro-targeting. Return no more than 500 words with these plain-text sections: EXECUTIVE SUMMARY, STRONGEST SIGNALS, IMPORTANT DIFFERENCES, WHAT TO DO NEXT, LIMITATIONS.\n\nAGGREGATE SURVEY DATA:\n${JSON.stringify(context)}`;
+
+    if (process.env.GROQ_API_KEY && callGroqWithFallback) {
+      try {
+        const result = await callGroqWithFallback(prompt);
+        return res.json({ analysis: result.text, provider: 'groq', model: result.model });
+      } catch (error) { console.error('[survey-ai] Groq failed:', error.message); }
+    }
+    if (geminiApiKeys.length) {
+      const models = [process.env.GEMINI_MODEL || 'gemini-2.0-flash', process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash-lite'];
+      for (const model of models) {
+        for (const apiKey of geminiApiKeys) {
+          try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 900 } }),
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body?.error?.message || 'Gemini request failed');
+            const analysis = body.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('') || '';
+            if (analysis) return res.json({ analysis, provider: 'gemini', model });
+          } catch (error) { console.error(`[survey-ai] Gemini ${model} failed:`, error.message); }
+        }
+      }
+    }
+    if (process.env.OPENAI_API_KEY) {
+      const call = async (model) => {
+        const response = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: prompt, max_output_tokens: 900 }) });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body?.error?.message || 'OpenAI request failed');
+        return body.output_text || body.output?.flatMap((item) => item.content || []).map((item) => item.text || '').join('') || '';
+      };
+      try {
+        const model = openAiPrimaryModel || process.env.OPENAI_MODEL || 'gpt-5.6-terra';
+        return res.json({ analysis: await call(model), provider: 'openai', model });
+      } catch (error) { console.error('[survey-ai] OpenAI failed:', error.message); }
+    }
+    return res.status(503).json({ message: 'Survey AI is not configured. Statistical analysis is still available.' });
+  }));
 }

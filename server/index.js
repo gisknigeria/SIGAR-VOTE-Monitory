@@ -264,7 +264,7 @@ registerIntelligenceRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store,
 registerReportingRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, canAccessGeography });
 registerStakeholderRoutes({ app, auth, rateLimit, asyncRoute, store });
 registerOyo10xRoutes({ app, auth, rateLimit, asyncRoute });
-registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, store });
+registerVoterSurveyRoutes({ app, auth, rateLimit, asyncRoute, store, openAiPrimaryModel, openAiFallbackModel, callGroqWithFallback, geminiApiKeys });
 registerReferenceDataRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store });
 registerEvidenceRoutes({ app, auth, adminOnly, rateLimit, asyncRoute, store, canAccessIncident });
 

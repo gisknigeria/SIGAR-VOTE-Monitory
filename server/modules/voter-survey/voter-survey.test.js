@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openWorkbook } from './xlsx.js';
-import { buildSurveyDataset } from './import.js';
+import { openCsvWorkbook, openWorkbook } from './xlsx.js';
+import { appendSurveyDataset, buildSurveyDataset } from './import.js';
 import { analyzeSurvey, lgaKey } from './analysis.js';
 import { classifyPhrase } from './sentiment.js';
 import { buildXlsx, SURVEY_HEADER, surveyRow, ALLI, HAMZAT } from './test-fixtures.js';
@@ -17,6 +17,13 @@ test('the reader returns cell values by position, including gaps and numbers', (
   assert.throws(() => openWorkbook(Buffer.from('this is not a zip file at all, just text')), /not a valid \.xlsx/);
 });
 
+test('CSV imports preserve quoted commas and newlines', () => {
+  const csv = Buffer.from('Likely Vote Candidate,Voting LGA,Respondent\n"Sen. Alli","Atiba","Youth, urban\\nvoices"\n');
+  const rows = openCsvWorkbook(csv).rows('CSV upload');
+  assert.equal(rows[1][0], 'Sen. Alli');
+  assert.equal(rows[1][2], 'Youth, urban\\nvoices');
+});
+
 test('import keeps answers but drops agent names and submission IDs', () => {
   const dataset = buildSurveyDataset(workbookWith([
     { vote: ALLI, agent: 'Adeola Bankole' },
@@ -30,6 +37,15 @@ test('import keeps answers but drops agent names and submission IDs', () => {
   assert.equal(dataset.responseCount, 3);
   assert.equal(dataset.agentCount, 2, 'agents are still counted, as opaque numbers');
   assert.equal(dataset.sourceSheet, 'Cleaned Table');
+});
+
+test('new survey imports append to the existing dataset', () => {
+  const first = buildSurveyDataset(workbookWith([{ vote: ALLI, lga: 'Atiba' }]));
+  const second = buildSurveyDataset(workbookWith([{ vote: HAMZAT, lga: 'Ibadan North' }]));
+  const combined = appendSurveyDataset(first, second, { sourceFile: 'second.xlsx' });
+  assert.equal(combined.responseCount, 2);
+  assert.equal(analyzeSurvey(combined).vote.named, 2);
+  assert.equal(analyzeSurvey(combined).vote.firstChoice.find((row) => row.name === ALLI).count, 1);
 });
 
 test('import refuses a workbook without the survey columns', () => {

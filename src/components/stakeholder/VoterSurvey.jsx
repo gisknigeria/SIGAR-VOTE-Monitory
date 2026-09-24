@@ -413,16 +413,20 @@ function ImportPanel({ token }) {
   const input = useRef(null);
   const queryClient = useQueryClient();
   const [state, setState] = useState({ status: "idle" });
-  const upload = async (file) => {
-    if (!file) return;
-    setState({ status: "uploading", name: file.name });
+  const upload = async (files) => {
+    const selected = [...(files || [])];
+    if (!selected.length) return;
+    setState({ status: "uploading", name: selected.map((file) => file.name).join(", ") });
     try {
-      const result = await apiRequest(`/voter-survey/import?fileName=${encodeURIComponent(file.name)}`, token, {
-        method: "POST",
-        body: file,
-        headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
-      });
-      setState({ status: "done", result });
+      const results = [];
+      for (const file of selected) {
+        results.push(await apiRequest(`/voter-survey/import?fileName=${encodeURIComponent(file.name)}`, token, {
+          method: "POST",
+          body: file,
+          headers: { "Content-Type": file.name.toLowerCase().endsWith(".csv") ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+        }));
+      }
+      setState({ status: "done", results });
       queryClient.invalidateQueries({ queryKey: ["voter-survey"] });
     } catch (error) {
       setState({ status: "error", message: error.message });
@@ -431,23 +435,14 @@ function ImportPanel({ token }) {
     }
   };
   return (
-    <Panel title="Load a survey file" sub="Admins only. Choose the cleaned survey workbook (.xlsx). It replaces the current survey for everyone. Collectors' names are removed on import." wide>
+    <Panel title="Add survey data" sub="Admins only. Add one or more cleaned Excel or CSV files. Each upload is added to the current survey and the analysis updates." wide>
       <div className="sv-import">
-        <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => upload(event.target.files?.[0])} disabled={state.status === "uploading"} />
+        <input ref={input} type="file" multiple accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" onChange={(event) => upload(event.target.files)} disabled={state.status === "uploading"} />
         {state.status === "uploading" && <p role="status">Importing {state.name}… this can take up to a minute for a large file.</p>}
         {state.status === "error" && <p className="sh-error" role="alert">{state.message}</p>}
         {state.status === "done" && (
           <div role="status">
-            <p>Imported {num(state.result.responses)} responses from sheet “{state.result.sheet}”.</p>
-            {state.result.checks.length > 0 && (
-              <ul className="sv-checks">
-                {state.result.checks.map((check) => (
-                  <li key={check.label} className={check.matches ? "ok" : "bad"}>
-                    {check.matches ? "✓" : "✗"} {check.label}: workbook {num(check.workbook)}, imported {num(check.imported)}
-                  </li>
-                ))}
-              </ul>
-            )}
+            <p>Added {num(state.results.reduce((total, result) => total + result.addedResponses, 0))} responses. The survey now contains {num(state.results.at(-1).totalResponses)} responses.</p>
           </div>
         )}
       </div>
@@ -458,6 +453,7 @@ function ImportPanel({ token }) {
 export default function VoterSurvey({ token }) {
   const [tab, setTab] = useState("summary");
   const [filter, setFilter] = useState({ lga: "", respondent: "" });
+  const [ai, setAi] = useState({ status: "idle" });
   const query = useQuery({
     queryKey: ["voter-survey", filter.lga, filter.respondent],
     queryFn: ({ signal }) => apiRequest(`/voter-survey?lga=${encodeURIComponent(filter.lga)}&respondent=${encodeURIComponent(filter.respondent)}`, token, { signal }),
@@ -465,6 +461,15 @@ export default function VoterSurvey({ token }) {
     staleTime: 60_000,
   });
   const data = query.data;
+  const requestAi = async () => {
+    setAi({ status: "loading" });
+    try {
+      const result = await apiRequest("/voter-survey/ai", token, { method: "POST", body: JSON.stringify(filter) });
+      setAi({ status: "done", ...result });
+    } catch (error) {
+      setAi({ status: "error", message: error.message });
+    }
+  };
 
   if (query.isPending) return <p className="sh-empty" role="status">Loading the voter survey…</p>;
   if (query.isError && !data) {
@@ -514,7 +519,10 @@ export default function VoterSurvey({ token }) {
         </label>
         {filtered && <button type="button" className="sv-clear" onClick={() => setFilter({ lga: "", respondent: "" })}>Clear filters</button>}
         {query.isFetching && <span className="sv-updating" role="status">Updating…</span>}
+        <button type="button" className="sv-clear" onClick={requestAi} disabled={ai.status === "loading"}>{ai.status === "loading" ? "Analysing…" : "Generate AI analysis"}</button>
       </div>
+      {ai.status === "error" && <p className="sh-error" role="alert">{ai.message}</p>}
+      {ai.status === "done" && <Panel title="AI survey analysis" sub={`Generated from the aggregate survey figures${ai.model ? ` using ${ai.model}` : ""}.`} wide><div className="sv-ai-output">{ai.analysis}</div></Panel>}
       {data.filter.smallSample && <p className="sh-alert" role="status">Only {num(data.filter.responses)} people in this selection. Percentages can swing a lot with numbers this small.</p>}
 
       <nav className="sv-tabs" aria-label="Survey sections">
