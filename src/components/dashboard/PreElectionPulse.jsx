@@ -310,7 +310,7 @@ export default function PreElectionPulse({ authToken, onOpenData }) {
         <Kpi label="Registered voters" value={compact(reference.registeredVoters?.value)} sub={reference.registeredVoters ? "registered" : "not loaded"} />
         <Kpi label="PVCs collected" value={compact(reference.pvcCollected?.value)} sub={reference.pvcRate != null ? `${pct(reference.pvcRate, 1)} of register` : "not loaded"} />
         <Kpi label="Population" value={compact(reference.population?.value)} sub={reference.population ? (reference.population.basis === "estimate" ? "estimate" : data.filter.lga ? "uploaded" : "population") : "not loaded"} />
-        <Kpi label="Verified" value={contacts.available ? compact(contacts.total) : "—"} sub={contacts.available && reference.registeredVoters ? `${pct(contacts.total / reference.registeredVoters.value)} of voters` : contacts.available ? "phones" : "not loaded"} tone={contacts.truncated ? "warn" : ""} />
+        <Kpi label="Verified Contacts" value={contacts.available ? compact(contacts.total) : "—"} sub={contacts.available && reference.registeredVoters ? `${pct(contacts.total / reference.registeredVoters.value)} of voters` : contacts.available ? "phones" : "not loaded"} tone={contacts.truncated ? "warn" : ""} />
       </div>
 
       <div className="pep-grid">
