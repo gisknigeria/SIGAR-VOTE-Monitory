@@ -16,10 +16,48 @@ import "./sentiment-map.css";
 
 const GROUPS = ["Register", "Ground", "Outreach", "Opinion", "History"];
 const DEFAULT_LAYERS = ["members", "calls", "needs"];
-const SEQ = ["#4a1a28", "#6d4a12", "#a8761f", "#d9aa4b", "#f5dc9a"];
-const RED = ["#3d1620", "#6e2330", "#a8352f", "#d8573a", "#ff8a5c"];
-const DIV = ["#b8452f", "#e08a6b", "#b9a6ad", "#8fcf8f", "#2f9e44"];
-const NO_DATA = "#2a0e17";
+// Faint for low values, deep for high ones: the eye reads the darkest areas as "most".
+const SEQ = ["#fdf0d5", "#f6cf85", "#e89a42", "#c2582a", "#7d1d2c"];
+const RED = ["#fde2dc", "#f7a996", "#ec6b53", "#c83a2b", "#861b15"];
+const DIV = ["#b8452f", "#e08a6b", "#e9e1e4", "#8fcf8f", "#2f9e44"];
+const NO_DATA = "#9b8f94";
+const DEEP = new Set([SEQ[3], SEQ[4], RED[3], RED[4], DIV[0], DIV[4]]);
+
+// Basemaps: the same sources as the operations map, plus labelled imagery and light/dark canvases.
+const esri = (service) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, attribution: "Tiles &copy; Esri" });
+const BASEMAPS = {
+  street: { label: "Street", layers: () => {
+    const key = import.meta.env.VITE_MAPTILER_KEY;
+    return [key
+      ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${key}`, { attribution: "&copy; MapTiler &copy; OpenStreetMap contributors", maxZoom: 19 })
+      : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 })];
+  } },
+  satellite: { label: "Satellite", layers: () => [esri("World_Imagery")] },
+  hybrid: { label: "Satellite + labels", layers: () => [esri("World_Imagery"), esri("Reference/World_Boundaries_and_Places")] },
+  topo: { label: "Topographic", layers: () => [esri("World_Topo_Map")] },
+  terrain: { label: "Terrain", layers: () => [L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: "&copy; OpenTopoMap contributors" })] },
+  light: { label: "Light", layers: () => [L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap &copy; CARTO" })] },
+  dark: { label: "Dark", layers: () => [L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap &copy; CARTO" })] },
+};
+
+/** Where to write an area's name: the centroid of its largest ring (inside the shape for Oyo's LGAs and wards). */
+function labelPoint(feature) {
+  const geometry = feature.geometry || {};
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.type === "MultiPolygon" ? geometry.coordinates : [];
+  let best = null;
+  for (const polygon of polygons) {
+    const ring = polygon[0] || [];
+    let area = 0; let x = 0; let y = 0;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+      area += cross; x += (ring[j][0] + ring[i][0]) * cross; y += (ring[j][1] + ring[i][1]) * cross;
+    }
+    if (!area) continue;
+    if (!best || Math.abs(area) > best.area) best = { area: Math.abs(area), lng: x / (3 * area), lat: y / (3 * area) };
+  }
+  return best ? L.latLng(best.lat, best.lng) : L.geoJSON(feature).getBounds().getCenter();
+}
+const titleCase = (value) => String(value || "").toLowerCase().replace(/(^|[\s/(-])([a-z])/g, (match, lead, char) => lead + char.toUpperCase());
 const NEED_COLORS = { roads: "#e0a458", electricity: "#f5dc9a", water: "#5ec8ff", money: "#7fcf7f", jobs: "#c9748f", security: "#ff8a5c", health: "#b39ddb", education: "#80cbc4", agriculture: "#9ccc65", sanitation: "#a1887f" };
 const SHARE_BINS = [0.2, 0.35, 0.5, 0.65];
 const CHANGE_BINS = [-0.2, -0.05, 0.05, 0.25];
@@ -65,6 +103,8 @@ function scaleFor(key, meta, rows) {
   const palette = key === "priority" ? RED : SEQ;
   const values = rows.map((row) => row.values[key]).filter((value) => value != null && Number.isFinite(value)).sort((a, b) => a - b);
   if (!values.length) return { color: () => NO_DATA, legend: [] };
+  // Every area has the same value (e.g. no members in any ward yet): one faint colour, one legend row.
+  if (values[0] === values[values.length - 1]) return { color: () => palette[0], legend: [{ color: palette[0], label: `all ${formatValue(key, values[0], meta)}` }] };
   const edges = [0.2, 0.4, 0.6, 0.8].map((q) => values[Math.min(values.length - 1, Math.floor(q * values.length))]);
   const color = (value) => { const i = edges.findIndex((edge) => value < edge); return palette[i === -1 ? 4 : i]; };
   const fmt = (value) => formatValue(key, value, meta);
@@ -124,6 +164,8 @@ export default function SentimentMapTab({ authToken, initialLga = null }) {
   const [colourBy, setColourBy] = useState("membersPerPu");
   const [view, setView] = useState("layers");
   const [hovered, setHovered] = useState(null);
+  const [basemap, setBasemap] = useState(() => { try { return localStorage.getItem("smp-basemap") || "street"; } catch { return "street"; } });
+  const tileRef = useRef(null);
   const [fitRef, fitHeight] = useFitHeight();
   const mapNode = useRef(null);
   const mapRef = useRef(null);
@@ -195,17 +237,21 @@ export default function SentimentMapTab({ authToken, initialLga = null }) {
   useEffect(() => {
     if (!mapNode.current || mapRef.current) return;
     const map = L.map(mapNode.current, { zoomControl: true, scrollWheelZoom: true, zoomSnap: 0.25 }).setView([8.1, 3.6], 8);
-    const key = import.meta.env.VITE_MAPTILER_KEY;
-    (key
-      ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${key}`, { attribution: "&copy; MapTiler &copy; OpenStreetMap contributors", maxZoom: 18 })
-      : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 18 })
-    ).addTo(map);
     mapRef.current = map;
     const observer = new ResizeObserver(() => map.invalidateSize());
     observer.observe(mapNode.current);
     return () => { observer.disconnect(); map.remove(); mapRef.current = null; };
     // The map container only exists once the first data has arrived.
   }, [Boolean(query.data)]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    tileRef.current?.remove();
+    tileRef.current = L.layerGroup((BASEMAPS[basemap] || BASEMAPS.street).layers()).addTo(map);
+    tileRef.current.eachLayer((layer) => layer.bringToBack());
+    try { localStorage.setItem("smp-basemap", basemap); } catch { /* private mode: not remembered */ }
+  }, [basemap, Boolean(query.data)]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -220,7 +266,7 @@ export default function SentimentMapTab({ authToken, initialLga = null }) {
           color: item?.current ? "#ffffff" : "#16040a",
           weight: item?.current ? 3 : 1.2,
           fillColor: level === "pu" ? "#d9aa4b" : value == null ? NO_DATA : scale.color(value),
-          fillOpacity: level === "pu" ? 0.18 : 0.78,
+          fillOpacity: level === "pu" ? 0.18 : 0.72,
           dashArray: value == null && level !== "pu" ? "4 3" : null,
         };
       },
@@ -241,7 +287,7 @@ export default function SentimentMapTab({ authToken, initialLga = null }) {
       for (const item of features) {
         if (!item.row) continue;
         const value = item.row.values[dotKey];
-        const center = L.geoJSON(item.feature).getBounds().getCenter();
+        const center = labelPoint(item.feature); // the name sits just below the circle
         if (value == null) continue;
         if (!value) {
           L.circleMarker(center, { radius: 5, color: "#ff8a5c", weight: 2, fillOpacity: 0 }).bindTooltip(`${escapeHtml(item.row.name)}: no ${escapeHtml(data.layers[dotKey].label.toLowerCase())}`).addTo(group);
@@ -254,9 +300,33 @@ export default function SentimentMapTab({ authToken, initialLga = null }) {
           .addTo(group);
       }
     }
+    // Names on every area; a name is hidden while its area is too small on screen to hold it,
+    // and appears as you zoom in.
+    const labels = features.map((item) => {
+      const raw = item.row?.name || item.feature.properties?.ward || featureLgaName(item.feature);
+      if (!raw) return null;
+      const text = level === "lga" ? raw : titleCase(raw);
+      const marker = L.marker(labelPoint(item.feature), {
+        interactive: false,
+        keyboard: false,
+        icon: L.divIcon({ className: `smp-label${level === "lga" ? " smp-label-lga" : ""}`, html: `<span>${escapeHtml(text)}</span>`, iconSize: null }),
+      }).addTo(group);
+      return { marker, bounds: L.geoJSON(item.feature).getBounds(), width: text.length * (level === "lga" ? 6.6 : 6) + 10 };
+    }).filter(Boolean);
+    const placeLabels = () => {
+      for (const label of labels) {
+        const a = map.latLngToContainerPoint(label.bounds.getNorthWest());
+        const b = map.latLngToContainerPoint(label.bounds.getSouthEast());
+        const fits = Math.abs(b.x - a.x) >= label.width * 0.8 && Math.abs(b.y - a.y) >= 16;
+        const element = label.marker.getElement();
+        if (element) element.style.visibility = fits ? "visible" : "hidden";
+      }
+    };
+    map.on("zoomend", placeLabels);
     const bounds = shapes.getBounds();
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [16, 16] });
-    return () => group.remove();
+    placeLabels();
+    return () => { map.off("zoomend", placeLabels); group.remove(); };
     // drill/setHovered are stable enough for this effect; re-running on them would refit the map.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, features, scale, measure, selected, dotKey, level]);
@@ -325,6 +395,12 @@ export default function SentimentMapTab({ authToken, initialLga = null }) {
       <div className="smp-main">
         <div className="smp-map-wrap">
           <div ref={mapNode} className="smp-map" aria-label="Oyo map" />
+          <label className="smp-basemap">
+            <span>Map</span>
+            <select value={basemap} onChange={(event) => setBasemap(event.target.value)} aria-label="Map style">
+              {Object.entries(BASEMAPS).map(([id, item]) => <option key={id} value={id}>{item.label}</option>)}
+            </select>
+          </label>
           {boundaryMissing && <p className="smp-overlay-note">Boundaries for this level could not be loaded. The side panel and polling-unit grid still work.</p>}
           {scale && level !== "pu" && (
             <div className="smp-legend">
@@ -340,7 +416,7 @@ export default function SentimentMapTab({ authToken, initialLga = null }) {
                 {rows.map((row) => {
                   const value = row.values[measure];
                   const fill = value == null ? NO_DATA : scale.color(value);
-                  const dark = [NO_DATA, SEQ[0], SEQ[1], RED[0], RED[1], DIV[0]].includes(fill);
+                  const dark = DEEP.has(fill);
                   return (
                     <button key={row.key} type="button" onMouseEnter={() => setHovered(row)} onFocus={() => setHovered(row)} style={{ background: fill, color: dark ? "#f7eff2" : "#2b0816" }} className={!row.values.members ? "none" : ""} title={`${row.name} · ${formatValue(measure, value, measureMeta)}`}>
                       {String(row.number).padStart(3, "0")}
