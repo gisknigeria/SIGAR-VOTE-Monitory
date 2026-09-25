@@ -311,7 +311,7 @@ export default function SentimentMapTab({ authToken, initialLga = null }) {
                   className={`smp-pill${selected.includes(key) ? " on" : ""}${group === "History" ? " hist" : ""}${off ? " off" : ""}${!here ? " dim" : ""}`}
                   aria-pressed={selected.includes(key)}
                   disabled={off}
-                  title={off ? "Not loaded yet: upload it in the Data tab" : !here ? `Shown at ${layer.levels.map((item) => LEVEL_NAMES[item]).join(" / ")} level` : ""}
+                  title={off ? "Not loaded yet: upload it in Tools → Manage Data" : !here ? `Shown at ${layer.levels.map((item) => LEVEL_NAMES[item]).join(" / ")} level` : ""}
                   onClick={() => toggle(key)}
                 >
                   <span className="smp-box" />{layer.label}{off ? <em>upload</em> : pillValue[key] && <em>{pillValue[key]}</em>}

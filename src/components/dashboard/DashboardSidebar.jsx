@@ -52,6 +52,7 @@ export default function DashboardSidebar({ controller }) {
     setLiveIncidentsOpen,
     setManageOfficers,
     setMapDataPanel,
+    setManageDataOpen,
     setMapDrawTool,
     setOperationsOpen,
     setPartyManagerOpen,
@@ -234,6 +235,7 @@ export default function DashboardSidebar({ controller }) {
                     onClearAreas={clearAreas}
                     onManageOfficers={() => setManageOfficers(true)}
                     onMapData={() => setMapDataPanel(true)}
+                    onManageData={() => setManageDataOpen(true)}
                     onAuditLog={() => setAuditLogOpen(true)}
                     onGps={toggleGps}
                     onCameraShare={toggleCamera}

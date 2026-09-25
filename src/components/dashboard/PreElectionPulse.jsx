@@ -7,7 +7,7 @@ import "./pre-election-pulse.css";
 /**
  * The Pre-Election Pulse: the first screen of pre-election. One viewport, no scrolling on a
  * laptop: headline figures, the four charts that matter, and findings written from the data.
- * Everything comes from uploads (Data tab), so it updates the moment new data is loaded.
+ * Everything comes from uploads (Tools -> Manage Data), so it updates the moment new data is loaded.
  */
 
 const num = (value) => (value == null ? "—" : Number(value).toLocaleString());
@@ -120,7 +120,7 @@ function Columns({ rows }) {
 }
 
 function ContactCenterPanel({ center, place }) {
-  if (!center.available) return <Panel title="Contact center"><Empty>Upload the contact center report in Data to see call activity.</Empty></Panel>;
+  if (!center.available) return <Panel title="Contact center"><Empty>Upload the contact center report in Tools → Manage Data to see call activity.</Empty></Panel>;
   const stats = center.scope === "lga"
     ? [
         { label: "Calls", value: num(center.calls), sub: `${pct(center.shareOfState, 1)} of all` },
@@ -211,7 +211,7 @@ function PlatformPanel({ survey }) {
 
 function GroundPanel({ data, onPick }) {
   const { members, filter, byLga, survey } = data;
-  if (!members.available) return <Panel title="Ground strength"><Empty>Upload member lists in Data to see polling-unit coverage.</Empty></Panel>;
+  if (!members.available) return <Panel title="Ground strength"><Empty>Upload member lists in Tools → Manage Data to see polling-unit coverage.</Empty></Panel>;
   if (filter.lga) {
     const row = byLga.find((item) => item.lga === filter.lga) || {};
     return (
