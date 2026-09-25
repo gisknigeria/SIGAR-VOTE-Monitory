@@ -1,15 +1,19 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { MdFlashOn } from "react-icons/md";
 import SentimentMap from "./SentimentMap.jsx";
 import AreaOperations from "./AreaOperations.jsx";
 import GeographicOperationalView from "./GeographicOperationalView.jsx";
 import ReportingLifecycle from "./ReportingLifecycle.jsx";
 import AiGenerationBadge from "./AiGenerationBadge.jsx";
+import PreElectionPulse from "./PreElectionPulse.jsx";
+import PreElectionData from "./PreElectionData.jsx";
 import {
   HISTORICAL_ELECTION_DATASETS,
   HISTORICAL_ELECTION_RESULTS,
   getHistoricalDataset,
 } from "../../../shared/historicalElectionData.js";
+
+const VoterSurvey = lazy(() => import("../stakeholder/VoterSurvey.jsx"));
 
 const formatMetric = (value, metric) =>
   `${Number(value || 0).toLocaleString()} ${metric === "votes" ? "votes" : metric === "seats" ? "seats" : "wins"}`;
@@ -19,7 +23,7 @@ export default function PreElectionAnalysis({
   authToken,
   canAdmin = false,
 }) {
-  const [tab, setTab] = useState("sentiment");
+  const [tab, setTab] = useState("pulse");
   const [year, setYear] = useState(2023);
   const [election, setElection] = useState("Presidential");
   const [brief, setBrief] = useState("");
@@ -115,22 +119,37 @@ export default function PreElectionAnalysis({
 
   return (
     <section className="pre-election-dashboard">
-      <div className="pre-election-head">
-        <div>
-          <span className="eyebrow">BEFORE THE NEXT ELECTION</span>
-          <h2>Pre-Election Analysis</h2>
-          <p>Review election sentiment and previous Oyo election records.</p>
+      {/* The Pulse is one screen, so the page header gives way to it. */}
+      {["sentiment", "records"].includes(tab) && (
+        <div className="pre-election-head">
+          <div>
+            <span className="eyebrow">BEFORE THE NEXT ELECTION</span>
+            <h2>Pre-Election Analysis</h2>
+            <p>Review election sentiment and previous Oyo election records.</p>
+          </div>
+          <button
+            className="primary action-btn"
+            disabled={loading || !result}
+            onClick={generate}
+          >
+            <MdFlashOn /> {loading ? "Analyzing…" : "Generate Brief"}
+          </button>
         </div>
-        <button
-          className="primary action-btn"
-          disabled={loading || !result}
-          onClick={generate}
-        >
-          <MdFlashOn /> {loading ? "Analyzing…" : "Generate Brief"}
-        </button>
-      </div>
+      )}
 
       <div className="rc-tab-bar pre-election-tabs">
+        <button
+          className={tab === "pulse" ? "rc-tab active" : "rc-tab"}
+          onClick={() => setTab("pulse")}
+        >
+          Pulse
+        </button>
+        <button
+          className={tab === "survey" ? "rc-tab active" : "rc-tab"}
+          onClick={() => setTab("survey")}
+        >
+          Voter survey
+        </button>
         <button
           className={tab === "sentiment" ? "rc-tab active" : "rc-tab"}
           onClick={() => setTab("sentiment")}
@@ -143,6 +162,14 @@ export default function PreElectionAnalysis({
         >
           History
         </button>
+        {canAdmin && (
+          <button
+            className={tab === "data" ? "rc-tab active" : "rc-tab"}
+            onClick={() => setTab("data")}
+          >
+            Data
+          </button>
+        )}
         {canAdmin && (
           <button
             className={tab === "operations" ? "rc-tab active" : "rc-tab"}
@@ -169,6 +196,20 @@ export default function PreElectionAnalysis({
         )}
       </div>
 
+      {tab === "pulse" && (
+        <PreElectionPulse
+          authToken={authToken}
+          onOpenData={canAdmin ? () => setTab("data") : undefined}
+        />
+      )}
+      {tab === "survey" && (
+        <div className="stakeholder-shell pep-survey-shell">
+          <Suspense fallback={<p className="sh-empty" role="status">Loading the voter survey…</p>}>
+            <VoterSurvey token={authToken} />
+          </Suspense>
+        </div>
+      )}
+      {tab === "data" && canAdmin && <PreElectionData authToken={authToken} />}
       {tab === "operations" && canAdmin && (
         <AreaOperations authToken={authToken} />
       )}

@@ -1,0 +1,227 @@
+import { createHmac, randomUUID } from 'node:crypto';
+import { matchLga, oyoLgas } from './lga.js';
+
+/**
+ * Turns uploaded spreadsheets into stored pre-election datasets. Three kinds:
+ *
+ *   members    party members / polling-unit agents / volunteers. Kept per person as
+ *              { lga, ward, unit, id } where id is a keyed hash of the phone number (or of the
+ *              name when there is no phone). Names and phone numbers are dropped at the door --
+ *              the hash exists only so the same person in two lists is counted once.
+ *   contacts   a phone list. Only the count per LGA is kept.
+ *   reference  one row per LGA: population, registered voters, PVCs collected.
+ *
+ * Spreadsheets arrive in many shapes (one sheet per LGA, a title row above the header, "WARD 1"
+ * as a column name), so columns are found by what their header says, not where they sit.
+ */
+
+export const DATASET_KINDS = ['members', 'contacts', 'reference'];
+
+const headerKey = (value) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+const COLUMN_PATTERNS = {
+  lga: [/^lga\b/, /^local government/, /^l g a\b/, /^lgas?$/],
+  // Order matters: the first pattern that hits any column wins, so specific names go first.
+  ward: [/^ward name/, /^ward source/, /^wards?$/, /^ward\b(?! no)/],
+  wardNo: [/^ward no/],
+  unit: [/^pu code/, /^polling unit\b.*\b(no|code|number)\b/, /^unit\b/, /^units\b/, /^polling units?$/],
+  phone: [/^phone (no|number)/, /phone/, /^mobile/, /^gsm/, /^tel\b/],
+  name: [/^agent name/, /^member name/, /^full name/, /^names?$/, /^name\b/],
+  population: [/^population/],
+  registeredVoters: [/^registered voters?/, /^registered/],
+  pvcCollected: [/^pvcs? collected/, /^pvc/],
+};
+
+function findColumns(header) {
+  const keys = header.map(headerKey);
+  const columns = {};
+  for (const [field, patterns] of Object.entries(COLUMN_PATTERNS)) {
+    for (const pattern of patterns) {
+      const index = keys.findIndex((key, i) => key && pattern.test(key) && !Object.values(columns).includes(i));
+      if (index >= 0) { columns[field] = index; break; }
+    }
+  }
+  return columns;
+}
+
+/** The header is the first of the top rows that names the columns this kind needs. */
+function locateTable(rows, needs) {
+  for (let i = 0; i < Math.min(rows.length, 8); i += 1) {
+    const columns = findColumns(rows[i] || []);
+    if (needs.every((field) => columns[field] !== undefined)) return { headerIndex: i, columns };
+  }
+  return null;
+}
+
+// Workbooks exported by the cleaning tool carry a Master sheet plus per-LGA copies and review
+// sheets of the same people. Read only the Master when there is one; skip review/summary sheets.
+const SKIP_SHEET = /summary|review|duplicate|chart|analysis|dashboard|pivot/i;
+function sheetsToRead(workbook) {
+  const master = workbook.sheetNames.find((name) => /^master$/i.test(name.trim()));
+  if (master) return [master];
+  return workbook.sheetNames.filter((name) => !SKIP_SHEET.test(name));
+}
+
+function phoneFromDigits(text) {
+  let digits = String(text).replace(/\.0+$/, '').replace(/\D/g, '');
+  if (digits.startsWith('234') && digits.length === 13) digits = `0${digits.slice(3)}`;
+  // Excel stores phone numbers as numbers and drops the leading 0.
+  if (digits.length === 10 && /^[789]/.test(digits)) digits = `0${digits}`;
+  return /^0[789]\d{9}$/.test(digits) ? digits : '';
+}
+
+/** 11-digit Nigerian mobile number, or ''. A cell holding two numbers yields the first. */
+export function normalizePhone(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const whole = phoneFromDigits(text);
+  if (whole) return whole;
+  for (const part of text.split(/[,/;&|]|\s+or\s+|\s{2,}/i)) {
+    const phone = phoneFromDigits(part);
+    if (phone) return phone;
+  }
+  const digits = text.replace(/\D/g, '');
+  return digits.length === 22 ? phoneFromDigits(digits.slice(0, 11)) : '';
+}
+
+const hashKey = () => process.env.PRE_ELECTION_HASH_KEY || process.env.JWT_SECRET || 'sigar-pre-election';
+const personId = (phone, name, lga) => {
+  const basis = phone ? `p:${phone}` : `n:${clean(name).toLowerCase()}|${lga}`;
+  return createHmac('sha256', hashKey()).update(basis).digest('base64url').slice(0, 16);
+};
+const unitKey = (value) => {
+  const text = clean(value);
+  const number = text.match(/^0*(\d{1,3})\b/);
+  return number ? String(Number(number[1])) : text.toLowerCase().slice(0, 60);
+};
+
+function buildMembers(workbook) {
+  const records = [];
+  const unmatched = new Map();
+  let rowsRead = 0;
+  let noPhone = 0;
+  const sheetsUsed = [];
+  for (const sheet of sheetsToRead(workbook)) {
+    const rows = workbook.rows(sheet) || [];
+    const table = locateTable(rows, ['phone']) || locateTable(rows, ['name']);
+    if (!table) continue;
+    const { columns, headerIndex } = table;
+    // One-sheet-per-LGA workbooks have no LGA column: the sheet name is the LGA.
+    const sheetLga = columns.lga === undefined ? matchLga(sheet) : '';
+    if (columns.lga === undefined && !sheetLga) { unmatched.set(sheet, (unmatched.get(sheet) || 0) + Math.max(rows.length - headerIndex - 1, 0)); continue; }
+    sheetsUsed.push(sheet);
+    for (const row of rows.slice(headerIndex + 1)) {
+      const name = columns.name !== undefined ? clean(row[columns.name]) : '';
+      const phone = columns.phone !== undefined ? normalizePhone(row[columns.phone]) : '';
+      if (!name && !phone) continue;
+      rowsRead += 1;
+      const rawLga = columns.lga !== undefined ? clean(row[columns.lga]) : sheet;
+      const lga = sheetLga || matchLga(rawLga);
+      if (!lga) { unmatched.set(rawLga || '(blank)', (unmatched.get(rawLga || '(blank)') || 0) + 1); continue; }
+      if (!phone) noPhone += 1;
+      const ward = clean(columns.ward !== undefined ? row[columns.ward] : columns.wardNo !== undefined ? row[columns.wardNo] : '').toUpperCase().slice(0, 80);
+      const unit = columns.unit !== undefined ? unitKey(row[columns.unit]) : '';
+      records.push([lga, ward, unit, personId(phone, name, lga)]);
+    }
+  }
+  if (!rowsRead) throw new Error('No member rows were found. The sheet needs a header row with a phone number or name column, and an LGA column (or one sheet per LGA).');
+  const unique = new Set(records.map((record) => record[3])).size;
+  return {
+    records,
+    summary: { rowsRead, stored: records.length, uniquePeople: unique, duplicatesInFile: records.length - unique, noPhone, sheets: sheetsUsed, unmatched: [...unmatched.entries()].map(([name, count]) => ({ name, count })) },
+  };
+}
+
+function buildContacts(workbook) {
+  const counts = {};
+  const seen = new Set();
+  const unmatched = new Map();
+  let rowsRead = 0;
+  let invalid = 0;
+  let duplicates = 0;
+  for (const sheet of sheetsToRead(workbook)) {
+    const rows = workbook.rows(sheet) || [];
+    const table = locateTable(rows, ['phone']);
+    if (!table) continue;
+    const { columns, headerIndex } = table;
+    const sheetLga = columns.lga === undefined ? matchLga(sheet) : '';
+    for (const row of rows.slice(headerIndex + 1)) {
+      const raw = row[columns.phone];
+      if (!clean(raw)) continue;
+      rowsRead += 1;
+      const phone = normalizePhone(raw);
+      if (!phone) { invalid += 1; continue; }
+      if (seen.has(phone)) { duplicates += 1; continue; }
+      seen.add(phone);
+      const rawLga = columns.lga !== undefined ? clean(row[columns.lga]) : sheet;
+      const lga = sheetLga || matchLga(rawLga);
+      if (!lga) { unmatched.set(rawLga || '(blank)', (unmatched.get(rawLga || '(blank)') || 0) + 1); continue; }
+      counts[lga] = (counts[lga] || 0) + 1;
+    }
+  }
+  if (!rowsRead) throw new Error('No phone numbers were found. The sheet needs a header row with a phone number column and an LGA column.');
+  const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  // 1,048,575 data rows is Excel's sheet limit: a file that size was almost certainly cut off.
+  const truncated = rowsRead >= 1_048_574;
+  return { counts, summary: { rowsRead, stored: total, invalid, duplicatesInFile: duplicates, truncated, unmatched: [...unmatched.entries()].map(([name, count]) => ({ name, count })) } };
+}
+
+const numberOf = (value) => {
+  const text = String(value ?? '').replace(/[,\s]/g, '');
+  if (!text) return null;
+  const number = Number(text);
+  return Number.isFinite(number) && number >= 0 ? Math.round(number) : null;
+};
+
+function buildReference(workbook) {
+  const values = {};
+  const unmatched = new Map();
+  let rowsRead = 0;
+  for (const sheet of workbook.sheetNames) {
+    const rows = workbook.rows(sheet) || [];
+    const table = locateTable(rows, ['lga']);
+    if (!table) continue;
+    const { columns, headerIndex } = table;
+    if (!['population', 'registeredVoters', 'pvcCollected'].some((field) => columns[field] !== undefined)) continue;
+    for (const row of rows.slice(headerIndex + 1)) {
+      const rawLga = clean(row[columns.lga]);
+      if (!rawLga || /^total$/i.test(rawLga)) continue;
+      rowsRead += 1;
+      const lga = matchLga(rawLga);
+      if (!lga) { unmatched.set(rawLga, (unmatched.get(rawLga) || 0) + 1); continue; }
+      const entry = values[lga] || {};
+      for (const field of ['population', 'registeredVoters', 'pvcCollected']) {
+        if (columns[field] === undefined) continue;
+        const number = numberOf(row[columns[field]]);
+        if (number !== null) entry[field] = number;
+      }
+      values[lga] = entry;
+    }
+  }
+  if (!rowsRead) throw new Error('No LGA rows were found. Use the template: LGA, Population, Registered voters, PVCs collected.');
+  const warnings = Object.entries(values)
+    .filter(([, entry]) => entry.pvcCollected != null && entry.registeredVoters != null && entry.pvcCollected > entry.registeredVoters)
+    .map(([lga]) => `${lga}: PVCs collected is higher than registered voters.`);
+  const missing = oyoLgas().map((lga) => lga.name).filter((name) => !values[name]);
+  return { values, summary: { rowsRead, stored: Object.keys(values).length, missingLgas: missing, warnings, unmatched: [...unmatched.entries()].map(([name, count]) => ({ name, count })) } };
+}
+
+export function buildDataset(kind, workbook, { label = '', sourceFile = '', source = '', year = '', uploadedBy = '', now = new Date() } = {}) {
+  if (!DATASET_KINDS.includes(kind)) throw new Error(`Unknown dataset type. Use one of: ${DATASET_KINDS.join(', ')}.`);
+  const built = kind === 'members' ? buildMembers(workbook) : kind === 'contacts' ? buildContacts(workbook) : buildReference(workbook);
+  return {
+    id: randomUUID(),
+    kind,
+    label: clean(label).slice(0, 80) || { members: 'Members', contacts: 'Contact list', reference: 'Population & voter register' }[kind],
+    source: clean(source).slice(0, 200),
+    year: clean(year).slice(0, 10),
+    sourceFile: clean(sourceFile).slice(0, 200),
+    uploadedBy,
+    uploadedAt: now.toISOString(),
+    ...built,
+  };
+}
+
+/** What the data manager lists: everything but the stored rows. */
+export const describeDataset = ({ records, counts, values, ...rest }) => rest;
