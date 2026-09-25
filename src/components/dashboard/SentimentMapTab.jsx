@@ -1,0 +1,390 @@
+import { useQuery } from "@tanstack/react-query";
+import L from "leaflet";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { apiRequest } from "../../api/client.js";
+import { oyoBoundariesQuery } from "../../queries/boundaries.js";
+import { wardByName } from "../../../shared/wardMatch.js";
+import { escapeHtml, featureLgaName, lgaKey } from "../stakeholder/ui.jsx";
+import { useFitHeight } from "./useFitHeight.js";
+import "./sentiment-map.css";
+
+/**
+ * Sentiment map: tick any mix of layers (register, ground, outreach, opinion, 2023 history),
+ * colour the map by one of them or by a comparison, and drill Oyo -> LGA -> ward -> polling
+ * unit. Every figure comes from /api/pre-election/map; this file only draws it.
+ */
+
+const GROUPS = ["Register", "Ground", "Outreach", "Opinion", "History"];
+const DEFAULT_LAYERS = ["members", "calls", "needs"];
+const SEQ = ["#4a1a28", "#6d4a12", "#a8761f", "#d9aa4b", "#f5dc9a"];
+const RED = ["#3d1620", "#6e2330", "#a8352f", "#d8573a", "#ff8a5c"];
+const DIV = ["#b8452f", "#e08a6b", "#b9a6ad", "#8fcf8f", "#2f9e44"];
+const NO_DATA = "#2a0e17";
+const NEED_COLORS = { roads: "#e0a458", electricity: "#f5dc9a", water: "#5ec8ff", money: "#7fcf7f", jobs: "#c9748f", security: "#ff8a5c", health: "#b39ddb", education: "#80cbc4", agriculture: "#9ccc65", sanitation: "#a1887f" };
+const SHARE_BINS = [0.2, 0.35, 0.5, 0.65];
+const CHANGE_BINS = [-0.2, -0.05, 0.05, 0.25];
+const LEVEL_NAMES = { lga: "LGA", ward: "Ward", pu: "Polling unit" };
+// GRID3 spells some LGAs the old way; the ward service needs its spelling.
+const GRID3_LGA = { "Ogbomoso North": ["Ogbomosho North"], "Ogbomoso South": ["Ogbomosho South"], Oorelope: ["Orelope"], "Ori Ire": ["Oriire", "Ori-Ire"], "Ibadan North East": ["Ibadan North-East"], "Ibadan North West": ["Ibadan North-West"], "Ibadan South West": ["Ibadan South-West"], "Ona-Ara": ["Ona Ara"], "Ogo-Oluwa": ["Ogo Oluwa"], Atisbo: ["Atigbo"] };
+
+const num = (value) => (value == null ? "—" : Number(value).toLocaleString());
+const compact = (value) => {
+  if (value == null) return "—";
+  const n = Number(value);
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e4) return `${Math.round(n / 1e3)}k`;
+  return n.toLocaleString();
+};
+const pct = (value) => (value == null ? "—" : `${Math.round(value * 100)}%`);
+const pts = (value) => (value == null ? "—" : `${value >= 0 ? "+" : "−"}${Math.abs(Math.round(value * 100))} pts`);
+const needLabel = (id) => ({ roads: "Roads", electricity: "Electricity", water: "Water", money: "Money", jobs: "Jobs", security: "Security", health: "Health", education: "Education", agriculture: "Agriculture", sanitation: "Sanitation" })[id] || id || "—";
+
+function formatValue(key, value, meta) {
+  if (value == null) return "—";
+  if (key === "changeGov" || key === "changePres") return pts(value);
+  if (key === "needs") return needLabel(value);
+  if (key === "priority") return `${Math.round(value * 100)}/100`;
+  if (key === "membersPerPu" || key === "callsPer1k") return Number(value).toFixed(1);
+  return meta?.format === "share" ? pct(value) : num(value);
+}
+
+/** Colour rule for the chosen measure over the current rows: { color(value), legend }. */
+function scaleFor(key, meta, rows) {
+  if (key === "needs") {
+    const present = [...new Set(rows.map((row) => row.values.needs).filter(Boolean))];
+    return { color: (value) => NEED_COLORS[value] || "#8f7d86", legend: present.map((id) => ({ color: NEED_COLORS[id] || "#8f7d86", label: needLabel(id) })) };
+  }
+  if (key === "changeGov" || key === "changePres") {
+    const color = (value) => DIV[CHANGE_BINS.findIndex((edge) => value < edge) === -1 ? 4 : CHANGE_BINS.findIndex((edge) => value < edge)];
+    return { color, legend: DIV.map((c, i) => ({ color: c, label: ["−20 pts or worse", "−5 to −20", "about even", "+5 to +25", "+25 pts or more"][i] })) };
+  }
+  if (meta?.format === "share" && key !== "reached") {
+    const color = (value) => SEQ[SHARE_BINS.findIndex((edge) => value < edge) === -1 ? 4 : SHARE_BINS.findIndex((edge) => value < edge)];
+    return { color, legend: SEQ.map((c, i) => ({ color: c, label: ["under 20%", "20–35%", "35–50%", "50–65%", "65%+"][i] })) };
+  }
+  const palette = key === "priority" ? RED : SEQ;
+  const values = rows.map((row) => row.values[key]).filter((value) => value != null && Number.isFinite(value)).sort((a, b) => a - b);
+  if (!values.length) return { color: () => NO_DATA, legend: [] };
+  const edges = [0.2, 0.4, 0.6, 0.8].map((q) => values[Math.min(values.length - 1, Math.floor(q * values.length))]);
+  const color = (value) => { const i = edges.findIndex((edge) => value < edge); return palette[i === -1 ? 4 : i]; };
+  const fmt = (value) => formatValue(key, value, meta);
+  return { color, legend: palette.map((c, i) => ({ color: c, label: i === 0 ? `under ${fmt(edges[0])}` : i === 4 ? `${fmt(edges[3])}+` : `${fmt(edges[i - 1])}–${fmt(edges[i])}` })) };
+}
+
+async function fetchWardBoundaries(lgaName, token, signal) {
+  for (const name of [lgaName, ...(GRID3_LGA[lgaName] || [])]) {
+    const data = await apiRequest(`/boundaries/oyo/wards?lga=${encodeURIComponent(name)}`, token, { signal }).catch(() => null);
+    if (data?.wards?.features?.length) return data;
+  }
+  return { wards: { features: [] } };
+}
+
+function AreaCard({ area, data, selected, measure, onOpen }) {
+  const { level, layers, context } = data;
+  if (!area) return null;
+  const v = area.values;
+  const d = area.detail || {};
+  // History rows get their own line with the winner, so they are not repeated as bare shares.
+  const rows = [...new Set([measure, ...selected])].filter((key) => key && key !== "needs" && v[key] !== undefined && !(key === "gov2023" && d.gov2023) && !(key === "pres2023" && d.pres2023));
+  const labelOf = (key) => layers[key]?.label || data.comparisons[key]?.label || (key === "priority" ? "Priority score" : key);
+  return (
+    <section className="smp-card">
+      <header>
+        <div>
+          <h3>{area.number && level === "pu" ? `PU ${String(area.number).padStart(3, "0")} · ` : ""}{area.name}</h3>
+          <p>{level === "lga" ? `LGA · ${num(area.wards)} wards · ${num(area.pollingUnits)} polling units` : level === "ward" ? `Ward ${area.number} · ${num(area.pollingUnits)} polling units` : `${area.code || ""}${d.accredited ? ` · ${num(d.accredited)} accredited in 2023` : ""}`}</p>
+        </div>
+        {onOpen && <button type="button" className="smp-open" onClick={onOpen}>{level === "lga" ? "Open wards →" : "Open polling units →"}</button>}
+      </header>
+      <dl>
+        {rows.map((key) => (
+          <div key={key}><dt>{labelOf(key)}{key === "population" && d.populationEstimated ? " (est.)" : ""}</dt><dd>{formatValue(key, v[key], layers[key])}{key === "reached" && area.pollingUnits ? ` · ${area.unitsWithMember}/${area.pollingUnits}` : ""}</dd></div>
+        ))}
+        {d.gov2023 && selected.includes("gov2023") && <div><dt>2023 Governorship</dt><dd>{d.gov2023.winner} won · APC {pct(d.gov2023.apc)} · PDP {pct(d.gov2023.pdp)}</dd></div>}
+        {d.pres2023 && selected.includes("pres2023") && <div><dt>2023 Presidential</dt><dd>{d.pres2023.winner} won · APC {pct(d.pres2023.apc)}{d.pres2023.parties ? ` · PDP ${pct(d.pres2023.pdp)}` : ""}</dd></div>}
+        {d.survey && selected.some((key) => ["support", "undecided"].includes(key)) && <div><dt>Survey</dt><dd>{num(d.survey.responses)} answers{d.survey.leader ? ` · ${d.survey.leader.split(" ").slice(-1)[0]} leads` : ""}</dd></div>}
+      </dl>
+      {selected.includes("needs") && d.needs?.length > 0 && (
+        <div className="smp-needs">
+          <span>Needs (survey + callers)</span>
+          {d.needs.slice(0, 4).map((need) => <i key={need.id} style={{ borderColor: NEED_COLORS[need.id] }} title={`Survey ${need.survey == null ? "—" : pct(need.survey)} · callers ${need.callers}`}>{need.label}<b>{need.survey != null ? ` ${pct(need.survey)}` : ""}{need.callers ? ` · ${need.callers} call${need.callers === 1 ? "" : "s"}` : ""}</b></i>)}
+        </div>
+      )}
+      {level !== "lga" && context && (
+        <p className="smp-context">{context.name} (LGA): {context.values.support != null ? `Sen. Alli ${pct(context.values.support)} in the survey · ` : ""}{context.detail.needs?.length ? `top needs ${context.detail.needs.slice(0, 2).map((need) => need.label.toLowerCase()).join(", ")}` : ""}</p>
+      )}
+    </section>
+  );
+}
+
+export default function SentimentMapTab({ authToken }) {
+  const [lga, setLga] = useState(null); // { key, name }
+  const [ward, setWard] = useState(null); // { number, name }
+  const [selected, setSelected] = useState(DEFAULT_LAYERS);
+  const [colourBy, setColourBy] = useState("membersPerPu");
+  const [view, setView] = useState("layers");
+  const [hovered, setHovered] = useState(null);
+  const [fitRef, fitHeight] = useFitHeight();
+  const mapNode = useRef(null);
+  const mapRef = useRef(null);
+
+  const query = useQuery({
+    queryKey: ["pre-election-map", lga?.key || "", ward?.number || ""],
+    queryFn: ({ signal }) => apiRequest(`/pre-election/map?lga=${encodeURIComponent(lga?.key || "")}&ward=${ward?.number || ""}`, authToken, { signal }),
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
+  });
+  const lgaBoundaries = useQuery(oyoBoundariesQuery);
+  const wardBoundaries = useQuery({
+    queryKey: ["pre-election-map-wards", lga?.name],
+    queryFn: ({ signal }) => fetchWardBoundaries(lga.name, authToken, signal),
+    enabled: !!lga,
+    staleTime: 86_400_000,
+  });
+
+  const data = query.data;
+  const level = data?.level || "lga";
+  const rows = data?.rows || [];
+  const measure = view === "priority" ? "priority" : colourBy;
+  const measureMeta = data?.layers?.[measure];
+  const scale = useMemo(() => (data ? scaleFor(measure, measureMeta, rows) : null), [data, measure, measureMeta, rows]);
+
+  // Colour-by options: ticked layers usable at this level, plus comparisons whose inputs are ticked.
+  const colourOptions = useMemo(() => {
+    if (!data) return [];
+    const layerOptions = selected.filter((key) => data.layers[key]?.levels.includes(level)).map((key) => ({ key, label: data.layers[key].label }));
+    const comparisons = Object.entries(data.comparisons).filter(([, item]) => item.needs.every((need) => selected.includes(need) || need === "registered")).map(([key, item]) => ({ key, label: item.label }));
+    return [...comparisons, ...layerOptions];
+  }, [data, selected, level]);
+  useEffect(() => {
+    if (colourOptions.length && !colourOptions.some((option) => option.key === colourBy)) setColourBy(colourOptions[0].key);
+  }, [colourOptions, colourBy]);
+
+  // Second measure drawn as circles: the first ticked count layer that is not the colour.
+  const dotKey = useMemo(() => selected.find((key) => key !== measure && data?.layers[key]?.format === "count" && data.layers[key].levels.includes(level) && level !== "pu"), [selected, measure, data, level]);
+
+  // Boundary features for the current level, matched to rows.
+  const features = useMemo(() => {
+    if (level === "lga") {
+      const byKey = new Map(rows.map((row) => [lgaKey(row.name), row]));
+      return (lgaBoundaries.data?.lgas?.features || []).map((feature) => ({ feature, row: byKey.get(lgaKey(featureLgaName(feature))) }));
+    }
+    const wardFeatures = wardBoundaries.data?.wards?.features || [];
+    const wardRows = level === "ward" ? rows : [];
+    const names = (level === "ward" ? rows : [{ name: data?.ward?.name }]).map((row) => row.name).filter(Boolean);
+    const byName = new Map(wardRows.map((row) => [row.name, row]));
+    return wardFeatures.map((feature) => {
+      const p = feature.properties || {};
+      const match = [p.ward, ...String(p.ward_alt_names || "").split(/[;,|]/)].map((name) => wardByName(name, names)).find(Boolean);
+      return { feature, row: level === "ward" ? byName.get(match) : null, current: level === "pu" && match === data?.ward?.name };
+    }).filter((item) => level === "ward" || item.current);
+  }, [level, rows, lgaBoundaries.data, wardBoundaries.data, data]);
+
+  const drill = (row) => {
+    if (!row) return;
+    setHovered(null);
+    if (level === "lga") setLga({ key: row.key, name: row.name });
+    else if (level === "ward") setWard({ number: row.number, name: row.name });
+  };
+  const goTo = (target) => {
+    setHovered(null);
+    if (target === "lga") { setLga(null); setWard(null); }
+    if (target === "ward" && lga) setWard(null);
+  };
+
+  useEffect(() => {
+    if (!mapNode.current || mapRef.current) return;
+    const map = L.map(mapNode.current, { zoomControl: true, scrollWheelZoom: true, zoomSnap: 0.25 }).setView([8.1, 3.6], 8);
+    const key = import.meta.env.VITE_MAPTILER_KEY;
+    (key
+      ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${key}`, { attribution: "&copy; MapTiler &copy; OpenStreetMap contributors", maxZoom: 18 })
+      : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 18 })
+    ).addTo(map);
+    mapRef.current = map;
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(mapNode.current);
+    return () => { observer.disconnect(); map.remove(); mapRef.current = null; };
+    // The map container only exists once the first data has arrived.
+  }, [Boolean(query.data)]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !data || !scale) return undefined;
+    const group = L.featureGroup().addTo(map);
+    const dotMax = dotKey ? Math.max(...rows.map((row) => row.values[dotKey] || 0), 1) : 1;
+    const shapes = L.geoJSON({ type: "FeatureCollection", features: features.map((item) => item.feature) }, {
+      style: (feature) => {
+        const item = features.find((entry) => entry.feature === feature);
+        const value = item?.row?.values[measure];
+        return {
+          color: item?.current ? "#ffffff" : "#16040a",
+          weight: item?.current ? 3 : 1.2,
+          fillColor: level === "pu" ? "#d9aa4b" : value == null ? NO_DATA : scale.color(value),
+          fillOpacity: level === "pu" ? 0.18 : 0.78,
+          dashArray: value == null && level !== "pu" ? "4 3" : null,
+        };
+      },
+      onEachFeature: (feature, layer) => {
+        const item = features.find((entry) => entry.feature === feature);
+        const row = item?.row;
+        const name = row?.name || feature.properties?.ward || featureLgaName(feature) || "Area";
+        const lines = row ? [...new Set([measure, ...selected])].filter((key) => row.values[key] !== undefined).slice(0, 6).map((key) => `${escapeHtml(data.layers[key]?.label || data.comparisons[key]?.label || "Priority")}: <b>${escapeHtml(formatValue(key, row.values[key], data.layers[key]))}</b>`) : ["No data matched to this boundary"];
+        layer.bindTooltip(`<b>${escapeHtml(name)}</b><br>${lines.join("<br>")}${row && level !== "pu" ? `<br><i>Click to open ${level === "lga" ? "its wards" : "its polling units"}</i>` : ""}`, { sticky: true, className: "smp-tip" });
+        if (row) {
+          layer.on("add", () => layer.getElement()?.setAttribute("data-area", row.key));
+          layer.on("mouseover", () => setHovered(row));
+          layer.on("click", () => drill(row));
+        }
+      },
+    }).addTo(group);
+    if (dotKey) {
+      for (const item of features) {
+        if (!item.row) continue;
+        const value = item.row.values[dotKey];
+        const center = L.geoJSON(item.feature).getBounds().getCenter();
+        if (value == null) continue;
+        if (!value) {
+          L.circleMarker(center, { radius: 5, color: "#ff8a5c", weight: 2, fillOpacity: 0 }).bindTooltip(`${escapeHtml(item.row.name)}: no ${escapeHtml(data.layers[dotKey].label.toLowerCase())}`).addTo(group);
+          continue;
+        }
+        L.circleMarker(center, { radius: 4 + Math.sqrt(value / dotMax) * 16, color: "#0b2a3a", weight: 1, fillColor: "#5ec8ff", fillOpacity: 0.75 })
+          .bindTooltip(`${escapeHtml(item.row.name)}: ${escapeHtml(formatValue(dotKey, value, data.layers[dotKey]))} ${escapeHtml(data.layers[dotKey].label.toLowerCase())}`)
+          .on("mouseover", () => setHovered(item.row))
+          .on("click", () => drill(item.row))
+          .addTo(group);
+      }
+    }
+    const bounds = shapes.getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [16, 16] });
+    return () => group.remove();
+    // drill/setHovered are stable enough for this effect; re-running on them would refit the map.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, features, scale, measure, selected, dotKey, level]);
+
+  if (query.isError) return <section className="smp" ref={fitRef}><p className="smp-empty">{query.error.message}</p></section>;
+  if (!data) return <section className="smp" ref={fitRef}><p className="smp-empty">Loading the sentiment map…</p></section>;
+
+  const toggle = (key) => setSelected((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+  const totals = data.totals;
+  const pillValue = { population: "est.", registered: compact(totals.registered), members: compact(totals.members), agents: compact(totals.agents), volunteers: compact(totals.volunteers), contacts: compact(totals.contacts), calls: compact(totals.calls) };
+  const card = hovered || (level === "lga" ? null : level === "ward" ? data.context : null);
+  const boundaryMissing = level === "lga" ? lgaBoundaries.isError || !lgaBoundaries.data?.lgas : wardBoundaries.isFetched && !features.length;
+
+  return (
+    <section ref={fitRef} style={fitHeight ? { height: fitHeight } : undefined} className={`smp${query.isFetching ? " smp-busy" : ""}`} aria-label="Sentiment map">
+      <div className="smp-bar">
+        <nav className="smp-crumb" aria-label="Map level">
+          <button type="button" onClick={() => goTo("lga")} className={level === "lga" ? "on" : ""}>Oyo State</button>
+          {lga && <><span>›</span><button type="button" onClick={() => goTo("ward")} className={level === "ward" ? "on" : ""}>{lga.name}</button></>}
+          {ward && <><span>›</span><b>{data.ward?.name || ward.name}</b></>}
+          <small>{level === "lga" ? "click an LGA to open its wards" : level === "ward" ? "click a ward to open its polling units" : "polling units of this ward"}</small>
+        </nav>
+        <div className="smp-controls">
+          <label>Colour by
+            <select value={view === "priority" ? "" : colourBy} onChange={(event) => { setView("layers"); setColourBy(event.target.value); }} disabled={view === "priority"}>
+              {colourOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+            </select>
+          </label>
+          <div className="smp-seg" role="group" aria-label="View">
+            <button type="button" className={view === "layers" ? "on" : ""} onClick={() => setView("layers")}>Layers</button>
+            <button type="button" className={view === "priority" ? "on" : ""} onClick={() => setView("priority")}>Priority score</button>
+          </div>
+          <div className="smp-seg" role="group" aria-label="Level">
+            {["lga", "ward", "pu"].map((item) => (
+              <button key={item} type="button" className={level === item ? "on" : ""} disabled={(item === "ward" && !lga) || (item === "pu" && !ward)} onClick={() => goTo(item)}>{LEVEL_NAMES[item]}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="smp-pills" role="group" aria-label="Map layers">
+        {GROUPS.map((group) => (
+          <div key={group} className="smp-group">
+            <b>{group}</b>
+            {Object.entries(data.layers).filter(([, layer]) => layer.group === group).map(([key, layer]) => {
+              const here = layer.levels.includes(level);
+              const off = !layer.loaded;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`smp-pill${selected.includes(key) ? " on" : ""}${group === "History" ? " hist" : ""}${off ? " off" : ""}${!here ? " dim" : ""}`}
+                  aria-pressed={selected.includes(key)}
+                  disabled={off}
+                  title={off ? "Not loaded yet: upload it in the Data tab" : !here ? `Shown at ${layer.levels.map((item) => LEVEL_NAMES[item]).join(" / ")} level` : ""}
+                  onClick={() => toggle(key)}
+                >
+                  <span className="smp-box" />{layer.label}{off ? <em>upload</em> : pillValue[key] && <em>{pillValue[key]}</em>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div className="smp-main">
+        <div className="smp-map-wrap">
+          <div ref={mapNode} className="smp-map" aria-label="Oyo map" />
+          {boundaryMissing && <p className="smp-overlay-note">Boundaries for this level could not be loaded. The side panel and polling-unit grid still work.</p>}
+          {scale && level !== "pu" && (
+            <div className="smp-legend">
+              <b>{view === "priority" ? "Priority score (needs attention)" : colourOptions.find((option) => option.key === colourBy)?.label}</b>
+              {level !== "pu" && <div>{scale.legend.map((item) => <span key={item.label}><i style={{ background: item.color }} />{item.label}</span>)}<span><i className="smp-hatch" />no data</span></div>}
+              {dotKey && level !== "pu" && <span className="smp-dotnote"><i /> circles: {data.layers[dotKey].label.toLowerCase()} · hollow red = none</span>}
+            </div>
+          )}
+          {level === "pu" && (
+            <div className="smp-units">
+              <b>Polling units in {data.ward?.name} ({rows.length}) · coloured by {colourOptions.find((option) => option.key === colourBy)?.label?.toLowerCase() || "members"}</b>
+              <div>
+                {rows.map((row) => {
+                  const value = row.values[measure];
+                  const fill = value == null ? NO_DATA : scale.color(value);
+                  const dark = [NO_DATA, SEQ[0], SEQ[1], RED[0], RED[1], DIV[0]].includes(fill);
+                  return (
+                    <button key={row.key} type="button" onMouseEnter={() => setHovered(row)} onFocus={() => setHovered(row)} style={{ background: fill, color: dark ? "#f7eff2" : "#2b0816" }} className={!row.values.members ? "none" : ""} title={`${row.name} · ${formatValue(measure, value, measureMeta)}`}>
+                      {String(row.number).padStart(3, "0")}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <aside className="smp-side">
+          {card ? <AreaCard area={card} data={data} selected={selected} measure={measure} onOpen={level !== "pu" && card !== data.context ? () => drill(card) : null} />
+            : <section className="smp-card"><header><div><h3>{level === "lga" ? "All 33 LGAs" : data.ward?.name}</h3><p>Hover an area to see its figures</p></div></header>
+              <dl>
+                <div><dt>Registered voters</dt><dd>{num(level === "lga" ? totals.registered : data.ward?.registered)}</dd></div>
+                {level === "lga" && <><div><dt>Members</dt><dd>{num(totals.members)}</dd></div><div><dt>Contacts in our possession</dt><dd>{num(totals.contacts)}</dd></div><div><dt>Contact-center calls</dt><dd>{num(totals.calls)}</dd></div></>}
+              </dl></section>}
+          <section className="smp-card">
+            <h3>Where to act</h3>
+            <p className="smp-sub">{level === "pu" ? "Units that most need a member" : "Ranked by the priority score"}</p>
+            {data.ranking.length ? (
+              <ol className="smp-rank">
+                {data.ranking.map((item, index) => {
+                  const row = rows.find((entry) => entry.key === item.key);
+                  return (
+                    <li key={item.key}>
+                      <button type="button" onClick={() => (level === "pu" ? setHovered(row) : drill(row))} onMouseEnter={() => row && setHovered(row)}>
+                        <i>{index + 1}</i><span>{level === "pu" ? `PU ${String(item.number).padStart(3, "0")} ${item.name}` : item.name}</span><b>{item.reasons.join(" · ")}</b>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : <p className="smp-sub">Nothing stands out at this level.</p>}
+          </section>
+          <section className="smp-card smp-intel">
+            <h3>Map intelligence</h3>
+            <p className="smp-sub">{level === "lga" ? "History + survey + ground work" : level === "ward" ? `${data.lga?.name} · wards` : `${data.ward?.name} · polling units`}</p>
+            <ol>{data.insights.map((item, index) => <li key={index} className={item.tone}><span>{{ risk: "Act", watch: "Watch", good: "Strength", info: "Insight" }[item.tone]}</span><p>{item.text}</p></li>)}</ol>
+            <p className="smp-source">2023 results: {data.sources.history}</p>
+          </section>
+        </aside>
+      </div>
+    </section>
+  );
+}

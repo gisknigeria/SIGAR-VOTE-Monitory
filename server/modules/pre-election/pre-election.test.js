@@ -96,7 +96,9 @@ test('reference figures use the upload per LGA and published totals until every 
   assert.equal(atiba.reference.population.value, 250000);
   assert.equal(atiba.reference.pvcRate, 0.8333);
   const iseyin = buildPulse({ datasets: [reference], lga: 'Iseyin' });
-  assert.equal(iseyin.reference.population, null, 'an LGA with no upload shows as not loaded, never zero');
+  assert.equal(iseyin.reference.population.basis, 'estimate', 'without an upload, population is a labelled estimate');
+  assert.equal(iseyin.reference.registeredVoters.basis, 'register');
+  assert.equal(iseyin.reference.pvcCollected, null, 'PVCs by LGA only come from an upload');
 });
 
 test('the pulse joins the survey and writes findings; empty sources say they are not loaded', () => {
@@ -187,4 +189,24 @@ test('issue themes read callers\' own words', () => {
   assert.deepEqual(themesOf('non for now'), []);
   assert.deepEqual(themesOf('assistance'), ['assistance']);
   assert.deepEqual(themesOf('They need more people in the group'), ['other']);
+});
+
+test('built-in data fills the pulse until an upload of the same kind (or member list name) replaces it', async () => {
+  const { withBaseline, baselineSurvey } = await import('./baseline.js');
+  const builtIn = withBaseline([]);
+  assert.deepEqual(builtIn.map((item) => item.kind).sort(), ['contact-center', 'contacts', 'members', 'members']);
+  assert.ok(builtIn.every((item) => item.builtIn));
+  assert.ok(!JSON.stringify(builtIn).match(/0[789]\d{9}/), 'no phone numbers ship with the app');
+  assert.equal(baselineSurvey().responseCount, 28536);
+
+  const pulse = buildPulse({ datasets: builtIn, survey: baselineSurvey() });
+  assert.equal(pulse.members.total, 10658);
+  assert.equal(pulse.members.unitsCovered, 2964, 'counted as INEC polling units');
+  assert.equal(pulse.contacts.total, 1048574);
+  assert.equal(pulse.contactCenter.calls, 1204);
+
+  const upload = { id: 'u1', kind: 'members', label: 'bsa-yv volunteers', records: [['ATIBA', 'W1', '1', 'x']], uploadedAt: new Date().toISOString() };
+  const merged = withBaseline([upload]);
+  assert.deepEqual(merged.filter((item) => item.kind === 'members').map((item) => item.label).sort(), ['Polling-unit agents', 'bsa-yv volunteers']);
+  assert.equal(withBaseline([{ id: 'c', kind: 'contacts', label: 'New list' }]).filter((item) => item.kind === 'contacts').length, 1);
 });

@@ -1,7 +1,14 @@
 // analyzeSurvey keys LGAs with its own normaliser, so register names go through it too.
 import { analyzeSurvey, lgaKey as analyzeLgaKey } from '../voter-survey/analysis.js';
 import { themeLabel } from './contact-center.js';
-import { lgaLabel, matchLga, oyoLgas } from './lga.js';
+import { oyoGeo, wardResolver } from './geo.js';
+import { lgaLabel, matchLga, oyoLgas as registerLgas } from './lga.js';
+
+// The 33 LGAs with polling-unit, ward and voter counts from the 2023 INEC polling-unit register.
+const oyoLgas = () => registerLgas().map((item) => {
+  const lga = oyoGeo().lgas.get(item.name);
+  return lga ? { ...item, pollingUnits: lga.pollingUnits, wards: lga.wardList.length, registered: lga.registered } : item;
+});
 
 /**
  * The Pre-Election Pulse: one screen joining every pre-election source -- the voter survey, the
@@ -37,7 +44,14 @@ function referenceView(reference, lga) {
   for (const field of fields) {
     if (lga) {
       const value = values[lga]?.[field];
-      out[field] = value == null ? null : { value, source: reference.source || reference.label };
+      if (value != null) { out[field] = { value, source: reference.source || reference.label }; continue; }
+      // No upload for this LGA: registered voters come from the INEC polling-unit register, and
+      // population is the state projection shared out by the LGA's share of those voters.
+      const register = oyoGeo().lgas.get(lga);
+      const stateRegistered = [...oyoGeo().lgas.values()].reduce((sum, item) => sum + item.registered, 0);
+      if (field === 'registeredVoters' && register?.registered) out[field] = { value: register.registered, source: 'INEC 2023 polling-unit register', basis: 'register' };
+      else if (field === 'population' && register?.registered && stateRegistered) out[field] = { value: Math.round(STATE_BASELINE.population.value * (register.registered / stateRegistered)), source: 'Estimate: 2022 state projection shared by registered voters', basis: 'estimate' };
+      else out[field] = null;
       continue;
     }
     // A state figure from the upload only when it covers every LGA; otherwise the published total.
@@ -59,6 +73,11 @@ function membersView(memberSets, lga) {
   const units = new Map(); // lga -> Set of ward|unit
   const wards = new Map(); // lga -> Set of ward
   const groups = memberSets.map((set) => ({ label: set.label, ids: new Set() }));
+  const resolvers = new Map();
+  const resolverFor = (name) => {
+    if (!resolvers.has(name)) resolvers.set(name, wardResolver(name));
+    return resolvers.get(name);
+  };
   memberSets.forEach((set, index) => {
     for (const [recordLga, ward, unit, id] of set.records) {
       if (!people.has(id)) people.set(id, { lgas: new Set(), groups: new Set() });
@@ -66,13 +85,18 @@ function membersView(memberSets, lga) {
       people.get(id).lgas.add(recordLga);
       if (lga && recordLga !== lga) continue;
       groups[index].ids.add(id);
-      if (unit) {
+      // Units and wards are counted as INEC units/wards, so one ward typed two ways
+      // ("WARD 3", "AGUODO/MASIFA WARD 03") is still one ward. Unplaceable labels count as typed.
+      const place = resolverFor(recordLga)(ward);
+      const wardKey = place ? `#${place.number}` : ward;
+      const unitKnown = place ? place.units.some((item) => String(item.number) === unit) : Boolean(unit);
+      if (unit && unitKnown) {
         if (!units.has(recordLga)) units.set(recordLga, new Set());
-        units.get(recordLga).add(`${ward}|${unit}`);
+        units.get(recordLga).add(`${wardKey}|${unit}`);
       }
-      if (ward) {
+      if (wardKey) {
         if (!wards.has(recordLga)) wards.set(recordLga, new Set());
-        wards.get(recordLga).add(ward);
+        wards.get(recordLga).add(wardKey);
       }
     }
   });
@@ -259,8 +283,8 @@ function insightsFor({ lga, survey, members, contacts, reference, rows, center }
   }
   if (contacts.available) {
     const reach = ratio(contacts.total, reference.registeredVoters?.value);
-    if (reach != null) add('info', `The contact list reaches ${fmt(contacts.total)} phones in ${place}, about ${pct(reach)} of registered voters.`);
-    if (contacts.truncated && !lga) add('watch', 'The contact list stops at 1,048,574 rows (Excel\'s limit), so it was probably cut off. Re-export it straight to CSV.');
+    if (reach != null) add('info', `We hold ${fmt(contacts.total)} phone contacts in ${place}, equal to about ${pct(reach)} of registered voters.`);
+    if (contacts.truncated && !lga) add('watch', 'The contacts file stops at 1,048,574 rows (Excel\'s limit), so it was probably cut off. Re-export it straight to CSV.');
   }
   if (!lga && reference.lgaLevelLoaded < oyoLgas().length) add('watch', `LGA population and PVC figures are loaded for ${reference.lgaLevelLoaded} of ${oyoLgas().length} LGAs. State totals use published INEC/NPC figures.`);
 
@@ -307,7 +331,7 @@ export function buildPulse({ datasets = [], survey = null, lga = '' }) {
   const register = oyoLgas();
 
   // Weight the survey by registered voters per LGA when the reference has them.
-  const voterWeights = new Map(register.map((item) => [item.name, reference?.values?.[item.name]?.registeredVoters]).filter(([, value]) => value > 0));
+  const voterWeights = new Map(register.map((item) => [item.name, reference?.values?.[item.name]?.registeredVoters ?? item.registered]).filter(([, value]) => value > 0));
   const weights = voterWeights.size >= 20
     ? { lgaWeights: new Map([...voterWeights.entries()].map(([name, value]) => [analyzeLgaKey(name), value])), weightBasis: 'registered voters per LGA' }
     : { lgaWeights: new Map(register.map((item) => [analyzeLgaKey(item.name), item.pollingUnits])), weightBasis: 'polling units per LGA (until registered voters per LGA are uploaded)' };
