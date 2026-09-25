@@ -437,7 +437,7 @@ export default function ResultsCenter({ incidents, parties = [], officers = [], 
         <div>
           <span className="eyebrow">{focusedPreElection ? "PRE-ELECTION DASHBOARD" : "INTELLIGENCE DASHBOARD"}</span>
           <h1>{focusedPreElection ? "Pre-Election Dashboard" : "Analytics Dashboard"}</h1>
-          <p>{focusedPreElection ? "Historical election sentiment and records." : "Live operational pulse, election results, and actions."}</p>
+          <p>{focusedPreElection ? "Pulse, voter sentiment, ground strength and election records." : "Live operational pulse, election results, and actions."}</p>
         </div>
         <button className="icon-btn" onClick={onClose} title="Close dashboard"><FaTimes /></button>
       </header>
