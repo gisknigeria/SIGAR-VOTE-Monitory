@@ -4,6 +4,7 @@ import L from "leaflet";
 import { oyoBoundariesQuery } from "../../queries/boundaries.js";
 import { apiRequest } from "../../api/client.js";
 import LayerControlPanel, { layerGeometry } from "./LayerControlPanel.jsx";
+import { STREET_TILES } from "../../config.js";
 
 const DATA_LAYERS = ["none", "population", "network"];
 const DATA_LAYER_LABEL = { none: "Data layer: off", population: "Data layer: Population", network: "Data layer: Network" };
@@ -250,10 +251,11 @@ export default function MapView({
               attribution: "&copy; MapTiler &copy; OpenStreetMap contributors",
             },
           )
-        : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        : L.tileLayer(STREET_TILES.url, {
             crossOrigin: true,
             maxZoom: 19,
-            attribution: "&copy; OpenStreetMap contributors",
+            subdomains: STREET_TILES.subdomains,
+            attribution: STREET_TILES.attribution,
           });
     const esri = (service) =>
       L.tileLayer(

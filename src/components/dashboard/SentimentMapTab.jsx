@@ -7,6 +7,7 @@ import { wardByName } from "../../../shared/wardMatch.js";
 import { escapeHtml, featureLgaName, lgaKey } from "../stakeholder/ui.jsx";
 import { useFitHeight } from "./useFitHeight.js";
 import "./sentiment-map.css";
+import { STREET_TILES } from "../../config.js";
 
 /**
  * Sentiment map: tick any mix of layers (register, ground, outreach, opinion, 2023 history),
@@ -30,7 +31,7 @@ const BASEMAPS = {
     const key = import.meta.env.VITE_MAPTILER_KEY;
     return [key
       ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${key}`, { attribution: "&copy; MapTiler &copy; OpenStreetMap contributors", maxZoom: 19 })
-      : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 })];
+      : L.tileLayer(STREET_TILES.url, { attribution: STREET_TILES.attribution, subdomains: STREET_TILES.subdomains, maxZoom: 19 })];
   } },
   satellite: { label: "Satellite", layers: () => [esri("World_Imagery")] },
   hybrid: { label: "Satellite + labels", layers: () => [esri("World_Imagery"), esri("Reference/World_Boundaries_and_Places")] },
