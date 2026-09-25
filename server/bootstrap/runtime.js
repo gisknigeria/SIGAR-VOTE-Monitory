@@ -11,6 +11,29 @@ import { createMappers } from '../infrastructure/persistence/mappers.js';
 import { initPostgres } from '../infrastructure/persistence/bootstrap.js';
 import { ensureBaselineReferenceData } from '../modules/reference-data/baseline.js';
 
+/**
+ * pg options for DATABASE_URL. Certificates are always verified. A managed database signed by
+ * its provider's own CA (DigitalOcean, Aiven, ...) needs that CA in DATABASE_CA_CERT (the PEM
+ * text; "\n" escapes are accepted). ssl* query parameters are dropped from the URL because pg
+ * lets them override the ssl option given here.
+ */
+export function databaseConnection(databaseUrl, env = process.env) {
+  if (env.DATABASE_SSL === 'disable') return { connectionString: databaseUrl, ssl: false };
+  let connectionString = databaseUrl;
+  try {
+    const url = new URL(databaseUrl);
+    if (url.searchParams.get('sslmode') === 'disable') return { connectionString: databaseUrl, ssl: false };
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(sslmode|sslrootcert|sslcert|sslkey|uselibpqcompat)$/i.test(key)) url.searchParams.delete(key);
+    }
+    connectionString = url.toString();
+  } catch {
+    // Not a URL pg could parse either; let pg report it.
+  }
+  const ca = String(env.DATABASE_CA_CERT || '').replace(/\\n/g, '\n').trim();
+  return { connectionString, ssl: ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true } };
+}
+
 export function resolveSecurityPolicy(env = process.env) {
   const nodeEnv = String(env?.NODE_ENV || 'development').toLowerCase();
   const production = nodeEnv === 'production';
@@ -343,11 +366,7 @@ export async function createRuntime({ serverDirectory }) {
 
   let pool = databaseUrl
     ? new Pool({
-        connectionString: databaseUrl,
-        ssl:
-          process.env.DATABASE_SSL === "disable"
-            ? false
-            : { rejectUnauthorized: true },
+        ...databaseConnection(databaseUrl),
         max: Math.max(
           1,
           Math.min(Number(process.env.DATABASE_POOL_SIZE) || 10, 20),
