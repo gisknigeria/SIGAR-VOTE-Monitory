@@ -1,37 +1,3 @@
-import { lazy, Suspense, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-
-const VoterSurvey = lazy(() => import("../stakeholder/VoterSurvey.jsx"));
-
-/**
- * The voter survey, full-screen over the map for admins (stakeholders see it as a tab on their
- * own page). Portalled to <body>: the map chrome uses backdrop-filter, which would otherwise
- * become the containing block for this fixed overlay and clip it.
- */
-function VoterSurveyOverlay({ token, onClose }) {
-  useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return createPortal(
-    <div className="stakeholder-shell sv-overlay" role="dialog" aria-modal="true" aria-label="Voter survey">
-      <div className="sh-page">
-        <div className="sh-head">
-          <div>
-            <span className="sh-eyebrow">Oyo State</span>
-            <h1>Voter survey</h1>
-          </div>
-          <button type="button" className="sh-logout" onClick={onClose}>Close</button>
-        </div>
-        <Suspense fallback={<p className="sh-empty" role="status">Loading the voter survey…</p>}>
-          <VoterSurvey token={token} />
-        </Suspense>
-      </div>
-    </div>,
-    document.body,
-  );
-}
 
 export default function DashboardMapWorkspace({ controller }) {
   const {
@@ -110,7 +76,6 @@ export default function DashboardMapWorkspace({ controller }) {
     selectedBoundaryState,
     session,
     setCameraPanel,
-    surveyOpen,
     setDataLayer,
     setEmergencyOpen,
     setFocusedOfficerId,
@@ -126,7 +91,6 @@ export default function DashboardMapWorkspace({ controller }) {
     setSelected,
     setSelectedBoundaryLabel,
     setSelectedBoundaryState,
-    setSurveyOpen,
     setShowBoundaryNames,
     setShowLgaBorders,
     setShowReports,
@@ -629,7 +593,6 @@ export default function DashboardMapWorkspace({ controller }) {
           <LuLocateFixed />
         </button>}
       </section>
-      {surveyOpen && <VoterSurveyOverlay token={session.token} onClose={() => setSurveyOpen(false)} />}
     </>
   );
 }

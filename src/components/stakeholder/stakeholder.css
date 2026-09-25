@@ -225,8 +225,6 @@
 .sv-checks .bad { color: #ff9d8a; }
 
 /* The admin dashboard opens the survey full-screen over the map. */
-.sv-overlay { position: fixed; inset: 0; z-index: 2100; }
-.sv-overlay-close { position: sticky; top: 0; float: right; z-index: 1; }
 
 /* Leaflet tooltips inherit the page font rather than the library default. */
 .stakeholder-shell .leaflet-tooltip {

@@ -563,7 +563,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const [cameraLocation, setCameraLocation] = useState(null);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [surveyOpen, setSurveyOpen] = useState(false);
   const [ipLogOpen, setIpLogOpen] = useState(false);
   const [ipLogData, setIpLogData] = useState([]);
   const [ipLogLoading, setIpLogLoading] = useState(false);
@@ -2132,7 +2131,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     ResultsCenter,
     resultsInitialView,
     resultsOpen,
-    surveyOpen,
     routePoints,
     routeResult,
     routeUserPoint,
@@ -2186,7 +2184,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     setResultsInitialView,
     setResultsOpen,
     setSearch,
-    setSurveyOpen,
     setSelected,
     setSelectedBoundaryLabel,
     setSelectedBoundaryState,
