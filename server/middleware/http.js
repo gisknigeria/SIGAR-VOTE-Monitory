@@ -23,7 +23,9 @@ export function configureHttp({ app, isAllowedOrigin }) {
       return res.status(413).json({ message: "Request body is too large." });
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("Referrer-Policy", "no-referrer");
+    // Other sites see only this app's origin, never paths or query strings. OpenStreetMap's
+    // tile servers reject requests with no Referer at all, so "no-referrer" blanks the map.
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     // These capabilities are core application features; scope them to this
     // origin rather than disabling them or allowing cross-origin use.
     res.setHeader(
