@@ -4,7 +4,7 @@ import L from "leaflet";
 import { oyoBoundariesQuery } from "../../queries/boundaries.js";
 import { apiRequest } from "../../api/client.js";
 import LayerControlPanel, { layerGeometry } from "./LayerControlPanel.jsx";
-import { STREET_TILES } from "../../config.js";
+import { STREET_TILES, withStreetFallback } from "../../config.js";
 
 const DATA_LAYERS = ["none", "population", "network"];
 const DATA_LAYER_LABEL = { none: "Data layer: off", population: "Data layer: Population", network: "Data layer: Network" };
@@ -251,12 +251,12 @@ export default function MapView({
               attribution: "&copy; MapTiler &copy; OpenStreetMap contributors",
             },
           )
-        : L.tileLayer(STREET_TILES.url, {
+        : withStreetFallback(L.tileLayer(STREET_TILES.url, {
             crossOrigin: true,
             maxZoom: 19,
             subdomains: STREET_TILES.subdomains,
             attribution: STREET_TILES.attribution,
-          });
+          }));
     const esri = (service) =>
       L.tileLayer(
         `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`,

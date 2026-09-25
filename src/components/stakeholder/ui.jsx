@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import L from "leaflet";
 import { oyoBoundariesQuery } from "../../queries/boundaries.js";
-import { STREET_TILES } from "../../config.js";
+import { STREET_TILES, withStreetFallback } from "../../config.js";
 
 // Building blocks shared by the election overview and the voter survey, so both read the same.
 
@@ -116,11 +116,11 @@ export function LgaMap({ rowsByKey, fill, tooltip, legend }) {
           attribution: "&copy; MapTiler &copy; OpenStreetMap contributors",
           maxZoom: 12,
         })
-      : L.tileLayer(STREET_TILES.url, {
+      : withStreetFallback(L.tileLayer(STREET_TILES.url, {
           attribution: STREET_TILES.attribution,
           subdomains: STREET_TILES.subdomains,
           maxZoom: 12,
-        })
+        }))
     ).addTo(mapRef.current);
     // The map often mounts before its panel has its final width (tab switches, grid reflow), and
     // Leaflet then fits the LGAs into the wrong box. Re-measure and re-fit whenever the box changes.
