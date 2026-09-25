@@ -32,6 +32,11 @@ const CARDS = [
     body: "A phone list with an LGA column. Only the number of phones per LGA is kept. A new upload replaces the old list.",
   },
   {
+    kind: "contact-center",
+    title: "Contact center report",
+    body: "The weekly report exported from the contact center (Overview, Calls Per LGA, Issues in the Area…). Agent names are not kept. A new report replaces the previous one.",
+  },
+  {
     kind: "reference",
     title: "Population & voter register",
     body: "One row per LGA: population, registered voters and PVCs collected. Until all 33 LGAs are loaded, state totals use INEC and NPC published figures.",
@@ -53,7 +58,9 @@ function Summary({ item }) {
     ? [`${num(s.uniquePeople)} people`, `${num(s.rowsRead)} rows`, s.duplicatesInFile ? `${num(s.duplicatesInFile)} repeats` : "", s.noPhone ? `${num(s.noPhone)} without a valid phone` : ""]
     : item.kind === "contacts"
       ? [`${num(s.stored)} phones`, s.duplicatesInFile ? `${num(s.duplicatesInFile)} repeats` : "", s.invalid ? `${num(s.invalid)} invalid` : ""]
-      : [`${num(s.stored)} LGAs`, s.missingLgas?.length ? `${s.missingLgas.length} LGAs missing` : "all 33 LGAs"];
+      : item.kind === "contact-center"
+        ? [`${num(s.calls)} calls`, `${num(s.lgas)} LGAs`, s.issuesThemed ? `${num(s.issuesThemed)} issue calls grouped into themes` : ""]
+        : [`${num(s.stored)} LGAs`, s.missingLgas?.length ? `${s.missingLgas.length} LGAs missing` : "all 33 LGAs"];
   return (
     <>
       <small>{parts.filter(Boolean).join(" · ")}</small>
@@ -122,10 +129,10 @@ function UploadCard({ card, token, items, survey, onChanged }) {
             <input type="text" value={source} onChange={(event) => setSource(event.target.value)} maxLength={200} />
           </label>
         )}
-        <input ref={input} type="file" multiple={card.kind !== "reference"} accept=".xlsx,.csv" disabled={state.status === "busy"} />
+        <input ref={input} type="file" multiple={!["reference", "contact-center"].includes(card.kind)} accept=".xlsx,.csv" disabled={state.status === "busy"} />
         <div className="pep-data-actions">
           <button type="button" className="primary action-btn" onClick={upload} disabled={state.status === "busy"}>{state.status === "busy" ? "Uploading…" : "Upload"}</button>
-          {card.kind !== "survey" && <button type="button" className="pep-link" onClick={() => downloadTemplate(card.kind, token).catch((error) => setState({ status: "error", message: error.message }))}>Download template</button>}
+          {!["survey", "contact-center"].includes(card.kind) && <button type="button" className="pep-link" onClick={() => downloadTemplate(card.kind, token).catch((error) => setState({ status: "error", message: error.message }))}>Download template</button>}
         </div>
         {state.message && <p className={`pep-data-status ${state.status === "error" ? "error" : state.status === "ok" ? "ok" : ""}`} role={state.status === "error" ? "alert" : "status"}>{state.message}</p>}
       </div>

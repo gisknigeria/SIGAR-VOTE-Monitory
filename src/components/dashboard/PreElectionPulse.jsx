@@ -25,7 +25,6 @@ const ago = (value) => {
 };
 
 const FOCUS = "#f5dc9a";
-const RIVALS = ["#c9748f", "#a8566f", "#8a4a5c", "#6f3c4a", "#58303b"];
 const SATISFACTION_COLORS = { "Very satisfied": "#0ca30c", Satisfied: "#7fcf7f", Neutral: "#a8929c", Dissatisfied: "#ec835a", "Very dissatisfied": "#d8452b" };
 const PLATFORM_COLORS = ["#f5dc9a", "#d9aa4b", "#a8761f", "#c9748f", "#8a4a5c"];
 const TONE_LABEL = { risk: "Act", watch: "Watch", good: "Strength", info: "Insight" };
@@ -97,30 +96,51 @@ function Kpi({ label, value, sub, tone = "", title }) {
   );
 }
 
-function CandidatePanel({ survey }) {
-  const [weighted, setWeighted] = useState(false);
-  if (!survey.available) return <Panel title="Candidate standings"><Empty>Upload the voter survey in Data to see standings.</Empty></Panel>;
-  const canWeight = Boolean(survey.weighted?.rows?.length);
-  const source = weighted && canWeight ? survey.weighted.rows : survey.candidates;
-  let rival = 0;
-  const rows = source.slice(0, 5).map((row) => ({
-    name: row.short,
-    value: row.share,
-    label: pct(row.share, 1),
-    color: survey.focus && row.name === survey.focus.name ? FOCUS : RIVALS[rival++ % RIVALS.length],
-  }));
+const shortDay = (value) => {
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString([], { weekday: "short", day: "numeric" });
+};
+
+function Columns({ rows }) {
+  const max = Math.max(...rows.map((row) => row.value), 1);
   return (
-    <Panel
-      title="Candidate standings"
-      sub={weighted && canWeight ? "Each LGA weighted by its size" : `First choice · ${num(survey.named)} named someone`}
-      action={canWeight && (
-        <div className="pep-toggle" role="group" aria-label="Standings basis">
-          <button type="button" className={!weighted ? "on" : ""} onClick={() => setWeighted(false)}>Raw</button>
-          <button type="button" className={weighted ? "on" : ""} onClick={() => setWeighted(true)}>Weighted</button>
-        </div>
-      )}
-    >
-      <Bars rows={rows} max={Math.max(...rows.map((row) => row.value), 0.01)} />
+    <ul className="pep-columns" aria-label="Calls per day">
+      {rows.map((row) => (
+        <li key={row.name} title={`${row.name}: ${num(row.value)} calls`}>
+          <b>{compact(row.value)}</b>
+          <span><i style={{ height: `${Math.max((row.value / max) * 100, row.value > 0 ? 3 : 0)}%` }} /></span>
+          <small>{row.name}</small>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ContactCenterPanel({ center, place }) {
+  if (!center.available) return <Panel title="Contact center"><Empty>Upload the contact center report in Data to see call activity.</Empty></Panel>;
+  const stats = center.scope === "lga"
+    ? [
+        { label: "Calls", value: num(center.calls), sub: `${pct(center.shareOfState, 1)} of all` },
+        { label: "People", value: num(center.unique), sub: "reached" },
+        { label: "Wards", value: `${center.wardsReached}/${center.wardsTotal}`, sub: "reached", tone: center.wardsTotal && center.wardsReached / center.wardsTotal < 0.5 ? "warn" : "" },
+      ]
+    : [
+        { label: "Calls", value: num(center.calls), sub: `${num(center.unique)} people` },
+        { label: "Supporters", value: pct(center.supporters.share), sub: `${num(center.supporters.count)} confirmed` },
+        { label: "Still open", value: num(center.open), sub: `${num(center.followUpRequested)} want follow-up`, tone: center.openShare >= 0.2 ? "warn" : "" },
+      ];
+  return (
+    <Panel title="Contact center" sub={center.scope === "lga" ? `${center.period} · top caller issues` : `${center.period} · calls per day`}>
+      <div className="pep-mini">
+        {stats.map((stat) => (
+          <div key={stat.label} className={stat.tone || ""}><span>{stat.label}</span><strong>{stat.value}</strong>{stat.sub && <small>{stat.sub}</small>}</div>
+        ))}
+      </div>
+      {center.scope === "lga"
+        ? center.themes.length
+          ? <Bars rows={center.themes.slice(0, 3).map((row, index) => ({ name: row.label, value: row.calls, label: num(row.calls), color: index === 0 ? "#ec835a" : "#c9748f" }))} />
+          : <p className="pep-note">No issues recorded by callers here yet.</p>
+        : center.perDay?.length > 0 && <Columns rows={center.perDay.map((row) => ({ name: shortDay(row.date), value: row.calls }))} />}
     </Panel>
   );
 }
@@ -141,10 +161,27 @@ function IntentionPanel({ survey }) {
   );
 }
 
-function IssuesPanel({ survey }) {
-  if (!survey.available) return <Panel title="Top voter issues"><Empty>No survey loaded.</Empty></Panel>;
+function IssuesPanel({ survey, center }) {
+  const hasCallers = center.available && center.themes?.length > 0;
+  const [source, setSource] = useState(survey.available ? "survey" : "callers");
+  const showing = source === "callers" && hasCallers ? "callers" : survey.available ? "survey" : hasCallers ? "callers" : "";
+  const toggle = survey.available && hasCallers && (
+    <div className="pep-toggle" role="group" aria-label="Issues source">
+      <button type="button" className={showing === "survey" ? "on" : ""} onClick={() => setSource("survey")}>Survey</button>
+      <button type="button" className={showing === "callers" ? "on" : ""} onClick={() => setSource("callers")}>Callers</button>
+    </div>
+  );
+  if (!showing) return <Panel title="Top voter issues"><Empty>Upload the survey or a contact center report to see issues.</Empty></Panel>;
+  if (showing === "callers") {
+    const total = center.themes.reduce((sum, row) => sum + row.calls, 0);
+    return (
+      <Panel title="Issues callers raise" sub={`Grouped from callers' own words · ${center.themeUnit}`} action={toggle}>
+        <Bars rows={center.themes.map((row, index) => ({ name: row.label, value: row.calls, label: num(row.calls), color: index === 0 ? "#ec835a" : "#c9748f" }))} total={total} />
+      </Panel>
+    );
+  }
   return (
-    <Panel title="Top voter issues" sub={`${num(survey.topIssuesAnswered)} answered`}>
+    <Panel title="Top voter issues" sub={`Survey · ${num(survey.topIssuesAnswered)} answered`} action={toggle}>
       <Bars rows={survey.topIssues.slice(0, 6).map((row, index) => ({ name: row.name, value: row.count, color: index === 0 ? FOCUS : "#d9aa4b" }))} total={survey.topIssuesAnswered} />
     </Panel>
   );
@@ -293,9 +330,9 @@ export default function PreElectionPulse({ authToken, onOpenData }) {
       </div>
 
       <div className="pep-grid">
-        <CandidatePanel survey={survey} />
+        <ContactCenterPanel center={data.contactCenter} place={data.filter.label} />
         <IntentionPanel survey={survey} />
-        <IssuesPanel survey={survey} />
+        <IssuesPanel survey={survey} center={data.contactCenter} />
         <InsightsPanel insights={data.insights} />
         <GroundPanel data={data} onPick={setLga} />
         <SatisfactionPanel survey={survey} />

@@ -4,6 +4,7 @@ import { openCsvWorkbook, openWorkbook } from '../voter-survey/xlsx.js';
 import { buildSurveyDataset } from '../voter-survey/import.js';
 import { ALLI, HAMZAT, buildXlsx, SURVEY_HEADER, surveyRow } from '../voter-survey/test-fixtures.js';
 import { buildDataset, describeDataset, normalizePhone } from './datasets.js';
+import { themesOf } from './contact-center.js';
 import { matchLga, oyoLgas } from './lga.js';
 import { buildPulse, STATE_BASELINE } from './pulse.js';
 import { createPreElectionRepository } from './repository.js';
@@ -134,4 +135,56 @@ test('repository replaces uploads of the same kind and label only', async () => 
   assert.deepEqual((await repo.preElectionDatasets()).map((item) => item.id).sort(), ['b', 'c', 'e']);
   assert.equal((await repo.deletePreElectionDataset('b')).id, 'b');
   assert.equal(await repo.deletePreElectionDataset('b'), null);
+});
+
+test('contact center report: overview, LGAs, themed issues, and no agent names', () => {
+  const title = (name) => [['Sen. Sharafadeen Alli Contact Center Report'], [`${name} | 19 Sep 2026 - 25 Sep 2026`], [name]];
+  const workbook = openWorkbook(buildXlsx({
+    Overview: [...title('Report Summary'), ['Metric', 'Value'], ['Reporting Period', '19 Sep 2026 - 25 Sep 2026'], ['Total Calls', 100], ['Unique Contacts', 90], ['Inbound', 10], ['Outbound', 90], ['Open', 40], ['Closed', 60]],
+    'Calls Per Day': [...title('Calls Per Day'), ['Date', 'Calls', 'Unique Contacts', 'Inbound', 'Outbound'], ['2026-09-22', 40, 38, 5, 35], ['2026-09-23', 60, 52, 5, 55]],
+    'Calls Per LGA': [...title('Calls By LGA'), ['LGA', 'Calls', 'Unique Contacts', 'Wards Reached'], ['OGBOMOSO NORTH', 70, 60, 8], ['IBADAN NORTH-WEST', 25, 25, 4], ['Unspecified', 5, 5, 0]],
+    'Calls Per Category': [...title('Project Call Categories'), ['Project Category', 'Calls', 'Unique Contacts'], ['Project Topic Not Recorded', 30, 30], ['Community / Ward Challenge', 70, 60]],
+    'Issues in the Area': [
+      ...title('Issues in the Area'), ['Issue Raised', 'Calls', 'Unique Contacts', 'LGAs'],
+      ['Bad road, no borehole', 3, 3, 'OGBOMOSO NORTH, IBADAN NORTH-WEST'],
+      ['They need money for campaign', 2, 2, 'OGBOMOSO NORTH'],
+      ['non for now', 1, 1, 'OGBOMOSO NORTH'],
+      [],
+      ['Assistance Requests', '', ''], ['Request', 'Calls', 'Unique Contacts'], ['follow up requested', 6, 6], ['No assistance needed', 2, 2], ['financial support', 4, 4],
+    ],
+    'Contact Categories': [...title('Contact Categories'), ['Scenario', 'Calls', 'Unique Contacts'], ['Supporter', 75, 70], ['Not Established', 25, 20]],
+    'Location Insights': [...title('Location Confirmation'), ['Location Result', 'Calls'], ['Confirmed', 70], ['Not Confirmed', 30]],
+    'Agent Performance': [...title('Calls By Agent'), ['Agent', 'Username', 'Calls', 'Unique Contacts', 'Inbound', 'Outbound'], ['Ada Obi', 'ada', 60, 55, 5, 55], ['Tunde Ola', 'tunde', 40, 35, 5, 35], [], ['Call Outcomes', ''], ['Outcome', 'Calls'], ['Completed / substantive contact', 70], ['Call dropped', 30]],
+  }));
+  const report = buildDataset('contact-center', workbook);
+  assert.equal(report.label, 'Contact center report (19 Sep 2026 - 25 Sep 2026)');
+  assert.deepEqual(report.summary.unmatched, [{ name: 'Unspecified', count: 5 }]);
+  assert.ok(!JSON.stringify(report).includes('Ada Obi'), 'agent names are dropped');
+  assert.equal(describeDataset(report).report, undefined);
+  assert.deepEqual(report.report.issues.byLga['IBADAN NORTH WEST'], { roads: 1, water: 1 });
+  assert.equal(report.report.requests.followUp, 6);
+  assert.equal(report.report.agents.count, 2);
+
+  const state = buildPulse({ datasets: [report] });
+  assert.equal(state.contactCenter.calls, 100);
+  assert.equal(state.contactCenter.supporters.share, 0.75);
+  assert.equal(state.contactCenter.droppedShare, 0.3);
+  assert.deepEqual(state.contactCenter.themes.map((row) => row.id).slice(0, 2), ['roads', 'water']);
+  assert.equal(state.byLga.find((row) => row.lga === 'OGBOMOSO NORTH').calls, 70);
+  assert.ok(state.insights.some((item) => /40 calls \(40%\) are still open and 6 callers asked for a follow-up/.test(item.text)));
+  assert.ok(state.insights.some((item) => /31 LGAs have had no contact-center calls/.test(item.text)));
+
+  const lga = buildPulse({ datasets: [report], lga: 'Ibadan North West' });
+  assert.equal(lga.contactCenter.calls, 25);
+  assert.equal(lga.contactCenter.shareOfState, 0.25);
+  const empty = buildPulse({ datasets: [report], lga: 'Iseyin' });
+  assert.ok(empty.insights.some((item) => /has not called anyone in Iseyin/.test(item.text)));
+});
+
+test('issue themes read callers\' own words', () => {
+  assert.deepEqual(themesOf('Bad electricity, no borehole, Bad roads').sort(), ['electricity', 'roads', 'water']);
+  assert.deepEqual(themesOf('THE PREVIOUS EXCOS ARE MAKING IT DIFFICULT'), ['party']);
+  assert.deepEqual(themesOf('non for now'), []);
+  assert.deepEqual(themesOf('assistance'), ['assistance']);
+  assert.deepEqual(themesOf('They need more people in the group'), ['other']);
 });

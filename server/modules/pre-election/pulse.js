@@ -1,10 +1,12 @@
 // analyzeSurvey keys LGAs with its own normaliser, so register names go through it too.
 import { analyzeSurvey, lgaKey as analyzeLgaKey } from '../voter-survey/analysis.js';
+import { themeLabel } from './contact-center.js';
 import { lgaLabel, matchLga, oyoLgas } from './lga.js';
 
 /**
  * The Pre-Election Pulse: one screen joining every pre-election source -- the voter survey, the
- * member lists, the contact list and the population / voter-register reference -- for the whole
+ * member lists, the contact list, the contact center's report and the population / voter-register
+ * reference -- for the whole
  * state or one LGA, plus plain-English findings written from those figures.
  *
  * Every section says whether its data is loaded, so a missing upload shows as "not loaded yet"
@@ -134,7 +136,69 @@ function surveyView(dataset, lga, weights) {
   };
 }
 
-function insightsFor({ lga, survey, members, contacts, reference, rows }) {
+const share = (part, whole) => ratio(part, whole) ?? 0;
+const named = (rows, pattern) => rows.find((row) => pattern.test(row.name))?.calls || 0;
+
+function contactCenterView(dataset, lga, register) {
+  const report = dataset?.report;
+  if (!report) return { available: false };
+  const o = report.overview;
+  const reached = report.contactTypes.reduce((sum, row) => sum + row.calls, 0) || o.calls;
+  const supporters = named(report.contactTypes, /^supporter/i);
+  const completed = named(report.outcomes || [], /completed|substantive/i);
+  const dropped = named(report.outcomes || [], /dropped/i);
+  const locationTotal = report.location.reduce((sum, row) => sum + row.calls, 0);
+  const locationUnconfirmed = named(report.location, /^not confirmed/i) + named(report.location, /^not recorded/i);
+  const themed = (entries) => Object.entries(entries || {}).map(([id, count]) => ({ id, label: themeLabel(id), calls: count })).sort((a, b) => b.calls - a.calls);
+  const base = {
+    available: true,
+    period: report.period,
+    updatedAt: dataset.uploadedAt,
+    perDay: report.perDay,
+    supporters: { count: supporters, share: share(supporters, reached) },
+    notEstablished: named(report.contactTypes, /not established/i),
+    stateCalls: o.calls,
+  };
+  if (lga) {
+    const here = report.byLga[lga] || { calls: 0, unique: 0, wards: 0 };
+    const wardsTotal = register.find((item) => item.name === lga)?.wards || 0;
+    return {
+      ...base,
+      scope: 'lga',
+      calls: here.calls,
+      unique: here.unique,
+      wardsReached: Math.min(here.wards, wardsTotal),
+      wardsTotal,
+      shareOfState: share(here.calls, o.calls),
+      themes: themed(report.issues.byLga[lga]).filter((row) => !['other', 'assistance'].includes(row.id)).slice(0, 6),
+      themeUnit: 'issue reports',
+    };
+  }
+  return {
+    ...base,
+    scope: 'state',
+    calls: o.calls,
+    unique: o.uniqueContacts,
+    inbound: o.inbound,
+    outbound: o.outbound,
+    open: o.open,
+    openShare: share(o.open, o.calls),
+    completed,
+    dropped,
+    droppedShare: share(dropped, o.calls),
+    followUpRequested: report.requests?.followUp || 0,
+    topicNotRecorded: named(report.categories, /not recorded/i),
+    locationUnconfirmedShare: share(locationUnconfirmed, locationTotal),
+    lgasCalled: Object.values(report.byLga).filter((row) => row.calls > 0).length,
+    wardsReached: Object.values(report.byLga).reduce((sum, row) => sum + row.wards, 0),
+    themes: report.issues.themes.filter((row) => !['other', 'assistance'].includes(row.id)).slice(0, 6),
+    themeUnit: 'calls',
+    requests: (report.requests?.themes || []).filter((row) => !['other', 'assistance'].includes(row.id)).slice(0, 4),
+    agents: report.agents,
+  };
+}
+
+function insightsFor({ lga, survey, members, contacts, reference, rows, center }) {
   const out = [];
   const add = (tone, text) => out.push({ tone, text });
   const place = lga ? lgaLabel(lga) : 'Oyo';
@@ -145,7 +209,7 @@ function insightsFor({ lga, survey, members, contacts, reference, rows }) {
     if (second && gap < 5) add('watch', `${first.short} (${pct(first.share)}) and ${second.short} (${pct(second.share)}) are within ${gap.toFixed(1)} points in ${place}: a two-way race.`);
     else add('info', `${first.short} leads first choice in ${place} with ${pct(first.share)} of people who named a candidate${second ? `, ${gap.toFixed(0)} points ahead of ${second.short}` : ''}.`);
     const weighted = survey.weighted?.rows?.[0];
-    if (weighted && weighted.name !== first.name) add('risk', `Weighted by each LGA's size (${survey.weighted.basis}), ${weighted.short} leads with ${pct(weighted.share)}: the raw lead comes from heavily surveyed LGAs.`);
+    if (weighted && weighted.name !== first.name) add('risk', `Weighted by each LGA's size, ${weighted.short} leads with ${pct(weighted.share)}: the raw lead comes from heavily surveyed LGAs.`);
     if (survey.focus && survey.focus.rank !== 1) {
       add('risk', `${survey.focus.short} is ${survey.focus.rank ? `#${survey.focus.rank}` : 'not named'} in ${place} (${pct(survey.focus.share || 0)}), behind ${first.short}.`);
     }
@@ -180,7 +244,8 @@ function insightsFor({ lga, survey, members, contacts, reference, rows }) {
   }
 
   if (members.available) {
-    add(members.unitCoverage >= 0.6 ? 'good' : 'risk', `Members cover ${fmt(members.unitsCovered)} of ${fmt(members.pollingUnits)} polling units in ${place} (${pct(members.unitCoverage || 0)}).`);
+    if (lga && members.total && !members.unitsCovered) add('watch', `${fmt(members.total)} members are listed in ${place}, but without polling-unit numbers, so coverage cannot be measured.`);
+    else add(members.unitCoverage >= 0.6 ? 'good' : 'risk', `Members cover ${fmt(members.unitsCovered)} of ${fmt(members.pollingUnits)} polling units in ${place} (${pct(members.unitCoverage || 0)}).`);
     if (!lga) {
       const empty = rows.filter((row) => !row.members).sort((a, b) => (b.registeredVoters || b.pollingUnits) - (a.registeredVoters || a.pollingUnits));
       if (empty.length) add('risk', `${empty.length} LGA${empty.length === 1 ? ' has' : 's have'} no confirmed members yet: ${empty.slice(0, 5).map((row) => row.label).join(', ')}${empty.length > 5 ? '…' : ''}.`);
@@ -199,6 +264,36 @@ function insightsFor({ lga, survey, members, contacts, reference, rows }) {
   }
   if (!lga && reference.lgaLevelLoaded < oyoLgas().length) add('watch', `LGA population and PVC figures are loaded for ${reference.lgaLevelLoaded} of ${oyoLgas().length} LGAs. State totals use published INEC/NPC figures.`);
 
+  if (center.available) {
+    const topThemes = center.themes.slice(0, 3);
+    if (!lga) {
+      add('info', `The contact center made ${fmt(center.calls)} calls (${center.period}) to ${fmt(center.unique)} people; ${pct(center.supporters.share)} confirmed as supporters, ${fmt(center.notEstablished)} not yet established.`);
+      if (center.openShare >= 0.2) add('risk', `${fmt(center.open)} calls (${pct(center.openShare)}) are still open and ${fmt(center.followUpRequested)} callers asked for a follow-up. Close these before the next outreach round.`);
+      if (center.droppedShare >= 0.15) add('watch', `${pct(center.droppedShare)} of calls dropped (${fmt(center.dropped)}). Check line quality and retry these contacts.`);
+      if (topThemes.length) add('risk', `Callers most often raise ${topThemes.map((row) => `${row.label.toLowerCase()} (${fmt(row.calls)})`).join(', ')}.`);
+      const surveyTop = survey.available ? survey.topIssues[0]?.name : '';
+      if (surveyTop && topThemes[0]) add('watch', `The survey ranks ${surveyTop.toLowerCase()} first, but callers raise ${topThemes[0].label.toLowerCase()} most: messaging should speak to both.`);
+      const party = center.themes.find((row) => row.id === 'party');
+      if (party && party.calls >= 20) add('risk', `${fmt(party.calls)} calls reported party unity or leadership disputes (executives, factions, defections). Escalate to the LGA coordinators.`);
+      const silent = rows.filter((row) => !row.calls).sort((a, b) => (b.contacts || b.registeredVoters || b.pollingUnits) - (a.contacts || a.registeredVoters || a.pollingUnits));
+      if (silent.length) add('risk', `${silent.length} LGA${silent.length === 1 ? ' has' : 's have'} had no contact-center calls: ${silent.slice(0, 5).map((row) => row.label).join(', ')}${silent.length > 5 ? '…' : ''}.`);
+      const called = [...rows].filter((row) => row.calls).sort((a, b) => b.calls - a.calls);
+      const top3 = called.slice(0, 3);
+      if (top3.length === 3) add('info', `${pct(share(top3.reduce((sum, row) => sum + row.calls, 0), center.calls))} of calls went to ${top3.map((row) => row.label).join(', ')}.`);
+      if (survey.available && survey.focus) {
+        const weakButQuiet = rows.filter((row) => row.named >= MIN_NAMED_FOR_LGA_READ && row.focusShare != null && row.focusShare < (survey.focus.share || 0) / 2 && (row.calls || 0) < 20).map((row) => row.label);
+        if (weakButQuiet.length) add('risk', `Low ${survey.focus.short} support and few calls in ${weakButQuiet.slice(0, 5).join(', ')}: prioritise these in the next call list.`);
+      }
+      if (center.topicNotRecorded / center.calls >= 0.2 || center.locationUnconfirmedShare >= 0.2) add('watch', `Call records are incomplete: topic missing on ${pct(share(center.topicNotRecorded, center.calls))} of calls and location not confirmed on ${pct(center.locationUnconfirmedShare)}.`);
+    } else {
+      if (!center.calls) add('risk', `The contact center has not called anyone in ${place} yet.`);
+      else {
+        add(center.wardsTotal && center.wardsReached / center.wardsTotal >= 0.6 ? 'good' : 'watch', `The contact center made ${fmt(center.calls)} calls in ${place} (${pct(center.shareOfState, 1)} of all calls), reaching ${center.wardsReached} of ${center.wardsTotal} wards.`);
+        if (topThemes.length) add('risk', `Callers in ${place} raise ${topThemes.map((row) => row.label.toLowerCase()).join(', ')} most.`);
+      }
+    }
+  } else if (!lga) add('watch', 'No contact center report loaded yet. Upload the weekly report in Data.');
+
   const order = { risk: 0, watch: 1, good: 2, info: 3 };
   return out.sort((a, b) => order[a.tone] - order[b.tone]);
 }
@@ -207,6 +302,7 @@ export function buildPulse({ datasets = [], survey = null, lga = '' }) {
   const wanted = lga ? matchLga(lga) : '';
   const memberSets = datasets.filter((item) => item.kind === 'members');
   const contactSet = latest(datasets.filter((item) => item.kind === 'contacts'));
+  const centerSet = latest(datasets.filter((item) => item.kind === 'contact-center'));
   const reference = latest(datasets.filter((item) => item.kind === 'reference'));
   const register = oyoLgas();
 
@@ -223,6 +319,7 @@ export function buildPulse({ datasets = [], survey = null, lga = '' }) {
   const contactsTotal = contactSet ? (wanted ? contactSet.counts[wanted] || 0 : Object.values(contactSet.counts).reduce((sum, value) => sum + value, 0)) : 0;
   const contacts = contactSet ? { available: true, total: contactsTotal, truncated: Boolean(contactSet.summary?.truncated), updatedAt: contactSet.uploadedAt } : { available: false };
 
+  const center = contactCenterView(centerSet, wanted, register);
   const surveyByLga = new Map((surveyState.analysis?.byLga || []).map((row) => [matchLga(row.lga), row]).filter(([key]) => key));
   const rows = register.map((item) => {
     const surveyRow = surveyByLga.get(item.name);
@@ -238,6 +335,7 @@ export function buildPulse({ datasets = [], survey = null, lga = '' }) {
       members: members.available ? members.byLga.get(item.name) || 0 : null,
       unitsCovered: members.available ? Math.min(members.unitsByLga.get(item.name) || 0, item.pollingUnits) : null,
       contacts: contactSet ? contactSet.counts[item.name] || 0 : null,
+      calls: centerSet ? centerSet.report.byLga[item.name]?.calls || 0 : null,
       responses: surveyRow?.responses || 0,
       named: surveyRow?.named || 0,
       leader: surveyRow?.leader ? shortName(surveyRow.leader) : null,
@@ -256,7 +354,8 @@ export function buildPulse({ datasets = [], survey = null, lga = '' }) {
     members: membersOut,
     contacts,
     survey: scopedSurvey,
+    contactCenter: center,
     byLga: rows,
-    insights: insightsFor({ lga: wanted, survey: surveyScoped, members, contacts, reference: ref, rows }),
+    insights: insightsFor({ lga: wanted, survey: surveyScoped, members, contacts, reference: ref, rows, center }),
   };
 }

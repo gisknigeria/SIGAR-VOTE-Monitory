@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
+import { buildContactCenter } from './contact-center.js';
 import { matchLga, oyoLgas } from './lga.js';
 
 /**
@@ -10,12 +11,13 @@ import { matchLga, oyoLgas } from './lga.js';
  *              the hash exists only so the same person in two lists is counted once.
  *   contacts   a phone list. Only the count per LGA is kept.
  *   reference  one row per LGA: population, registered voters, PVCs collected.
+ *   contact-center  the contact center's weekly report (already aggregated; see contact-center.js).
  *
  * Spreadsheets arrive in many shapes (one sheet per LGA, a title row above the header, "WARD 1"
  * as a column name), so columns are found by what their header says, not where they sit.
  */
 
-export const DATASET_KINDS = ['members', 'contacts', 'reference'];
+export const DATASET_KINDS = ['members', 'contacts', 'reference', 'contact-center'];
 
 const headerKey = (value) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -209,11 +211,14 @@ function buildReference(workbook) {
 
 export function buildDataset(kind, workbook, { label = '', sourceFile = '', source = '', year = '', uploadedBy = '', now = new Date() } = {}) {
   if (!DATASET_KINDS.includes(kind)) throw new Error(`Unknown dataset type. Use one of: ${DATASET_KINDS.join(', ')}.`);
-  const built = kind === 'members' ? buildMembers(workbook) : kind === 'contacts' ? buildContacts(workbook) : buildReference(workbook);
+  const built = kind === 'members' ? buildMembers(workbook)
+    : kind === 'contacts' ? buildContacts(workbook)
+      : kind === 'reference' ? buildReference(workbook)
+        : (({ summary, ...report }) => ({ summary, report }))(buildContactCenter(workbook));
   return {
     id: randomUUID(),
     kind,
-    label: clean(label).slice(0, 80) || { members: 'Members', contacts: 'Contact list', reference: 'Population & voter register' }[kind],
+    label: clean(label).slice(0, 80) || { members: 'Members', contacts: 'Contact list', reference: 'Population & voter register', 'contact-center': `Contact center report${built.summary.period ? ` (${built.summary.period})` : ''}` }[kind],
     source: clean(source).slice(0, 200),
     year: clean(year).slice(0, 10),
     sourceFile: clean(sourceFile).slice(0, 200),
@@ -224,4 +229,4 @@ export function buildDataset(kind, workbook, { label = '', sourceFile = '', sour
 }
 
 /** What the data manager lists: everything but the stored rows. */
-export const describeDataset = ({ records, counts, values, ...rest }) => rest;
+export const describeDataset = ({ records, counts, values, report, ...rest }) => rest;
