@@ -30,8 +30,22 @@ export function databaseConnection(databaseUrl, env = process.env) {
   } catch {
     // Not a URL pg could parse either; let pg report it.
   }
-  const ca = String(env.DATABASE_CA_CERT || '').replace(/\\n/g, '\n').trim();
-  return { connectionString, ssl: ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true } };
+  const ca = caCertificates(env.DATABASE_CA_CERT);
+  return { connectionString, ssl: ca.length ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true } };
+}
+
+/**
+ * The certificates in a PEM value however it was pasted: hosting dashboards often turn the line
+ * breaks into spaces or "\n", and TLS silently ignores a PEM in that shape. Each block is
+ * rebuilt with its base64 body in 64-character lines.
+ */
+export function caCertificates(value) {
+  const text = String(value || '').replace(/\\n/g, '\n');
+  const blocks = text.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) || [];
+  return blocks
+    .map((block) => block.replace(/-----(BEGIN|END) CERTIFICATE-----/g, '').replace(/[^A-Za-z0-9+/=]/g, ''))
+    .filter(Boolean)
+    .map((body) => `-----BEGIN CERTIFICATE-----\n${body.match(/.{1,64}/g).join('\n')}\n-----END CERTIFICATE-----\n`);
 }
 
 export function resolveSecurityPolicy(env = process.env) {
@@ -380,6 +394,11 @@ export async function createRuntime({ serverDirectory }) {
   // database recycling idle connections) between queries. pg emits this as an
   // 'error' event on the pool; without a listener, Node treats it as an
   // uncaught exception and crashes the whole process on the next occurrence.
+  if (pool && process.env.DATABASE_CA_CERT) {
+    const count = caCertificates(process.env.DATABASE_CA_CERT).length;
+    if (count) console.log(`[database] Trusting ${count} CA certificate${count === 1 ? "" : "s"} from DATABASE_CA_CERT.`);
+    else console.warn("[database] DATABASE_CA_CERT is set but holds no -----BEGIN CERTIFICATE----- block; it is ignored.");
+  }
   pool?.on("error", (error) => {
     console.error(`[database] Idle connection error (pool remains available): ${error.message}`);
   });
