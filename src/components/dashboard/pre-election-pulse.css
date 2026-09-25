@@ -21,7 +21,7 @@
 .pep-busy { opacity: 0.75; }
 
 /* The app styles bare <header> elements; the pulse's headers are plain rows. */
-.pep header { margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+.pep header { margin: 0; padding: 0; border: 0 !important; background: none !important; box-shadow: none !important; }
 .pep-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .pep-head h2 { margin: 2px 0 0; font-size: 20px !important; line-height: 1.1; }
 .pep-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -165,3 +165,31 @@
 
 /* Tools -> Manage Data opens the uploads in a sidebar panel; it must scroll. */
 .camera-panel.manage-data-panel { overflow-y: auto; }
+
+/* Tinted cards: each figure and panel carries its own soft accent (gradient, top strip and
+   border) so the Pulse reads as distinct blocks rather than one dark sheet. */
+.pep-kpi, .pep-grid > .pep-panel {
+  --accent: #d9aa4b;
+  border-color: color-mix(in srgb, var(--accent) 38%, #4d1c2c);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 20%, #220912) 0%, #220912 70%);
+  box-shadow: inset 0 3px 0 color-mix(in srgb, var(--accent) 85%, transparent), 0 6px 18px #0906;
+}
+.pep-grid > .pep-panel { background: linear-gradient(170deg, color-mix(in srgb, var(--accent) 13%, #220912) 0%, #1f0810 55%); }
+.pep-kpis .pep-kpi:nth-child(1) { --accent: #d9aa4b; }
+.pep-kpis .pep-kpi:nth-child(2) { --accent: #c9748f; }
+.pep-kpis .pep-kpi:nth-child(3) { --accent: #3fb5a3; }
+.pep-kpis .pep-kpi:nth-child(4) { --accent: #5aa9e6; }
+.pep-kpis .pep-kpi:nth-child(5) { --accent: #9d7fe0; }
+.pep-kpis .pep-kpi:nth-child(6) { --accent: #6cc070; }
+.pep-kpis .pep-kpi:nth-child(7) { --accent: #e8914a; }
+.pep-kpis .pep-kpi:nth-child(8) { --accent: #4fc3dc; }
+.pep-grid > .pep-panel:nth-child(1) { --accent: #3fb5a3; }
+.pep-grid > .pep-panel:nth-child(2) { --accent: #c9748f; }
+.pep-grid > .pep-panel:nth-child(3) { --accent: #d9aa4b; }
+.pep-grid > .pep-panel:nth-child(4) { --accent: #9d7fe0; }
+.pep-grid > .pep-panel:nth-child(5) { --accent: #6cc070; }
+.pep-grid > .pep-panel:nth-child(6) { --accent: #5aa9e6; }
+.pep-grid > .pep-panel:nth-child(7) { --accent: #e8914a; }
+.pep-kpi.lead strong { color: var(--pep-gold-bright); }
+/* Inner blocks sit on the tint as a slightly darker well. */
+.pep-grid .pep-mini div, .pep-insight { background: rgba(10, 2, 6, 0.45); }

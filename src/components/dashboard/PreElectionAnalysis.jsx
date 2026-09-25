@@ -1,6 +1,5 @@
 import { useState } from "react";
 import AreaOperations from "./AreaOperations.jsx";
-import GeographicOperationalView from "./GeographicOperationalView.jsx";
 import ReportingLifecycle from "./ReportingLifecycle.jsx";
 import PreElectionPulse from "./PreElectionPulse.jsx";
 import SentimentMapTab from "./SentimentMapTab.jsx";
@@ -16,7 +15,6 @@ const TABS = [
   { id: "map", label: "Sentiment" },
   { id: "actions", label: "Next actions" },
   { id: "operations", label: "Resources management", admin: true },
-  { id: "geography", label: "Geography", admin: true },
   { id: "reports", label: "Reports", admin: true },
 ];
 
@@ -39,7 +37,6 @@ export default function PreElectionAnalysis({ authToken, canAdmin = false }) {
       {tab === "map" && <SentimentMapTab key={mapLga?.key || "all"} authToken={authToken} initialLga={mapLga} />}
       {tab === "actions" && <NextActionsTab authToken={authToken} onOpenMap={openOnMap} />}
       {tab === "operations" && canAdmin && <AreaOperations authToken={authToken} />}
-      {tab === "geography" && canAdmin && <GeographicOperationalView authToken={authToken} />}
       {tab === "reports" && canAdmin && <ReportingLifecycle authToken={authToken} />}
     </section>
   );
