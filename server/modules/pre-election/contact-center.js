@@ -28,6 +28,8 @@ export const ISSUE_THEMES = [
   ['education', 'Schools & education', /school|college|educat|institution|teacher|scholarship/],
   ['party', 'Party unity & leadership', /exco|executive|\bparty\b|division|crisis|chairman|faction|defect|divert|\bapm\b|\bpdp\b|unity|settle|conflict|mismanag|leaders? (are|is)|caucus/],
   ['security', 'Security', /secur|thief|thieves|thug|kidnap|herder|robber/],
+  ['agriculture', 'Agriculture & farming', /farm|agric|fertili[sz]|tractor|crop|cassava/],
+  ['sanitation', 'Waste & sanitation', /waste|refuse|sanitation|dump/],
   ['appreciation', 'Appreciation & commitment', /appreciat|thank|ready to vote|supporter|happy|grateful|loyal/],
 ];
 const NO_ISSUE = /^(non|none|nil|nothing|no issue|no concern|no problem|n a|na|no complain)/;
@@ -99,6 +101,10 @@ export function buildContactCenter(workbook) {
   const informationRequests = pairs(/information request/i, ['Information Requested', 'Calls']);
   const locationRows = sheetRows(workbook, /location insight/i);
   const location = table(locationRows, ['Location Result', 'Calls']).map((row) => ({ name: clean(row[0]), calls: number(row[1]) }));
+  // Calls by ward, as typed by agents ("WARD3", "AGUODO/MASIFA WARD 03", "4"); matched to INEC wards later.
+  const byWard = table(locationRows, ['LGA', 'Ward', 'Calls'])
+    .map((row) => ({ lga: matchLga(row[0]), ward: clean(row[1]).toUpperCase().slice(0, 80), calls: number(row[2]), unique: number(row[3]) }))
+    .filter((row) => row.lga && row.calls);
 
   // Issues: themed totals for the state and theme mentions per LGA.
   const themes = new Map();
@@ -139,6 +145,7 @@ export function buildContactCenter(workbook) {
     overview,
     perDay,
     byLga,
+    byWard,
     categories,
     contactTypes,
     informationRequests,

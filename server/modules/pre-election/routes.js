@@ -4,6 +4,7 @@ import { openCsvWorkbook, openWorkbook } from '../voter-survey/xlsx.js';
 import { buildDataset, DATASET_KINDS, describeDataset } from './datasets.js';
 import { lgaLabel, oyoLgas } from './lga.js';
 import { withBaseline } from './baseline.js';
+import { buildMap } from './map.js';
 import { buildPulse } from './pulse.js';
 
 const CAN_VIEW = ['Stakeholder', 'Admin', 'Super Admin'];
@@ -18,6 +19,7 @@ const TEMPLATES = {
 
 /**
  * GET    /api/pre-election/pulse?lga=        the Pulse for Oyo or one LGA (aggregates only)
+ * GET    /api/pre-election/map?lga=&ward=    the sentiment map: 33 LGAs, one LGA's wards, or one ward's units
  * GET    /api/pre-election/datasets          uploaded datasets, without their rows (admins)
  * POST   /api/pre-election/datasets?kind=    upload a member list, contact list or reference table (admins)
  * DELETE /api/pre-election/datasets/:id      remove an upload (admins)
@@ -48,6 +50,21 @@ export function registerPreElectionRoutes({ app, auth, rateLimit, asyncRoute, st
     }
     res.set('Cache-Control', 'private, max-age=30');
     res.json({ ...cache.get(key), canUpload: CAN_UPLOAD.includes(req.user.role) });
+  }));
+
+  app.get('/api/pre-election/map', auth, rateLimit, asyncRoute(async (req, res) => {
+    if (!canView(req, res)) return;
+    const [uploaded, survey] = await Promise.all([store.preElectionDatasets(), store.voterSurvey()]);
+    const datasets = withBaseline(uploaded);
+    const lga = String(req.query.lga || '').slice(0, 80);
+    const ward = /^\d{1,2}$/.test(String(req.query.ward || '')) ? String(Number(req.query.ward)) : '';
+    const key = `map|${datasets.map((item) => item.id).sort().join(',')}|${survey?.id || ''}|${lga}|${ward}`;
+    if (!cache.has(key)) {
+      if (cache.size > 100) cache.clear();
+      cache.set(key, buildMap({ datasets, survey, lga, ward }));
+    }
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(cache.get(key));
   }));
 
   app.get('/api/pre-election/datasets', auth, rateLimit, asyncRoute(async (req, res) => {

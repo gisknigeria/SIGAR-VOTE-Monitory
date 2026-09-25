@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useFitHeight } from "./useFitHeight.js";
 import { apiRequest } from "../../api/client.js";
 import "./pre-election-pulse.css";
 
@@ -263,25 +264,6 @@ function InsightsPanel({ insights }) {
   );
 }
 
-/** Height of the space left under the dashboard chrome, so the pulse fits the viewport exactly. */
-function useFitHeight() {
-  const ref = useRef(null);
-  const [height, setHeight] = useState(null);
-  useLayoutEffect(() => {
-    const measure = () => {
-      if (!ref.current || window.innerWidth <= 900) return setHeight(null);
-      const scroller = ref.current.closest(".results-center-body");
-      const bottomPadding = scroller ? parseFloat(getComputedStyle(scroller).paddingBottom) || 0 : 0;
-      const top = ref.current.getBoundingClientRect().top + (scroller?.scrollTop || 0);
-      setHeight(Math.max(window.innerHeight - top - bottomPadding, 480));
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  });
-  return [ref, height];
-}
-
 export default function PreElectionPulse({ authToken, onOpenData }) {
   const [lga, setLga] = useState("");
   const [fitRef, fitHeight] = useFitHeight();
@@ -325,9 +307,9 @@ export default function PreElectionPulse({ authToken, onOpenData }) {
         <Kpi label="Survey responses" value={survey.available ? num(survey.responses) : "—"} sub={survey.available ? ago(survey.updatedAt) : "not loaded"} />
         <Kpi label="Confirmed members" value={members.available ? num(members.total) : "—"} sub={members.available ? members.groups.map((group) => `${group.people >= 1000 ? `${(group.people / 1000).toFixed(1)}k` : group.people} ${groupShort(group.label)}`).join(" · ") : "not loaded"} title={members.available ? members.groups.map((group) => `${group.label}: ${num(group.people)}`).join("\n") : ""} />
         <Kpi label="PUs reached" value={members.available ? num(members.unitsCovered) : "—"} sub={`of ${num(register.pollingUnits)}${members.available ? ` · ${pct(members.unitCoverage)}` : ""}`} tone={members.available && members.unitCoverage < 0.5 ? "warn" : ""} />
-        <Kpi label="Registered voters" value={compact(reference.registeredVoters?.value)} sub={reference.registeredVoters ? "INEC 2023" : "not loaded"} title={reference.registeredVoters?.source} />
+        <Kpi label="Registered voters" value={compact(reference.registeredVoters?.value)} sub={reference.registeredVoters ? (reference.registeredVoters.basis === "register" ? "INEC 2023 register" : "INEC 2023") : "not loaded"} title={reference.registeredVoters?.source} />
         <Kpi label="PVCs collected" value={compact(reference.pvcCollected?.value)} sub={reference.pvcRate != null ? `${pct(reference.pvcRate, 1)} of register` : "not loaded"} title={reference.pvcCollected?.source} />
-        <Kpi label="Population" value={compact(reference.population?.value)} sub={reference.population ? (data.filter.lga ? "uploaded" : "2022 projection") : "not loaded"} title={reference.population?.source} />
+        <Kpi label="Population" value={compact(reference.population?.value)} sub={reference.population ? (reference.population.basis === "estimate" ? "estimate (by voters)" : data.filter.lga ? "uploaded" : "2022 projection") : "not loaded"} title={reference.population?.source} />
         <Kpi label="Contacts in our possession" value={contacts.available ? compact(contacts.total) : "—"} sub={contacts.available && reference.registeredVoters ? `${pct(contacts.total / reference.registeredVoters.value)} of voters` : contacts.available ? "phones" : "not loaded"} tone={contacts.truncated ? "warn" : ""} title={contacts.truncated ? "The list looks cut off at Excel's row limit." : ""} />
       </div>
 

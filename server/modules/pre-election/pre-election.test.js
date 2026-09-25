@@ -96,7 +96,9 @@ test('reference figures use the upload per LGA and published totals until every 
   assert.equal(atiba.reference.population.value, 250000);
   assert.equal(atiba.reference.pvcRate, 0.8333);
   const iseyin = buildPulse({ datasets: [reference], lga: 'Iseyin' });
-  assert.equal(iseyin.reference.population, null, 'an LGA with no upload shows as not loaded, never zero');
+  assert.equal(iseyin.reference.population.basis, 'estimate', 'without an upload, population is a labelled estimate');
+  assert.equal(iseyin.reference.registeredVoters.basis, 'register');
+  assert.equal(iseyin.reference.pvcCollected, null, 'PVCs by LGA only come from an upload');
 });
 
 test('the pulse joins the survey and writes findings; empty sources say they are not loaded', () => {
@@ -199,7 +201,7 @@ test('built-in data fills the pulse until an upload of the same kind (or member 
 
   const pulse = buildPulse({ datasets: builtIn, survey: baselineSurvey() });
   assert.equal(pulse.members.total, 10658);
-  assert.equal(pulse.members.unitsCovered, 3362);
+  assert.equal(pulse.members.unitsCovered, 2964, 'counted as INEC polling units');
   assert.equal(pulse.contacts.total, 1048574);
   assert.equal(pulse.contactCenter.calls, 1204);
 

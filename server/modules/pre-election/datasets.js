@@ -122,7 +122,8 @@ function buildMembers(workbook) {
       const lga = sheetLga || matchLga(rawLga);
       if (!lga) { unmatched.set(rawLga || '(blank)', (unmatched.get(rawLga || '(blank)') || 0) + 1); continue; }
       if (!phone) noPhone += 1;
-      const ward = clean(columns.ward !== undefined ? row[columns.ward] : columns.wardNo !== undefined ? row[columns.wardNo] : '').toUpperCase().slice(0, 80);
+      // "Ward No." and "Ward Name" together ("03 IWERE-ILE III") give the matcher both a number and a name.
+      const ward = clean([columns.wardNo, columns.ward].filter((index) => index !== undefined).map((index) => clean(row[index])).filter(Boolean).join(' ')).toUpperCase().slice(0, 80);
       const unit = columns.unit !== undefined ? unitKey(row[columns.unit]) : '';
       records.push([lga, ward, unit, personId(phone, name, lga)]);
     }
