@@ -12,7 +12,7 @@
   flex-direction: column;
   gap: 8px;
   height: calc(100dvh - 280px);
-  min-height: 520px;
+  min-height: 480px; /* matches useFitHeight's floor, so a 768px laptop does not scroll */
   color: var(--smp-ink);
 }
 .smp-busy { opacity: 0.85; }
@@ -50,16 +50,20 @@
 .smp-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 10px; }
 .smp-map-wrap { position: relative; min-height: 0; border: 1px solid var(--smp-rule); border-radius: 12px; overflow: hidden; background: #1a0710; }
 .smp-map { position: absolute; inset: 0; }
-.smp-map .leaflet-tile-pane { filter: saturate(0.55) brightness(0.8); }
+.smp-label { background: none; border: 0; }
+.smp-label span { position: absolute; transform: translate(-50%, 6px); white-space: nowrap; font-size: 10.5px; font-weight: 700; color: #fff; letter-spacing: 0.01em; text-shadow: 0 0 3px #16040a, 0 0 3px #16040a, 0 1px 2px #16040a; pointer-events: none; }
+.smp-label-lga span { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+.smp-basemap { position: absolute; z-index: 600; right: 10px; top: 10px; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid var(--smp-rule); border-radius: 9px; background: #16040ae6; font-size: 11px; color: var(--smp-muted); }
+.smp-basemap select { padding: 3px 6px; border: 1px solid #8a6d2e; border-radius: 6px; background: var(--smp-sunk); color: var(--smp-ink); font: inherit; font-size: 11.5px; }
 .smp-tip { font-size: 12px; line-height: 1.45; }
 .smp-legend { position: absolute; z-index: 500; left: 10px; bottom: 24px; max-width: 270px; display: grid; gap: 5px; padding: 8px 10px; border: 1px solid var(--smp-rule); border-radius: 10px; background: #16040ae6; font-size: 11px; color: var(--smp-muted); }
 .smp-legend b { color: #fff; font-size: 11.5px; }
 .smp-legend div { display: grid; gap: 3px; }
 .smp-legend span { display: flex; align-items: center; gap: 6px; }
 .smp-legend i { width: 14px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
-.smp-hatch { background: repeating-linear-gradient(45deg, #2a0e17 0 3px, #5b3a46 3px 5px); }
+.smp-hatch { background: repeating-linear-gradient(45deg, #9b8f94 0 3px, #d9d2d5 3px 5px); }
 .smp-dotnote i { width: 10px !important; height: 10px !important; border-radius: 50% !important; background: #5ec8ff; }
-.smp-overlay-note { position: absolute; z-index: 500; right: 10px; top: 10px; max-width: 260px; margin: 0; padding: 8px 10px; border-radius: 8px; background: #35121ce6; border: 1px dashed #8a6d2e; font-size: 11px; color: var(--smp-gold-bright); }
+.smp-overlay-note { position: absolute; z-index: 500; right: 10px; top: 52px; max-width: 260px; margin: 0; padding: 8px 10px; border-radius: 8px; background: #35121ce6; border: 1px dashed #8a6d2e; font-size: 11px; color: var(--smp-gold-bright); }
 .smp-units { position: absolute; z-index: 500; left: 10px; right: 10px; bottom: 10px; max-height: 45%; overflow-y: auto; padding: 8px 10px; border: 1px solid var(--smp-rule); border-radius: 10px; background: #16040aeb; font-size: 11px; color: var(--smp-muted); }
 .smp-units > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 4px; margin-top: 6px; }
 .smp-units button { padding: 5px 0; border: 1px solid transparent; border-radius: 5px; color: #2b0816; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }

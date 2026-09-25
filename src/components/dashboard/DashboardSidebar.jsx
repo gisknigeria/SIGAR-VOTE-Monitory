@@ -1,4 +1,3 @@
-import { MdPoll } from "react-icons/md";
 
 export default function DashboardSidebar({ controller }) {
   const {
@@ -52,12 +51,12 @@ export default function DashboardSidebar({ controller }) {
     setLiveIncidentsOpen,
     setManageOfficers,
     setMapDataPanel,
+    setManageDataOpen,
     setMapDrawTool,
     setOperationsOpen,
     setPartyManagerOpen,
     setProfileOpen,
     setSearch,
-    setSurveyOpen,
     setSelected,
     setSituationalOpen,
     setSupervisorIncidentsOpen,
@@ -234,6 +233,7 @@ export default function DashboardSidebar({ controller }) {
                     onClearAreas={clearAreas}
                     onManageOfficers={() => setManageOfficers(true)}
                     onMapData={() => setMapDataPanel(true)}
+                    onManageData={() => setManageDataOpen(true)}
                     onAuditLog={() => setAuditLogOpen(true)}
                     onGps={toggleGps}
                     onCameraShare={toggleCamera}
@@ -246,11 +246,6 @@ export default function DashboardSidebar({ controller }) {
                 {canAdmin && (
                   <button onClick={() => setPartyManagerOpen(true)}>
                     <FaUserCog /> Political Parties
-                  </button>
-                )}
-                {canAdmin && (
-                  <button onClick={() => { setSurveyOpen(true); setOperationsOpen(false); }}>
-                    <MdPoll /> Voter Survey
                   </button>
                 )}
               </div>}

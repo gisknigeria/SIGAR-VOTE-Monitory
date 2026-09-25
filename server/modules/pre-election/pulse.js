@@ -275,7 +275,7 @@ function insightsFor({ lga, survey, members, contacts, reference, rows, center }
       if (empty.length) add('risk', `${empty.length} LGA${empty.length === 1 ? ' has' : 's have'} no confirmed members yet: ${empty.slice(0, 5).map((row) => row.label).join(', ')}${empty.length > 5 ? '…' : ''}.`);
     }
     if (members.inMoreThanOneList) add('info', `${fmt(members.inMoreThanOneList)} people appear in more than one member list and are counted once.`);
-  } else add('watch', 'No member list loaded yet. Upload agent and volunteer lists in Data to see ground strength.');
+  } else add('watch', 'No member list loaded yet. Upload agent and volunteer lists in Tools → Manage Data to see ground strength.');
 
   if (reference.pvcRate != null) {
     const uncollected = reference.registeredVoters.value - reference.pvcCollected.value;
@@ -316,7 +316,7 @@ function insightsFor({ lga, survey, members, contacts, reference, rows, center }
         if (topThemes.length) add('risk', `Callers in ${place} raise ${topThemes.map((row) => row.label.toLowerCase()).join(', ')} most.`);
       }
     }
-  } else if (!lga) add('watch', 'No contact center report loaded yet. Upload the weekly report in Data.');
+  } else if (!lga) add('watch', 'No contact center report loaded yet. Upload the weekly report in Tools → Manage Data.');
 
   const order = { risk: 0, watch: 1, good: 2, info: 3 };
   return out.sort((a, b) => order[a.tone] - order[b.tone]);

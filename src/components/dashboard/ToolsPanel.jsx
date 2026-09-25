@@ -5,6 +5,7 @@ import {
   FaCircle,
   FaClipboardCheck,
   FaComments,
+  FaDatabase,
   FaDrawPolygon,
   FaKey,
   FaMapMarkedAlt,
@@ -69,6 +70,7 @@ export default function ToolsPanel({
   onClearAreas,
   onManageOfficers,
   onMapData,
+  onManageData,
   onAuditLog,
   onGps,
   onCameraShare,
@@ -176,6 +178,19 @@ export default function ToolsPanel({
           >
             <b>
               <FaMapMarkedAlt /> Map Data
+            </b>
+          </button>
+        )}
+        {canAdmin && onManageData && (
+          <button
+            title="Upload and manage pre-election data: survey, members, contacts, contact center, population"
+            onClick={() => {
+              onClose();
+              onManageData();
+            }}
+          >
+            <b>
+              <FaDatabase /> Manage Data
             </b>
           </button>
         )}

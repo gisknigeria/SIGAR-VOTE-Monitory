@@ -25,6 +25,7 @@ export default function DashboardModals({ controller }) {
     DashboardChatPanel,
     DashboardEmergencyPanel,
     DashboardMapDataPanel,
+    ManageDataPanel,
     deleteCamera,
     deleteChatRoom,
     deleteMapLayer,
@@ -56,6 +57,7 @@ export default function DashboardModals({ controller }) {
     LuLocateFixed,
     manageOfficers,
     mapDataPanel,
+    manageDataOpen,
     mapLayers,
     mapRef,
     newPoint,
@@ -108,6 +110,7 @@ export default function DashboardModals({ controller }) {
     setIpLogOpen,
     setManageOfficers,
     setMapDataPanel,
+    setManageDataOpen,
     setNewPoint,
     setNewResultPoint,
     setNotificationModalOpen,
@@ -295,6 +298,11 @@ export default function DashboardModals({ controller }) {
       )}
       {auditLogOpen && (
         <AuditLogViewer authToken={session.token} onClose={() => setAuditLogOpen(false)} />
+      )}
+      {manageDataOpen && (
+        <Suspense fallback={<div className="modal-backdrop"><div className="modal">Loading data manager…</div></div>}>
+          <ManageDataPanel authToken={session.token} onClose={() => setManageDataOpen(false)} />
+        </Suspense>
       )}
       {mapDataPanel && (
         <DashboardMapDataPanel

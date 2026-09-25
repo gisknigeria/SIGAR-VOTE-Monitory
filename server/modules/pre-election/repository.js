@@ -17,7 +17,27 @@ export function createPreElectionRepository({ pool, jsonDb, saveJson }) {
   };
   const replacedBy = (dataset) => (item) => item.kind === dataset.kind && (dataset.kind !== 'members' || item.label.toLowerCase() === dataset.label.toLowerCase());
 
+  const getSetting = async (key) => {
+    if (!pool) return jsonDb.preElectionSettings?.[key] ?? null;
+    return (await pool.query('select value from app_settings where key=$1', [key])).rows[0]?.value ?? null;
+  };
+  const setSetting = async (key, value) => {
+    if (!pool) { jsonDb.preElectionSettings ||= {}; jsonDb.preElectionSettings[key] = value; saveJson(); return value; }
+    await pool.query('insert into app_settings (key,value) values ($1,$2) on conflict (key) do update set value=excluded.value', [key, JSON.stringify(value)]);
+    return value;
+  };
+
   return {
+    /** The last AI-written action plan for one scope and horizon. */
+    async preElectionPlan(scope) { return getSetting(`pre-election-plan:${scope}`); },
+    async savePreElectionPlan(scope, plan) { return setSetting(`pre-election-plan:${scope}`, plan); },
+    /** To do / doing / done per action key, shared by everyone who sees the plan. */
+    async preElectionActionStatus() { return (await getSetting('pre-election-action-status')) || {}; },
+    async setPreElectionActionStatus(key, entry) {
+      const all = (await getSetting('pre-election-action-status')) || {};
+      all[key] = entry;
+      return setSetting('pre-election-action-status', all);
+    },
     async preElectionDatasets() { return readAll(); },
     async savePreElectionDataset(dataset) {
       const previous = (await readAll()).filter(replacedBy(dataset));

@@ -78,6 +78,7 @@ import ProfileModal from "./ProfileModal.jsx";
 import DashboardChatPanel from "./ChatPanel.jsx";
 import DashboardEmergencyPanel from "./EmergencyPanel.jsx";
 import DashboardMapDataPanel from "./MapDataPanel.jsx";
+const ManageDataPanel = lazy(() => import("./ManageDataPanel.jsx"));
 import AuditLogViewer from "./AuditLogViewer.jsx";
 import DashboardToolsPanel from "./ToolsPanel.jsx";
 import Toast from "../ui/Toast.jsx";
@@ -512,6 +513,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const [notice, setNotice] = useState("");
   const [manageOfficers, setManageOfficers] = useState(false);
   const [mapDataPanel, setMapDataPanel] = useState(false);
+  const [manageDataOpen, setManageDataOpen] = useState(false);
   const [auditLogOpen, setAuditLogOpen] = useState(false);
   const [focusedOfficerId, setFocusedOfficerId] = useState("");
   const [resultsOpen, setResultsOpen] = useState(false);
@@ -561,7 +563,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
   const [cameraLocation, setCameraLocation] = useState(null);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [surveyOpen, setSurveyOpen] = useState(false);
   const [ipLogOpen, setIpLogOpen] = useState(false);
   const [ipLogData, setIpLogData] = useState([]);
   const [ipLogLoading, setIpLogLoading] = useState(false);
@@ -2003,6 +2004,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     DashboardChatPanel,
     DashboardEmergencyPanel,
     DashboardMapDataPanel,
+    ManageDataPanel,
     DashboardToolsPanel,
     dataLayer,
     deleteCamera,
@@ -2082,6 +2084,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     MAP_VIEW_HELPERS,
     mapCameras,
     mapDataPanel,
+    manageDataOpen,
     mapLayers,
     mapMenu,
     mapRef,
@@ -2128,7 +2131,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     ResultsCenter,
     resultsInitialView,
     resultsOpen,
-    surveyOpen,
     routePoints,
     routeResult,
     routeUserPoint,
@@ -2167,6 +2169,7 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     setLiveIncidentsOpen,
     setManageOfficers,
     setMapDataPanel,
+    setManageDataOpen,
     setMapDrawTool,
     setMapMenu,
     setNewPoint,
@@ -2181,7 +2184,6 @@ function DashboardRuntime({ session, onLogout, onSessionUpdate }) {
     setResultsInitialView,
     setResultsOpen,
     setSearch,
-    setSurveyOpen,
     setSelected,
     setSelectedBoundaryLabel,
     setSelectedBoundaryState,
