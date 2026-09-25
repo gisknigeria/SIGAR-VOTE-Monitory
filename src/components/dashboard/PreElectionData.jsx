@@ -28,7 +28,7 @@ const CARDS = [
   },
   {
     kind: "contacts",
-    title: "Contact list",
+    title: "Contacts in our possession",
     body: "A phone list with an LGA column. Only the number of phones per LGA is kept. A new upload replaces the old list.",
   },
   {
@@ -137,13 +137,13 @@ function UploadCard({ card, token, items, survey, onChanged }) {
         {state.message && <p className={`pep-data-status ${state.status === "error" ? "error" : state.status === "ok" ? "ok" : ""}`} role={state.status === "error" ? "alert" : "status"}>{state.message}</p>}
       </div>
       {card.kind === "survey" ? (
-        survey ? <ul className="pep-uploads"><li className="pep-upload"><header><strong>{survey.sourceFile}</strong></header><small>{num(survey.responses)} responses · {when(survey.importedAt)}</small></li></ul> : <p className="pep-data-status">No survey loaded yet.</p>
+        survey ? <ul className="pep-uploads"><li className="pep-upload"><header><strong>{survey.sourceFile}</strong>{survey.builtIn && <span className="pep-tag">Built in</span>}</header><small>{num(survey.responses)} responses · {survey.builtIn ? "shipped with the app · new uploads are added to it, so don't upload this same file again" : when(survey.importedAt)}</small></li></ul> : <p className="pep-data-status">No survey loaded yet.</p>
       ) : items.length ? (
         <ul className="pep-uploads">
           {items.map((item) => (
             <li key={item.id} className="pep-upload">
-              <header><strong>{item.label}</strong><button type="button" className="pep-danger" onClick={() => remove(item)}>Remove</button></header>
-              <small>{item.sourceFile} · {when(item.uploadedAt)}{item.source ? ` · ${item.source}` : ""}</small>
+              <header><strong>{item.label}</strong>{item.builtIn ? <span className="pep-tag">Built in</span> : <button type="button" className="pep-danger" onClick={() => remove(item)}>Remove</button>}</header>
+              <small>{item.sourceFile} · {item.builtIn ? `shipped with the app · ${card.kind === "members" ? "an upload with the same list name replaces it" : "your next upload replaces it"}` : when(item.uploadedAt)}{item.source ? ` · ${item.source}` : ""}</small>
               <Summary item={item} />
             </li>
           ))}

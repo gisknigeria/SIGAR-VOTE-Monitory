@@ -1,3 +1,5 @@
+import { baselineSurvey } from '../pre-election/baseline.js';
+
 const KEY = 'voter-survey:current';
 
 /**
@@ -6,7 +8,8 @@ const KEY = 'voter-survey:current';
  * audit log records who imported what and when.
  *
  * The dataset is read on every analysis request, so the parsed copy is kept in memory and only
- * re-read when a newer import has been saved.
+ * re-read when a newer import has been saved. Until the first import, the survey that ships with
+ * the app (see pre-election/baseline.js) is used, and an import is added to it.
  */
 export function createVoterSurveyRepository({ pool, jsonDb, saveJson }) {
   let cached = null;
@@ -22,7 +25,7 @@ export function createVoterSurveyRepository({ pool, jsonDb, saveJson }) {
       return dataset;
     },
     async voterSurvey() {
-      if (!pool) return jsonDb.voterSurvey || null;
+      if (!pool) return jsonDb.voterSurvey || baselineSurvey();
       if (cached) {
         // A cheap freshness check so a second server instance picks up a new import.
         const probe = await pool.query("select value->>'id' as id from app_settings where key=$1", [KEY]);
@@ -30,7 +33,7 @@ export function createVoterSurveyRepository({ pool, jsonDb, saveJson }) {
       }
       const result = await pool.query('select value from app_settings where key=$1', [KEY]);
       cached = result.rows[0]?.value || null;
-      return cached;
+      return cached || baselineSurvey();
     },
   };
 }

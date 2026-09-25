@@ -218,7 +218,7 @@ export function buildDataset(kind, workbook, { label = '', sourceFile = '', sour
   return {
     id: randomUUID(),
     kind,
-    label: clean(label).slice(0, 80) || { members: 'Members', contacts: 'Contact list', reference: 'Population & voter register', 'contact-center': `Contact center report${built.summary.period ? ` (${built.summary.period})` : ''}` }[kind],
+    label: clean(label).slice(0, 80) || { members: 'Members', contacts: 'Contacts in our possession', reference: 'Population & voter register', 'contact-center': `Contact center report${built.summary.period ? ` (${built.summary.period})` : ''}` }[kind],
     source: clean(source).slice(0, 200),
     year: clean(year).slice(0, 10),
     sourceFile: clean(sourceFile).slice(0, 200),

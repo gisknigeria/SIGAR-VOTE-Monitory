@@ -24,6 +24,8 @@ const ago = (value) => {
   return days <= 0 ? "updated today" : days === 1 ? "updated yesterday" : `updated ${days} days ago`;
 };
 
+const groupShort = (label) => (/agent/i.test(label) ? "agents" : /bsa|volunteer/i.test(label) ? "BSA-YV" : label.split(" ")[0]);
+
 const FOCUS = "#f5dc9a";
 const SATISFACTION_COLORS = { "Very satisfied": "#0ca30c", Satisfied: "#7fcf7f", Neutral: "#a8929c", Dissatisfied: "#ec835a", "Very dissatisfied": "#d8452b" };
 const PLATFORM_COLORS = ["#f5dc9a", "#d9aa4b", "#a8761f", "#c9748f", "#8a4a5c"];
@@ -321,12 +323,12 @@ export default function PreElectionPulse({ authToken, onOpenData }) {
       <div className="pep-kpis">
         <Kpi label="Poll leader" value={leader ? leader.short : "—"} sub={leader ? `${pct(leader.share, 1)}${runnerUp ? ` · +${((leader.share - runnerUp.share) * 100).toFixed(1)} pts` : ""}` : "no survey yet"} tone="lead" />
         <Kpi label="Survey responses" value={survey.available ? num(survey.responses) : "—"} sub={survey.available ? ago(survey.updatedAt) : "not loaded"} />
-        <Kpi label="Confirmed members" value={members.available ? num(members.total) : "—"} sub={members.available ? `${members.groups.length} list${members.groups.length === 1 ? "" : "s"} · deduplicated` : "not loaded"} title={members.available ? members.groups.map((group) => `${group.label}: ${num(group.people)}`).join("\n") : ""} />
-        <Kpi label="PU coverage" value={members.available ? pct(members.unitCoverage) : "—"} sub={`${members.available ? num(members.unitsCovered) : "—"} of ${num(register.pollingUnits)} units`} tone={members.available && members.unitCoverage < 0.5 ? "warn" : ""} />
+        <Kpi label="Confirmed members" value={members.available ? num(members.total) : "—"} sub={members.available ? members.groups.map((group) => `${group.people >= 1000 ? `${(group.people / 1000).toFixed(1)}k` : group.people} ${groupShort(group.label)}`).join(" · ") : "not loaded"} title={members.available ? members.groups.map((group) => `${group.label}: ${num(group.people)}`).join("\n") : ""} />
+        <Kpi label="PUs reached" value={members.available ? num(members.unitsCovered) : "—"} sub={`of ${num(register.pollingUnits)}${members.available ? ` · ${pct(members.unitCoverage)}` : ""}`} tone={members.available && members.unitCoverage < 0.5 ? "warn" : ""} />
         <Kpi label="Registered voters" value={compact(reference.registeredVoters?.value)} sub={reference.registeredVoters ? "INEC 2023" : "not loaded"} title={reference.registeredVoters?.source} />
         <Kpi label="PVCs collected" value={compact(reference.pvcCollected?.value)} sub={reference.pvcRate != null ? `${pct(reference.pvcRate, 1)} of register` : "not loaded"} title={reference.pvcCollected?.source} />
         <Kpi label="Population" value={compact(reference.population?.value)} sub={reference.population ? (data.filter.lga ? "uploaded" : "2022 projection") : "not loaded"} title={reference.population?.source} />
-        <Kpi label="Contact reach" value={contacts.available ? compact(contacts.total) : "—"} sub={contacts.available && reference.registeredVoters ? `${pct(contacts.total / reference.registeredVoters.value)} of voters` : contacts.available ? "phones" : "not loaded"} tone={contacts.truncated ? "warn" : ""} title={contacts.truncated ? "The list looks cut off at Excel's row limit." : ""} />
+        <Kpi label="Contacts in our possession" value={contacts.available ? compact(contacts.total) : "—"} sub={contacts.available && reference.registeredVoters ? `${pct(contacts.total / reference.registeredVoters.value)} of voters` : contacts.available ? "phones" : "not loaded"} tone={contacts.truncated ? "warn" : ""} title={contacts.truncated ? "The list looks cut off at Excel's row limit." : ""} />
       </div>
 
       <div className="pep-grid">

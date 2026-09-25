@@ -259,8 +259,8 @@ function insightsFor({ lga, survey, members, contacts, reference, rows, center }
   }
   if (contacts.available) {
     const reach = ratio(contacts.total, reference.registeredVoters?.value);
-    if (reach != null) add('info', `The contact list reaches ${fmt(contacts.total)} phones in ${place}, about ${pct(reach)} of registered voters.`);
-    if (contacts.truncated && !lga) add('watch', 'The contact list stops at 1,048,574 rows (Excel\'s limit), so it was probably cut off. Re-export it straight to CSV.');
+    if (reach != null) add('info', `We hold ${fmt(contacts.total)} phone contacts in ${place}, equal to about ${pct(reach)} of registered voters.`);
+    if (contacts.truncated && !lga) add('watch', 'The contacts file stops at 1,048,574 rows (Excel\'s limit), so it was probably cut off. Re-export it straight to CSV.');
   }
   if (!lga && reference.lgaLevelLoaded < oyoLgas().length) add('watch', `LGA population and PVC figures are loaded for ${reference.lgaLevelLoaded} of ${oyoLgas().length} LGAs. State totals use published INEC/NPC figures.`);
 

@@ -33,6 +33,9 @@
 .pep-kpis { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
 .pep-kpi { display: grid; gap: 2px; padding: 9px 11px; border: 1px solid var(--pep-rule); border-radius: 10px; background: var(--pep-surface); min-width: 0; }
 .pep-kpi span { font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--pep-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Labels may take two lines (e.g. "Contacts in our possession") rather than be cut off. */
+.pep-kpi { align-content: start; }
+.pep-kpi span { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; min-height: 2.4em; }
 .pep-kpi strong { font-size: 20px; line-height: 1.15; color: var(--pep-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pep-kpi small { font-size: 11px; color: var(--pep-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pep-kpi.lead { border-color: #8a6d2e; background: linear-gradient(135deg, #35121c, #220912); }
@@ -153,6 +156,7 @@
 .pep-upload strong { font-size: 13px; }
 .pep-upload small { color: #cfa7b3; }
 .pep-upload .warn { color: #ecc86f; }
+.pep-tag { padding: 2px 8px; border: 1px solid #8a6d2e; border-radius: 999px; color: #f5dc9a; font-size: 10.5px; }
 .pep-danger { padding: 4px 9px; border: 1px solid #6f2940; border-radius: 6px; background: transparent; color: #ff9d8a; font: inherit; font-size: 11.5px; cursor: pointer; }
 .pep-danger:hover { border-color: #ff9d8a; }
 

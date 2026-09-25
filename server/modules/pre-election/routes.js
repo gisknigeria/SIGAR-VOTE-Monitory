@@ -3,6 +3,7 @@ import { recordAudit } from '../foundation/audit-helper.js';
 import { openCsvWorkbook, openWorkbook } from '../voter-survey/xlsx.js';
 import { buildDataset, DATASET_KINDS, describeDataset } from './datasets.js';
 import { lgaLabel, oyoLgas } from './lga.js';
+import { withBaseline } from './baseline.js';
 import { buildPulse } from './pulse.js';
 
 const CAN_VIEW = ['Stakeholder', 'Admin', 'Super Admin'];
@@ -37,7 +38,8 @@ export function registerPreElectionRoutes({ app, auth, rateLimit, asyncRoute, st
 
   app.get('/api/pre-election/pulse', auth, rateLimit, asyncRoute(async (req, res) => {
     if (!canView(req, res)) return;
-    const [datasets, survey] = await Promise.all([store.preElectionDatasets(), store.voterSurvey()]);
+    const [uploaded, survey] = await Promise.all([store.preElectionDatasets(), store.voterSurvey()]);
+    const datasets = withBaseline(uploaded);
     const lga = String(req.query.lga || '').slice(0, 80);
     const key = `${datasets.map((item) => item.id).sort().join(',')}|${survey?.id || ''}|${lga}`;
     if (!cache.has(key)) {
@@ -50,10 +52,11 @@ export function registerPreElectionRoutes({ app, auth, rateLimit, asyncRoute, st
 
   app.get('/api/pre-election/datasets', auth, rateLimit, asyncRoute(async (req, res) => {
     if (!canUpload(req, res)) return;
-    const [datasets, survey] = await Promise.all([store.preElectionDatasets(), store.voterSurvey()]);
+    const [uploaded, survey] = await Promise.all([store.preElectionDatasets(), store.voterSurvey()]);
+    const datasets = withBaseline(uploaded);
     res.json({
       datasets: datasets.map(describeDataset).sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt))),
-      survey: survey ? { id: survey.id, sourceFile: survey.sourceFile, importedAt: survey.importedAt, responses: survey.responseCount } : null,
+      survey: survey ? { id: survey.id, sourceFile: survey.sourceFile, importedAt: survey.importedAt, responses: survey.responseCount, builtIn: Boolean(survey.builtIn) } : null,
     });
   }));
 
