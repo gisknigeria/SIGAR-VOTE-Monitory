@@ -1,5 +1,20 @@
 # Live deployment
 
+## DigitalOcean: free street maps
+
+Street maps use OpenStreetMap standard HTTPS tiles directly from the browser.
+No map API key is required. Old VITE_MAPTILER_KEY settings are ignored and can be removed.
+Deploy the updated source through the existing DigitalOcean app configuration.
+Rebuild the frontend with npm run build; restarting an old build will not change
+the tile URLs. Reload the page after deployment to load the new bundle.
+
+Keep attribution visible, normal browser caching, and the existing
+strict-origin-when-cross-origin referrer policy. Do not bulk-download tiles,
+prefetch areas, or save these tiles for offline maps. The public service is
+best-effort with no SLA; arrange a dedicated provider or self-hosted tiles
+before heavy traffic. Policy: https://operations.osmfoundation.org/policies/tiles/
+
+
 ## Vercel frontend with Render backend
 
 This repository is configured so Vercel serves the compiled Vite frontend while Render continues to run Express, Socket.IO, PostgreSQL access, IReV endpoints and other server-only features.

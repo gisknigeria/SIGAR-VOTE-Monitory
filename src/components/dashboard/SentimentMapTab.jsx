@@ -7,7 +7,7 @@ import { wardByName } from "../../../shared/wardMatch.js";
 import { escapeHtml, featureLgaName, lgaKey } from "../stakeholder/ui.jsx";
 import { useFitHeight } from "./useFitHeight.js";
 import "./sentiment-map.css";
-import { STREET_TILES, withStreetFallback } from "../../config.js";
+import { createStreetLayer } from "../../mapTiles.js";
 
 /**
  * Sentiment map: tick any mix of layers (register, ground, outreach, opinion, 2023 history),
@@ -24,21 +24,14 @@ const DIV = ["#b8452f", "#e08a6b", "#e9e1e4", "#8fcf8f", "#2f9e44"];
 const NO_DATA = "#9b8f94";
 const DEEP = new Set([SEQ[3], SEQ[4], RED[3], RED[4], DIV[0], DIV[4]]);
 
-// Basemaps: the same sources as the operations map, plus labelled imagery and light/dark canvases.
+// Basemaps: the same sources as the operations map, plus labelled imagery.
 const esri = (service) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, attribution: "Tiles &copy; Esri" });
 const BASEMAPS = {
-  street: { label: "Street", layers: () => {
-    const key = import.meta.env.VITE_MAPTILER_KEY;
-    return [key
-      ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${key}`, { attribution: "&copy; MapTiler &copy; OpenStreetMap contributors", maxZoom: 19 })
-      : withStreetFallback(L.tileLayer(STREET_TILES.url, { attribution: STREET_TILES.attribution, subdomains: STREET_TILES.subdomains, maxZoom: 19 }))];
-  } },
+  street: { label: "Street", layers: () => [createStreetLayer()] },
   satellite: { label: "Satellite", layers: () => [esri("World_Imagery")] },
   hybrid: { label: "Satellite + labels", layers: () => [esri("World_Imagery"), esri("Reference/World_Boundaries_and_Places")] },
   topo: { label: "Topographic", layers: () => [esri("World_Topo_Map")] },
   terrain: { label: "Terrain", layers: () => [L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: "&copy; OpenTopoMap contributors" })] },
-  light: { label: "Light", layers: () => [L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap &copy; CARTO" })] },
-  dark: { label: "Dark", layers: () => [L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap &copy; CARTO" })] },
 };
 
 /** Where to write an area's name: the centroid of its largest ring (inside the shape for Oyo's LGAs and wards). */

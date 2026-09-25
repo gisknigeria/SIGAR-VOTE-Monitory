@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import L from "leaflet";
 import { oyoBoundariesQuery } from "../../queries/boundaries.js";
-import { STREET_TILES, withStreetFallback } from "../../config.js";
+import { createStreetLayer } from "../../mapTiles.js";
 
 // Building blocks shared by the election overview and the voter survey, so both read the same.
 
@@ -108,20 +108,7 @@ export function LgaMap({ rowsByKey, fill, tooltip, legend }) {
   useEffect(() => {
     if (!holder.current || mapRef.current) return;
     mapRef.current = L.map(holder.current, { zoomControl: true, attributionControl: true, scrollWheelZoom: false, zoomSnap: 0.25 }).setView([8.1, 3.6], 8);
-    // Same tile source as the operations map, so this view needs no key of its own and falls
-    // back to the keyless CARTO street map exactly as that one does.
-    const maptilerKey = import.meta.env.VITE_MAPTILER_KEY;
-    (maptilerKey
-      ? L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${maptilerKey}`, {
-          attribution: "&copy; MapTiler &copy; OpenStreetMap contributors",
-          maxZoom: 12,
-        })
-      : withStreetFallback(L.tileLayer(STREET_TILES.url, {
-          attribution: STREET_TILES.attribution,
-          subdomains: STREET_TILES.subdomains,
-          maxZoom: 12,
-        }))
-    ).addTo(mapRef.current);
+    createStreetLayer({ maxZoom: 12 }).addTo(mapRef.current);
     // The map often mounts before its panel has its final width (tab switches, grid reflow), and
     // Leaflet then fits the LGAs into the wrong box. Re-measure and re-fit whenever the box changes.
     const observer = new ResizeObserver(() => {
