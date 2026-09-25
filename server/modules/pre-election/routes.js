@@ -6,6 +6,8 @@ import { lgaLabel, oyoLgas } from './lga.js';
 import { withBaseline } from './baseline.js';
 import { buildMap } from './map.js';
 import { buildPulse } from './pulse.js';
+import { aiPrompt, buildFacts, checkAiPlan, HORIZONS, QUADRANTS, ruleActions, ruleBrief, STATUSES } from './actions.js';
+import { askModels } from './ai.js';
 
 const CAN_VIEW = ['Stakeholder', 'Admin', 'Super Admin'];
 const CAN_UPLOAD = ['Admin', 'Super Admin'];
@@ -20,12 +22,15 @@ const TEMPLATES = {
 /**
  * GET    /api/pre-election/pulse?lga=        the Pulse for Oyo or one LGA (aggregates only)
  * GET    /api/pre-election/map?lga=&ward=    the sentiment map: 33 LGAs, one LGA's wards, or one ward's units
+ * GET    /api/pre-election/actions?lga=&horizon=     next actions as an Eisenhower matrix
+ * POST   /api/pre-election/actions/generate          ask the AI to write the matrix from the facts
+ * PUT    /api/pre-election/actions/status            to do / doing / done for one action (admins)
  * GET    /api/pre-election/datasets          uploaded datasets, without their rows (admins)
  * POST   /api/pre-election/datasets?kind=    upload a member list, contact list or reference table (admins)
  * DELETE /api/pre-election/datasets/:id      remove an upload (admins)
  * GET    /api/pre-election/templates/:kind   a blank CSV in the expected shape
  */
-export function registerPreElectionRoutes({ app, auth, rateLimit, asyncRoute, store }) {
+export function registerPreElectionRoutes({ app, auth, rateLimit, asyncRoute, store, geminiApiKeys = [], callGroqWithFallback = null, openAiPrimaryModel = '' }) {
   const cache = new Map();
   const canView = (req, res) => {
     if (CAN_VIEW.includes(req.user?.role)) return true;
@@ -65,6 +70,84 @@ export function registerPreElectionRoutes({ app, auth, rateLimit, asyncRoute, st
     }
     res.set('Cache-Control', 'private, max-age=30');
     res.json(cache.get(key));
+  }));
+
+  // ---- Next actions ---------------------------------------------------------------------------
+  const scopeOf = (req, source) => {
+    const horizon = HORIZONS[source.horizon] ? source.horizon : 'week';
+    const lga = String(source.lga || '').slice(0, 80);
+    return { lga, horizon };
+  };
+  const loadFacts = async ({ lga }) => {
+    const [uploaded, survey] = await Promise.all([store.preElectionDatasets(), store.voterSurvey()]);
+    const datasets = withBaseline(uploaded);
+    const dataKey = `${datasets.map((item) => item.id).sort().join(',')}|${survey?.id || ''}`;
+    return { ...buildFacts({ datasets, survey, lga }), dataKey, datasets, survey };
+  };
+  const planKey = (context, horizon) => `${context.pulse.filter.lga || 'state'}|${horizon}`;
+  const dataGapsFrom = (facts, survey) => [
+    ...facts.filter((fact) => fact.id.startsWith('D')).map((fact) => fact.fact),
+    ...(survey ? [] : ['No voter survey is loaded.']),
+  ];
+
+  app.get('/api/pre-election/actions', auth, rateLimit, asyncRoute(async (req, res) => {
+    if (!canView(req, res)) return;
+    const { lga, horizon } = scopeOf(req, req.query);
+    const { facts, context, dataKey, datasets, survey } = await loadFacts({ lga });
+    const [stored, statuses] = await Promise.all([store.preElectionPlan(planKey(context, horizon)), store.preElectionActionStatus()]);
+    const useAi = stored?.plan && stored.dataKey === dataKey;
+    const quadrants = useAi ? stored.plan.quadrants : ruleActions({ facts, context }, { horizon });
+    for (const quadrant of QUADRANTS) for (const action of quadrants[quadrant] || []) {
+      const entry = statuses[action.key];
+      action.status = entry?.status || 'todo';
+      action.statusAt = entry?.at || null;
+    }
+    const counts = {
+      survey: survey?.responseCount || 0,
+      members: context.pulse.members.available ? context.pulse.members.total : 0,
+      calls: context.pulse.contactCenter.available ? context.pulse.contactCenter.stateCalls : 0,
+      contacts: context.pulse.contacts.available ? context.pulse.contacts.total : 0,
+      pollingUnits: context.pulse.register.pollingUnits,
+      datasets: datasets.length,
+    };
+    res.json({
+      scope: { lga: context.pulse.filter.lga, label: context.pulse.filter.label, options: context.pulse.filter.options },
+      horizon,
+      horizons: HORIZONS,
+      plan: useAi
+        ? { source: 'ai', provider: stored.provider, model: stored.model, generatedAt: stored.generatedAt }
+        : { source: 'rules', staleAi: Boolean(stored?.plan), previousAiAt: stored?.generatedAt || null },
+      brief: useAi && stored.plan.brief?.where_we_stand ? stored.plan.brief : ruleBrief({ facts, context }),
+      quadrants,
+      dataGaps: useAi && stored.plan.data_gaps?.length ? stored.plan.data_gaps : dataGapsFrom(facts, survey),
+      facts: facts.map(({ id, fact }) => ({ id, fact })),
+      counts,
+      canEdit: CAN_UPLOAD.includes(req.user.role),
+    });
+  }));
+
+  app.post('/api/pre-election/actions/generate', auth, rateLimit, asyncRoute(async (req, res) => {
+    if (!canView(req, res)) return;
+    const { lga, horizon } = scopeOf(req, req.body || {});
+    const { facts, context, dataKey } = await loadFacts({ lga });
+    const answer = await askModels(aiPrompt(facts, { place: context.place, horizon }), { geminiApiKeys, callGroqWithFallback, openAiPrimaryModel });
+    const plan = answer ? checkAiPlan(answer.text, facts) : null;
+    if (!plan) {
+      return res.status(503).json({ message: answer ? 'The AI answer could not be checked against the data, so the rule-based plan is shown instead.' : 'No AI provider answered. The rule-based plan is shown instead.' });
+    }
+    const saved = { plan, provider: answer.provider, model: answer.model, generatedAt: new Date().toISOString(), generatedBy: req.user.id, dataKey };
+    await store.savePreElectionPlan(planKey(context, horizon), saved);
+    await recordAudit(store, req, { action: 'pre_election.actions_generated', entityType: 'plan', entityId: planKey(context, horizon), details: { provider: answer.provider, model: answer.model, actions: QUADRANTS.reduce((sum, key) => sum + plan.quadrants[key].length, 0) } });
+    res.status(201).json({ ok: true, provider: answer.provider, model: answer.model, generatedAt: saved.generatedAt });
+  }));
+
+  app.put('/api/pre-election/actions/status', auth, rateLimit, asyncRoute(async (req, res) => {
+    if (!canUpload(req, res)) return;
+    const key = String(req.body?.key || '').slice(0, 80);
+    const status = String(req.body?.status || '');
+    if (!/^(rule|ai):[a-z0-9-]{1,60}$/.test(key) || !STATUSES.includes(status)) return res.status(400).json({ message: 'A valid action and status (todo, doing, done) are required.' });
+    await store.setPreElectionActionStatus(key, { status, by: req.user.id, at: new Date().toISOString() });
+    res.json({ key, status });
   }));
 
   app.get('/api/pre-election/datasets', auth, rateLimit, asyncRoute(async (req, res) => {

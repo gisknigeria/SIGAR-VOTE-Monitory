@@ -12,7 +12,7 @@
   flex-direction: column;
   gap: 8px;
   height: calc(100dvh - 280px);
-  min-height: 520px;
+  min-height: 480px; /* matches useFitHeight's floor, so a 768px laptop does not scroll */
   color: var(--smp-ink);
 }
 .smp-busy { opacity: 0.85; }

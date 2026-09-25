@@ -117,8 +117,8 @@ function AreaCard({ area, data, selected, measure, onOpen }) {
   );
 }
 
-export default function SentimentMapTab({ authToken }) {
-  const [lga, setLga] = useState(null); // { key, name }
+export default function SentimentMapTab({ authToken, initialLga = null }) {
+  const [lga, setLga] = useState(initialLga); // { key, name }
   const [ward, setWard] = useState(null); // { number, name }
   const [selected, setSelected] = useState(DEFAULT_LAYERS);
   const [colourBy, setColourBy] = useState("membersPerPu");
